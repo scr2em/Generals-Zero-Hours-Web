@@ -48,7 +48,9 @@ def human_scripts():
 
 
 def teams():
-    out = []
+    # The engine names a player's default team "team<player name>" and, for a skirmish side, builds the player's
+    # name from the side name plus the start position, so the file must carry the side's default team to copy.
+    out = [Dict(teamName="team" + AI_SIDE, teamOwner=AI_SIDE, teamIsSingleton=True)]
     for name, units, priority, max_instances, cond_script in TEAMS:
         d = Dict()
         d.set("teamName", name)

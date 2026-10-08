@@ -172,9 +172,9 @@ def effects():
 
 
 # event name -> (wave names, extra INI lines)
-UI = ("Type = UI", "Priority = NORMAL", "Volume = 80")
-WORLD = ("Type = WORLD SHROUDED PLAYER ALLIES ENEMIES", "Priority = NORMAL", "MinRange = 40", "MaxRange = 500")
-VOICE = ("Type = UI VOICE PLAYER", "Priority = HIGH", "Volume = 70", "Limit = 2")
+UI = ("Type = UI EVERYONE", "Priority = NORMAL", "Volume = 80")
+WORLD = ("Type = WORLD SHROUDED EVERYONE", "Priority = NORMAL", "MinRange = 40", "MaxRange = 500")
+VOICE = ("Type = UI VOICE PLAYER EVERYONE", "Priority = HIGH", "Volume = 70", "Limit = 2")
 
 EVENTS = [
     ("GUIClick", ["gui_click"], UI),

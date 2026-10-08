@@ -107,6 +107,8 @@ STRINGS = [
     ("Color:Crimson", "Crimson"), ("Color:Azure", "Azure"), ("Color:Verdant", "Verdant"), ("Color:Amber", "Amber"),
     ("Color:Violet", "Violet"), ("Color:Cyan", "Cyan"), ("Color:Orange", "Orange"), ("Color:Slate", "Slate"),
     ("Color:Random", "Random"),
+    ("GUI:StartingMoneyFormat", "$%d"),
+    ("MAP:StarterCrossing", "Ironwood Crossing"),
     ("Team:AI", "Computer"),
     ("Team:0", "No team"), ("Team:1", "Team 1"), ("Team:2", "Team 2"), ("Team:3", "Team 3"), ("Team:4", "Team 4"),
     # ---- ranks ---------------------------------------------------------------------------------------
