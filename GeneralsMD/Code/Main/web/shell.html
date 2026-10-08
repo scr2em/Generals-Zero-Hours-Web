@@ -634,6 +634,16 @@ function startGame() {
 }
 $('play').onclick = startGame;
 
+// The game module (and with it the Web Audio context) is only loaded from the Play click, so the
+// context starts running. If the browser still suspended it (autoplay policy), any later click or key
+// resumes it.
+function resumeAudio() {
+	try {
+		if (window.zhWebAudio && typeof window.zhWebAudio.resume === 'function') window.zhWebAudio.resume();
+	} catch (e) { /* ignore */ }
+}
+for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, resumeAudio, { capture: true });
+
 try {
 	const saved = localStorage.getItem('zh-resolution');
 	if (saved && [...$('resolution').options].some(o => o.value === saved)) $('resolution').value = saved;
