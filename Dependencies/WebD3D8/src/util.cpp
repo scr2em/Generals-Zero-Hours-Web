@@ -159,6 +159,10 @@ void WebD3D8_SetShaderModel(unsigned vs, unsigned ps)
     webd3d8::GetConfig().psVersion = ps;
 }
 
+void WebD3D8_SetPlatformHooks(const WebD3D8_PlatformHooks *hooks)
+{
+    webd3d8::GetConfig().hooks = hooks ? *hooks : WebD3D8_PlatformHooks{};
+}
 void WebD3D8_SetPresentMode(int mode) { webd3d8::GetConfig().presentMode = mode; }
 void WebD3D8_SetDisableS3TC(int disable) { webd3d8::GetConfig().disableS3TC = disable != 0; }
 void WebD3D8_SetDebug(int enable) { webd3d8::GetConfig().debug = enable != 0; }

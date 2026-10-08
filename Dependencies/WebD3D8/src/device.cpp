@@ -81,6 +81,14 @@ bool Device::CreateContext(const D3DPRESENT_PARAMETERS &pp)
         emscripten_set_canvas_element_size(cfg.canvas.c_str(), (int)pp.BackBufferWidth, (int)pp.BackBufferHeight);
 
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context(cfg.canvas.c_str(), &attr);
+    if (ctx <= 0 && attr.explicitSwapControl)
+    {
+        // Explicit swap control needs OffscreenCanvas support in the build and the browser.
+        Log("explicit swap control is not available (error %d), using implicit presentation", (int)ctx);
+        attr.explicitSwapControl = false;
+        ctx = emscripten_webgl_create_context(cfg.canvas.c_str(), &attr);
+    }
+    m_explicitSwap = attr.explicitSwapControl;
     if (ctx <= 0)
     {
         Log("could not create a WebGL2 context on '%s' (error %d)", cfg.canvas.c_str(), (int)ctx);
@@ -247,6 +255,7 @@ bool Device::CreateBackBuffer(const D3DPRESENT_PARAMETERS &pp)
     if (m_pp.BackBufferCount == 0) m_pp.BackBufferCount = 1;
     m_pp.MultiSampleType = D3DMULTISAMPLE_NONE;
     emscripten_set_canvas_element_size(GetConfig().canvas.c_str(), (int)w, (int)h);
+    if (GetConfig().hooks.OnClientSize) GetConfig().hooks.OnClientSize(w, h);
 
     glGenTextures(1, &m_bbColor);
     BindForUpload(GL_TEXTURE_2D, m_bbColor);
@@ -399,7 +408,7 @@ void Device::PresentToCanvas()
     m_targetsDirty = true;
     m_applied.Invalidate();
 
-    if (GetConfig().presentMode == WEBD3D8_PRESENT_EXPLICIT)
+    if (m_explicitSwap)
         emscripten_webgl_commit_frame();
 }
 

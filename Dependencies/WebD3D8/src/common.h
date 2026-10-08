@@ -49,7 +49,8 @@ struct Config
     unsigned desktopHeight = 0;
     unsigned vsVersion = 0;
     unsigned psVersion = 0;
-    int presentMode = WEBD3D8_PRESENT_IMPLICIT;
+    int presentMode = WEBD3D8_PRESENT_EXPLICIT;
+    WebD3D8_PlatformHooks hooks = {};
     bool debug = false;
     bool releaseTextureShadows = false;
     bool disableS3TC = false;

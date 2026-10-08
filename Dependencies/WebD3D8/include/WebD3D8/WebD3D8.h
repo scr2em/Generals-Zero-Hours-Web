@@ -49,15 +49,27 @@ void WebD3D8_SetShaderModel(unsigned vertexShaderVersion, unsigned pixelShaderVe
 
 /// How finished frames are handed to the browser by IDirect3DDevice8::Present().
 enum WebD3D8_PresentMode {
+    /// The context is created with explicitSwapControl and Present() calls
+    /// emscripten_webgl_commit_frame(). This is the default: it is what an
+    /// OffscreenCanvas rendered from a thread that never yields to its event
+    /// loop (-sPROXY_TO_PTHREAD) needs. When the browser/build cannot do
+    /// explicit swapping (no -sOFFSCREENCANVAS_SUPPORT) the device falls back
+    /// to WEBD3D8_PRESENT_IMPLICIT automatically.
+    WEBD3D8_PRESENT_EXPLICIT = 1,
     /// The browser presents the canvas when the calling task returns to the
     /// event loop (requestAnimationFrame / emscripten_set_main_loop style).
     WEBD3D8_PRESENT_IMPLICIT = 0,
-    /// The context is created with explicitSwapControl and Present() calls
-    /// emscripten_webgl_commit_frame(). Needed for OffscreenCanvas rendering
-    /// from a thread that never yields to its event loop.
-    WEBD3D8_PRESENT_EXPLICIT = 1,
 };
 void WebD3D8_SetPresentMode(int mode);
+
+/// Optional callbacks into the platform layer, so that web_d3d8 does not
+/// depend on it at link level.
+typedef struct WebD3D8_PlatformHooks {
+    /// Called after CreateDevice() and Reset(), once the canvas drawing buffer
+    /// has been resized to the back buffer size.
+    void (*OnClientSize)(unsigned width, unsigned height);
+} WebD3D8_PlatformHooks;
+void WebD3D8_SetPlatformHooks(const WebD3D8_PlatformHooks *hooks);
 
 /// Enables extra GL error checking and a log of unsupported D3D features.
 void WebD3D8_SetDebug(int enable);

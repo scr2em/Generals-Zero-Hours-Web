@@ -432,7 +432,7 @@ int main(int argc, char **argv)
     bool blocking = true;
     for (int i = 1; i < argc; ++i)
     {
-        if (!strcmp(argv[i], "--explicit")) WebD3D8_SetPresentMode(WEBD3D8_PRESENT_EXPLICIT);
+        if (!strcmp(argv[i], "--implicit")) WebD3D8_SetPresentMode(WEBD3D8_PRESENT_IMPLICIT);
         if (!strcmp(argv[i], "--no-s3tc")) WebD3D8_SetDisableS3TC(1);
         if (!strcmp(argv[i], "--shaders")) WebD3D8_SetShaderModel(0x0101, 0x0104);
         if (!strcmp(argv[i], "--debug")) WebD3D8_SetDebug(1);
