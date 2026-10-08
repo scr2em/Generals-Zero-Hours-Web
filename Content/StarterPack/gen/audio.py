@@ -199,6 +199,24 @@ EVENTS = [
     ("StarterSelectBuilding", ["select_building"], VOICE),
     ("StarterUnitCreated", ["unit_created"], VOICE),
     ("StarterConstructionDone", ["construction_done"], UI + ("Priority = HIGH",)),
+    # events the engine looks up by a fixed name (found by grepping the sources for AudioEventRTS literals); each reuses
+    # one of the effects above so that no lookup ends in "No info for requested audio event"
+    ("PlaceBuilding", ["select_building"], UI),
+    ("RallyPointSet", ["gui_command_click"], UI),
+    ("UnableToSetRallyPoint", ["no_can_do"], UI),
+    ("BeaconPlaced", ["gui_command_click"], UI),
+    ("BeaconPlacementFailed", ["no_can_do"], UI),
+    ("GUIBoarderFadeIn", ["gui_blip"], UI),
+    ("GUIButtonsFadeIn", ["gui_blip"], UI),
+    ("GUITransitionFade", ["gui_blip"], UI),
+    ("GUICommunicatorIncoming", ["gui_message"], UI),
+    ("GUICommunicatorOpen", ["gui_blip"], UI),
+    ("GUILogoMouseOver", ["gui_blip"], UI),
+    ("GUILogoSelect", ["gui_click"], UI),
+    ("GUIScoreScreenPictures", ["gui_blip"], UI),
+    ("GUIScoreScreenTick", ["gui_type"], UI + ("Limit = 1",)),
+    ("MilitarySubtitlesTyping", ["gui_type"], UI + ("Limit = 1",)),
+    ("LoadScreenAmbient", ["gui_blip"], UI),
 ]
 
 
