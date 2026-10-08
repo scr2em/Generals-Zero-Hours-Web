@@ -87,6 +87,9 @@ DWORD ErrnoToWin32Error(int err);
 // path exists.
 bool ResolvePath(const char *path, char *resolved, size_t resolvedSize);
 
+// A handle for the objects that only need to be distinct tokens (cursors, icons, images).
+HANDLE NewStockHandle();
+
 // Converts a time_t / timespec to a FILETIME and back.
 void UnixTimeToFileTime(int64_t seconds, int32_t nanoseconds, FILETIME *out);
 int64_t FileTimeToUnixSeconds(const FILETIME *in, int32_t *nanoseconds);

@@ -5,12 +5,27 @@ For an AI coding agent or developer who has never seen the session that produced
 
 ## Status and changelog (newest first; keep this section current)
 
-* **2026-10-08, end of session 1.** Everything below "What exists" is in the tree. The pack builds
-  deterministically (about 20 s), the 28 pack tests pass (about 100 s), the launcher e2e passes (70 checks), the engine
-  boots with the pack to the point where it needs a working display (see "Known gaps"). **Not yet verified in a running
-  engine:** the main menu on screen, the skirmish setup screens, loading the map, the AI, the control bar in play. The
-  display path of the engine (WebD3D8) was still being brought up by another agent, so everything visual was verified
-  only by parsing and by log analysis.
+* **Session 1, later: the pack runs in the engine.** With the runtime agent's display fixes the engine now shows the
+  pack's main menu, the skirmish setup screen finds "Ironwood Crossing", Start loads the map, both sides get their
+  base, the AI starts building (`Forcing build of power plant`), the control bar draws and takes a worker. Driven with
+  `GeneralsMD/Code/Main/web/test/starter_flow.mjs` (new; clicks through the real menus in headless Chromium and prints
+  the engine log after each step). Fixed on the way: `MainMenu.wnd` now uses the real `MainMenuInit` (a `[None]` init
+  left the movie-break flag set and nothing rendered), `Maps/MapCache.ini` is generated (release builds read the standard map
+  list from it, they do not scan `Maps\`), `DefaultStartingCash` in `GameData.ini`, `Multiplayer.ini` lives in
+  `Default/` (the main file is a stub), `WeaponSet` blocks on every object and `PhysicsBehavior` on every mover,
+  default teams in `SkirmishScripts.scb` (`team<SkirmishSide>`), `EVERYONE` on the audio types, and the strings
+  `GUI:StartingMoneyFormat` / `MAP:StarterCrossing`.
+* **Open: units and buildings are invisible in game** (trees draw). Found with temporary logging: the render objects exist,
+  are in the scene and not hidden, but their bounding sphere has radius 0 (`HLodClass::Update_Obj_Space_Bounding_Volumes` found no
+  sub objects), so the scene culls them. Only objects that go through the team colour path in `W3DAssetManager::Create_Render_Obj`
+  (non zero colour: every player owned object) are affected; neutral trees (colour 0) are fine. A tree model on the HQ is
+  invisible too, so it is not my W3D data but the clone/unique path of `HLodClass` (or `Make_Unique`) in this port. See section 9 A.
+* **Launcher: one folder pick for Zero Hour.** The page asks for the Zero Hour folder or any folder above it (Steam / EA app /
+  Ultimate Collection library); `importer.detectInstall` finds Zero Hour (INIZH.big ...) and the base game it depends on
+  (INI.big ...) inside the pick and imports both. Only when the base game is not found does a clearly secondary prompt appear. The
+  starter content needs no `/generals` data at all (the engine runs with the folder absent). e2e: 77 checks, both detection cases.
+* **End of the first half of session 1.** Everything below "What exists" is in the tree. The pack builds
+  deterministically (about 20 s), the 28 pack tests pass (about 100 s), the launcher e2e passes.
 
 ## 1. Goal and the copyright rules (non negotiable)
 

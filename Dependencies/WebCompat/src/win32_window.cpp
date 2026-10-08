@@ -15,15 +15,14 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 /*
-** WebAssembly port: windows, input state, GDI and the clipboard.
+** WebAssembly port: windows, input state, device capabilities and the clipboard.
 **
 ** The game has one window, the canvas of the page. A window is a small object
 ** that remembers its window procedure, style and size. The message queue,
 ** the window geometry and the keyboard and cursor state are not here: the
 ** platform layer (Core/GameEngineDevice/Source/WebDevice/Platform) defines
 ** PeekMessage, GetMessage, PostMessage, SendMessage, GetClientRect, GetKeyState
-** and the like itself. GDI drawing does nothing: there is no device context
-** to draw on.
+** and the like itself. The GDI drawing and text functions are in win32_gdi.cpp.
 */
 #include "webcompat_internal.h"
 
@@ -114,34 +113,6 @@ WindowObject *Lookup(HWND window)
 		return object;
 	return state.windows.find(object) != state.windows.end() ? object : nullptr;
 }
-
-// GDI objects are distinct handles that carry nothing but their kind, size and
-// pixels (DIB sections only).
-enum GdiKind { GDI_STOCK = 1, GDI_FONT, GDI_BITMAP, GDI_BRUSH, GDI_DC };
-
-struct GdiObject
-{
-	GdiKind kind;
-	int width;
-	int height;
-	void *bits;
-};
-
-GdiObject *NewGdiObject(GdiKind kind, int width = 0, int height = 0, void *bits = nullptr)
-{
-	GdiObject *object = new GdiObject();
-	object->kind = kind;
-	object->width = width;
-	object->height = height;
-	object->bits = bits;
-	return object;
-}
-
-// Text has a fixed 8x16 cell.
-const int CELL_WIDTH = 8;
-const int CELL_HEIGHT = 16;
-
-HDC AsDC(GdiObject *object) { return reinterpret_cast<HDC>(object); }
 
 } // namespace
 
@@ -738,12 +709,12 @@ HCURSOR WINAPI GetCursor(void)
 
 HCURSOR WINAPI LoadCursorA(HINSTANCE, LPCSTR)
 {
-	return reinterpret_cast<HCURSOR>(NewGdiObject(GDI_STOCK));
+	return reinterpret_cast<HCURSOR>(WebCompat::NewStockHandle());
 }
 
 HCURSOR WINAPI LoadCursorFromFileA(LPCSTR)
 {
-	return reinterpret_cast<HCURSOR>(NewGdiObject(GDI_STOCK));
+	return reinterpret_cast<HCURSOR>(WebCompat::NewStockHandle());
 }
 
 BOOL WINAPI DestroyCursor(HCURSOR)
@@ -753,12 +724,12 @@ BOOL WINAPI DestroyCursor(HCURSOR)
 
 HICON WINAPI LoadIconA(HINSTANCE, LPCSTR)
 {
-	return reinterpret_cast<HICON>(NewGdiObject(GDI_STOCK));
+	return reinterpret_cast<HICON>(WebCompat::NewStockHandle());
 }
 
 HANDLE WINAPI LoadImageA(HINSTANCE, LPCSTR, UINT, int, int, UINT)
 {
-	return NewGdiObject(GDI_STOCK);
+	return WebCompat::NewStockHandle();
 }
 
 int WINAPI GetSystemMetrics(int nIndex)
@@ -781,201 +752,8 @@ int WINAPI GetSystemMetrics(int nIndex)
 }
 
 /* ---------------------------------------------------------------------------
-** GDI
+** Device capabilities (the device contexts are in win32_gdi.cpp)
 ** ------------------------------------------------------------------------- */
-
-HDC WINAPI GetDC(HWND)
-{
-	return AsDC(NewGdiObject(GDI_DC));
-}
-
-int WINAPI ReleaseDC(HWND, HDC hDC)
-{
-	delete reinterpret_cast<GdiObject *>(hDC);
-	return 1;
-}
-
-HDC WINAPI CreateCompatibleDC(HDC)
-{
-	return AsDC(NewGdiObject(GDI_DC));
-}
-
-BOOL WINAPI DeleteDC(HDC hdc)
-{
-	delete reinterpret_cast<GdiObject *>(hdc);
-	return TRUE;
-}
-
-HGDIOBJ WINAPI SelectObject(HDC, HGDIOBJ h)
-{
-	return h;
-}
-
-BOOL WINAPI DeleteObject(HGDIOBJ ho)
-{
-	GdiObject *object = reinterpret_cast<GdiObject *>(ho);
-	if (!object)
-		return FALSE;
-	if (object->kind == GDI_STOCK && object->width == -1)
-		return TRUE; // shared stock objects stay
-	delete object;
-	return TRUE;
-}
-
-HGDIOBJ WINAPI GetStockObject(int i)
-{
-	static GdiObject s_stock[32];
-	if (i < 0 || i >= 32)
-		return nullptr;
-	s_stock[i].kind = GDI_STOCK;
-	s_stock[i].width = -1;
-	return &s_stock[i];
-}
-
-int WINAPI GetObjectA(HANDLE h, int c, LPVOID pv)
-{
-	GdiObject *object = reinterpret_cast<GdiObject *>(h);
-	if (object && object->kind == GDI_BITMAP && pv && c >= (int)sizeof(BITMAP))
-	{
-		BITMAP *bitmap = static_cast<BITMAP *>(pv);
-		memset(bitmap, 0, sizeof(*bitmap));
-		bitmap->bmWidth = object->width;
-		bitmap->bmHeight = object->height;
-		bitmap->bmPlanes = 1;
-		bitmap->bmBitsPixel = 32;
-		bitmap->bmWidthBytes = object->width * 4;
-		bitmap->bmBits = object->bits;
-		return (int)sizeof(BITMAP);
-	}
-	return 0;
-}
-
-HFONT WINAPI CreateFontA(int, int, int, int, int, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, DWORD, LPCSTR)
-{
-	return reinterpret_cast<HFONT>(NewGdiObject(GDI_FONT));
-}
-
-HFONT WINAPI CreateFontIndirectA(const LOGFONTA *)
-{
-	return reinterpret_cast<HFONT>(NewGdiObject(GDI_FONT));
-}
-
-HBITMAP WINAPI CreateDIBSection(HDC, const BITMAPINFO *pbmi, UINT, void **ppvBits, HANDLE, DWORD)
-{
-	if (!pbmi)
-		return nullptr;
-	const int width = pbmi->bmiHeader.biWidth;
-	const int height = pbmi->bmiHeader.biHeight < 0 ? -pbmi->bmiHeader.biHeight : pbmi->bmiHeader.biHeight;
-	const int bitsPerPixel = pbmi->bmiHeader.biBitCount ? pbmi->bmiHeader.biBitCount : 32;
-	// Rows are padded to 32 bits.
-	const size_t stride = (((size_t)width * bitsPerPixel + 31) / 32) * 4;
-	void *bits = calloc(1, stride * (size_t)height + 1);
-	if (ppvBits)
-		*ppvBits = bits;
-	return reinterpret_cast<HBITMAP>(NewGdiObject(GDI_BITMAP, width, height, bits));
-}
-
-HBITMAP WINAPI CreateCompatibleBitmap(HDC, int cx, int cy)
-{
-	return reinterpret_cast<HBITMAP>(NewGdiObject(GDI_BITMAP, cx, cy, nullptr));
-}
-
-HBRUSH WINAPI CreateSolidBrush(COLORREF)
-{
-	return reinterpret_cast<HBRUSH>(NewGdiObject(GDI_BRUSH));
-}
-
-int WINAPI FillRect(HDC, const RECT *, HBRUSH)
-{
-	return 1;
-}
-
-COLORREF WINAPI SetTextColor(HDC, COLORREF)
-{
-	return 0;
-}
-
-COLORREF WINAPI SetBkColor(HDC, COLORREF)
-{
-	return 0;
-}
-
-int WINAPI SetBkMode(HDC, int)
-{
-	return OPAQUE;
-}
-
-BOOL WINAPI TextOutA(HDC, int, int, LPCSTR, int)
-{
-	return TRUE;
-}
-
-BOOL WINAPI TextOutW(HDC, int, int, LPCWSTR, int)
-{
-	return TRUE;
-}
-
-BOOL WINAPI ExtTextOutW(HDC, int, int, UINT, const RECT *, LPCWSTR, UINT, const INT *)
-{
-	return TRUE;
-}
-
-BOOL WINAPI ExtTextOutA(HDC, int, int, UINT, const RECT *, LPCSTR, UINT, const INT *)
-{
-	return TRUE;
-}
-
-int WINAPI DrawTextA(HDC, LPCSTR lpchText, int cchText, LPRECT lprc, UINT format)
-{
-	if (lprc && (format & DT_CALCRECT))
-	{
-		const int length = cchText < 0 ? (int)strlen(lpchText) : cchText;
-		lprc->right = lprc->left + length * CELL_WIDTH;
-		lprc->bottom = lprc->top + CELL_HEIGHT;
-	}
-	return CELL_HEIGHT;
-}
-
-BOOL WINAPI GetTextExtentPoint32A(HDC, LPCSTR lpString, int c, LPSIZE psizl)
-{
-	if (!psizl)
-		return FALSE;
-	psizl->cx = (c < 0 ? (int)strlen(lpString) : c) * CELL_WIDTH;
-	psizl->cy = CELL_HEIGHT;
-	return TRUE;
-}
-
-BOOL WINAPI GetTextExtentPoint32W(HDC, LPCWSTR lpString, int c, LPSIZE psizl)
-{
-	if (!psizl)
-		return FALSE;
-	psizl->cx = (c < 0 ? (int)wcslen(lpString) : c) * CELL_WIDTH;
-	psizl->cy = CELL_HEIGHT;
-	return TRUE;
-}
-
-BOOL WINAPI GetTextMetricsA(HDC, LPTEXTMETRIC lptm)
-{
-	if (!lptm)
-		return FALSE;
-	memset(lptm, 0, sizeof(*lptm));
-	lptm->tmHeight = CELL_HEIGHT;
-	lptm->tmAscent = 13;
-	lptm->tmDescent = 3;
-	lptm->tmAveCharWidth = CELL_WIDTH;
-	lptm->tmMaxCharWidth = CELL_WIDTH;
-	lptm->tmWeight = FW_NORMAL;
-	lptm->tmFirstChar = 32;
-	lptm->tmLastChar = (CHAR)255;
-	lptm->tmDefaultChar = '?';
-	lptm->tmBreakChar = ' ';
-	return TRUE;
-}
-
-BOOL WINAPI BitBlt(HDC, int, int, int, int, HDC, int, int, DWORD)
-{
-	return TRUE;
-}
 
 int WINAPI GetDeviceCaps(HDC, int index)
 {
@@ -990,26 +768,6 @@ int WINAPI GetDeviceCaps(HDC, int index)
 	case VREFRESH: return 60;
 	default: return 0;
 	}
-}
-
-COLORREF WINAPI GetPixel(HDC, int, int)
-{
-	return 0;
-}
-
-COLORREF WINAPI SetPixel(HDC, int, int, COLORREF color)
-{
-	return color;
-}
-
-int WINAPI AddFontResourceA(LPCSTR)
-{
-	return 1;
-}
-
-BOOL WINAPI RemoveFontResourceA(LPCSTR)
-{
-	return TRUE;
 }
 
 BOOL WINAPI GetDeviceGammaRamp(HDC, LPVOID lpRamp)

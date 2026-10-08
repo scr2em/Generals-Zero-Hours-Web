@@ -35,17 +35,10 @@
 
 #include <string>
 
-static int s_failures = 0;
-static int s_checks = 0;
+#include "check.h"
 
-#define CHECK(condition) \
-	do { \
-		++s_checks; \
-		if (!(condition)) { \
-			++s_failures; \
-			printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition); \
-		} \
-	} while (0)
+int g_checks = 0;
+int g_failures = 0;
 
 static void TestWideStrings()
 {
@@ -581,6 +574,8 @@ static void TestOleAutomationAndExtras()
 	CHECK(_mbsnccnt((const unsigned char *)"ab", 4) == 2);
 }
 
+void TestGdiText();
+
 int main()
 {
 	TestWideStrings();
@@ -591,6 +586,7 @@ int main()
 	TestThreads();
 	TestMisc();
 	TestOleAutomationAndExtras();
-	printf("%d checks, %d failures\n", s_checks, s_failures);
-	return s_failures ? 1 : 0;
+	TestGdiText();
+	printf("%d checks, %d failures\n", g_checks, g_failures);
+	return g_failures ? 1 : 0;
 }

@@ -141,6 +141,8 @@ if(EMSCRIPTEN)
     endfunction()
 
     zh_web_link_options(z_generals)
+    # The fonts behind GDI text (Arial -> Liberation Sans, ...), at /webfonts.
+    webfonts_embed(z_generals)
 
     # A tiny program that proves the plumbing in a browser without the game:
     # the engine thread, OPFS through WasmFS and the input message queue.

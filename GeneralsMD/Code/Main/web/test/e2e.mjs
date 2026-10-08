@@ -71,7 +71,7 @@ const browser = await chromium.launch({
 async function importFolder(page, button, stateId, dir) {
 	const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click(button)]);
 	await chooser.setFiles(dir);
-	await page.waitForFunction((id) => /^(Ready|That does not|Import failed|Not enough)/.test(document.getElementById(id).textContent), stateId, { timeout: 60000 });
+	await page.waitForFunction((id) => /^(Ready|That does not|That folder|Import failed|Not enough)/.test(document.getElementById(id).textContent), stateId, { timeout: 60000 });
 	return page.textContent('#' + stateId);
 }
 
@@ -94,13 +94,17 @@ async function session(label, query) {
 	check('play disabled before import', await page.isDisabled('#play'));
 	await page.screenshot({ path: path.join(out, '1-first-visit.png') });
 
+	check('the base game prompt is not shown before an import', await page.isHidden('#row-generals'));
 	const wrong = await importFolder(page, '#pick-game', 'state-game', path.join(fake, 'Generals'));
-	check('wrong folder is rejected', /does not look like/.test(wrong), wrong);
+	check('a folder without Zero Hour is rejected', /does not look like Zero Hour/.test(wrong), wrong);
 
 	const gameState = await importFolder(page, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
 	check('zero hour imported', /Ready/.test(gameState), gameState);
 	check('videos/exe skipped, engine exe kept (4 files expected)', /4 files/.test(gameState), gameState);
-	check('play still disabled with only one folder', await page.isDisabled('#play'));
+	check('play still disabled without the base game files', await page.isDisabled('#play'));
+	check('secondary prompt asks for the base game', await page.isVisible('#row-generals') && await page.isVisible('#base-note'));
+	const wrongBase = await importFolder(page, '#pick-generals', 'state-generals', path.join(fake, 'ZeroHour'));
+	check('the base game prompt rejects a Zero Hour folder', /does not look like the base game/.test(wrongBase), wrongBase);
 	const generalsState = await importFolder(page, '#pick-generals', 'state-generals', path.join(fake, 'Generals'));
 	check('generals imported', /Ready/.test(generalsState), generalsState);
 	await page.screenshot({ path: path.join(out, '2-imported.png') });
@@ -201,13 +205,30 @@ async function session(label, query) {
 	await s.context.close();
 }
 
+// ---- 1b. one pick: the folder above both games (a Steam / EA app / Ultimate Collection library) ---------------
+{
+	const s = await session('parent', '?picker=input');
+	const { page } = s;
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+	const state = await importFolder(page, '#pick-game', 'state-game', fake);
+	check('parent folder: Zero Hour found inside', /Ready · 4 files/.test(state), state);
+	await page.waitForFunction(() => /Ready/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
+	check('parent folder: the base game was found in the same pick', /Ready/.test(await page.textContent('#state-generals')));
+	check('parent folder: no secondary prompt', await page.isHidden('#base-note'));
+	check('parent folder: play enabled after one pick', !(await page.isDisabled('#play')));
+	await s.context.close();
+}
+
 // ---- 2. a second visit in a fresh context with the worker writer ------------------------------
 {
 	const s = await session('worker-writer');
 	const { page } = s;
 	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&writer=worker`);
-	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-generals').textContent));
-	const st = await importFolder(page, '#pick-generals', 'state-generals', path.join(fake, 'Generals'));
+	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+	await importFolder(page, '#pick-game', 'state-game', fake);
+	await page.waitForFunction(() => /Ready/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
+	const st = await page.textContent('#state-generals');
 	check('import through the sync-access-handle worker', /Ready/.test(st), st);
 	const sizes = await page.evaluate(async () => {
 		const root = await navigator.storage.getDirectory();
@@ -231,8 +252,8 @@ async function session(label, query) {
 	page.on('console', (m) => logs.push(m.text()));
 	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
-	await importFolder(page, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
-	await importFolder(page, '#pick-generals', 'state-generals', path.join(fake, 'Generals'));
+	await importFolder(page, '#pick-game', 'state-game', fake);
+	await page.waitForFunction(() => /Ready/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
 	for (let run = 1; run <= 2; run++) {
 		await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
 		await page.waitForFunction(() => /Ready/.test(document.getElementById('state-game').textContent));

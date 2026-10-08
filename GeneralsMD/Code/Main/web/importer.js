@@ -131,6 +131,54 @@ export async function sourceFromDataTransfer(dataTransfer) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Finding the games inside what the user picked
+// ---------------------------------------------------------------------------------------------
+
+// The user may pick the Zero Hour folder itself or any folder above it (a Steam, EA app or Ultimate Collection
+// library holds both games side by side). Zero Hour is recognised by its own archives (INIZH.big...), the base game
+// it builds on by its archives (INI.big...). Returns { game, base }: each the folder as an array of path segments
+// below the picked folder ([] for the picked folder itself) or null when it was not found. The shallowest match wins,
+// and the base game is never looked for inside the Zero Hour folder.
+export function detectInstall(source) {
+	const folders = new Map(); // lower case path -> { segments, names }
+	for (const file of source.files) {
+		const dirs = file.segments.slice(0, -1);
+		const key = dirs.map((d) => d.toLowerCase()).join('/');
+		let entry = folders.get(key);
+		if (!entry) folders.set(key, entry = { segments: dirs, names: new Set(), key });
+		entry.names.add(file.segments[file.segments.length - 1].toLowerCase());
+	}
+	const find = (signature, skip) => {
+		let best = null;
+		for (const entry of folders.values()) {
+			if (!signature.some((n) => entry.names.has(n))) continue;
+			if (skip && skip(entry)) continue;
+			if (!best || entry.segments.length < best.segments.length) best = entry;
+		}
+		return best ? best.segments : null;
+	};
+	const game = find(TARGETS.game.signature);
+	const gameKey = game ? game.map((d) => d.toLowerCase()).join('/') : null;
+	const inside = (entry) => game && (gameKey === '' || entry.key === gameKey || entry.key.startsWith(gameKey + '/'));
+	// The base game is never the Zero Hour folder or below it, unless the user picked a folder that holds only the base game.
+	const base = find(TARGETS.generals.signature, (entry) => inside(entry));
+	return { game, base };
+}
+
+// The part of a picked source that lies below a folder (as returned by detectInstall).
+export function subSource(source, prefix) {
+	if (!prefix || prefix.length === 0) return source;
+	const lower = prefix.map((p) => p.toLowerCase());
+	const files = [];
+	for (const file of source.files) {
+		if (file.segments.length > prefix.length && lower.every((p, i) => file.segments[i].toLowerCase() === p)) {
+			files.push({ ...file, segments: file.segments.slice(prefix.length) });
+		}
+	}
+	return { name: prefix[prefix.length - 1], files };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Planning
 // ---------------------------------------------------------------------------------------------
 

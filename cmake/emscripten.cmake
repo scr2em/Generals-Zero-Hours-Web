@@ -69,6 +69,8 @@ else()
 endif()
 
 add_subdirectory(Dependencies/WebCompat)
+# The fonts that stand in for the Windows fonts (see Dependencies/WebFonts/CMakeLists.txt).
+add_subdirectory(Dependencies/WebFonts)
 
 # Flags for every game target.
 target_compile_options(deps_config INTERFACE

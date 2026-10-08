@@ -16,3 +16,8 @@ target_link_libraries(webcompat PUBLIC webcompat_headers)
 set_target_properties(webcompat PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS ON)
 target_compile_options(webcompat PRIVATE -fshort-wchar -fms-extensions -fno-strict-aliasing)
 target_link_libraries(webcompat_headers INTERFACE webcompat)
+
+# The GDI text emulation (gdi_font.cpp) rasterises with stb_truetype. The stb target is defined by
+# cmake/stb.cmake, which the top level CMakeLists includes after cmake/emscripten.cmake; the name is
+# resolved when the build system is generated.
+target_link_libraries(webcompat PRIVATE stb)

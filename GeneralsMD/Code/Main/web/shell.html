@@ -92,6 +92,8 @@
 		font-weight: 600;
 		vertical-align: middle;
 	}
+	.row.secondary { opacity: .92; }
+	button.secondary { background: transparent; }
 	.placeholder-note {
 		margin: 8px 0 6px;
 		padding: 8px 10px;
@@ -236,17 +238,21 @@
 
 		<section class="choice" id="choice-install" aria-labelledby="install-title">
 			<h2 id="install-title">Use my Zero Hour installation</h2>
-			<p>Bring your own copy of the game. Its files are copied once into this browser&rsquo;s private storage.</p>
+			<p>Bring your own copy of the game. Select your Zero Hour folder, or the folder above it that holds your games
+				(for example your Steam, EA app or Ultimate Collection library): the page finds what it needs. The files are copied
+				once into this browser&rsquo;s private storage.</p>
 			<div class="row" id="row-game">
-				<div class="name">Zero Hour folder</div>
-				<button type="button" id="pick-game">Select your Zero Hour folder</button>
+				<div class="name">Zero Hour</div>
+				<button type="button" id="pick-game">Select folder&hellip;</button>
 				<div class="state" id="state-game">Checking&hellip;</div>
 			</div>
-			<div class="row" id="row-generals">
-				<div class="name">Generals folder</div>
-				<button type="button" id="pick-generals">Select your Generals folder</button>
+			<div class="row secondary" id="row-generals" hidden>
+				<div class="name">Base game files</div>
+				<button type="button" id="pick-generals" class="secondary">Select base game folder&hellip;</button>
 				<div class="state" id="state-generals">Checking&hellip;</div>
 			</div>
+			<p class="fine" id="base-note" hidden>Zero Hour is an expansion and uses data files of the original game it was built on,
+				which were not found next to it. Select the folder of that game (the one with <code>INI.big</code>) so they can be copied too.</p>
 		</section>
 
 		<section class="choice" id="choice-starter" aria-labelledby="starter-title">
@@ -286,7 +292,7 @@
 
 		<p class="fine">
 			Your own game files are copied once into this browser&rsquo;s private storage and never leave your computer.
-			Zero Hour also needs the original Generals files. The starter content is downloaded from this site instead.
+			The free starter content is downloaded from this site instead and needs none of them.
 			<button type="button" class="link" id="clear">Remove imported files</button>
 		</p>
 		<input type="file" id="folder-input" webkitdirectory multiple hidden>
@@ -403,9 +409,13 @@ async function refreshStatus() {
 		if (m && m.kind !== 'starter') {
 			setState(key, 'Ready · ' + m.files.toLocaleString() + ' files · ' + importer.formatBytes(m.bytes), 'ok');
 		} else {
-			setState(key, starter ? 'Not imported (the starter content is installed instead)' : 'Not imported yet');
+			setState(key, starter ? 'Not imported (the starter content is installed instead)' : key === 'game' ? 'Not imported yet' : 'Not found yet');
 		}
 	}
+	// The base game files are asked for only when Zero Hour was imported and they were not found with it.
+	const needBase = !!(status.game && status.game.kind !== 'starter' && !status.generals);
+	$('row-generals').hidden = !needBase && !(status.generals && status.generals.kind !== 'starter');
+	$('base-note').hidden = !needBase;
 	if (starter) {
 		setState('starter', 'Ready · ' + starter.files.toLocaleString() + ' files · ' + importer.formatBytes(starter.bytes) +
 			(starter.packVersion ? ' · version ' + starter.packVersion : ''), 'ok');
@@ -458,35 +468,63 @@ async function pickSource() {
 	});
 }
 
+// Copies one planned target; throws a message string for problems the user can act on.
+async function importPlan(plan, key, target) {
+	if (!plan.looksRight) {
+		throw 'That does not look like the ' + target.label + ' folder (' + target.signature[0].toUpperCase() + ' not found).';
+	}
+	const { quota, usage } = await importer.storageEstimate();
+	if (quota && quota - usage < plan.bytes) {
+		throw 'Not enough browser storage: need ' + importer.formatBytes(plan.bytes) + ', ' + importer.formatBytes(quota - usage) + ' available.';
+	}
+	await importer.requestPersistence();
+	if (status.game && status.game.kind === 'starter') {
+		// The starter content lives in game/ too; it can be downloaded again at any time.
+		await importer.clearTarget('game');
+		await importer.clearTarget('generals');
+		status = await importer.getStatus();
+	}
+	setState(key, 'Copying ' + plan.files.length.toLocaleString() + ' files\u2026');
+	await importer.runImport(plan, { onProgress: showProgress, forceWorker: params.get('writer') === 'worker' });
+	status = await importer.getStatus();
+}
+
+// "Select folder" for Zero Hour: the picked folder is Zero Hour itself or holds it (and usually the base game, too).
 async function pickAndImport(key) {
 	if (busy) return;
-	const target = importer.TARGETS[key];
 	let problem = null;
+	let problemKey = key;
 	busy = true;
 	updateButtons();
 	try {
 		const source = await pickSource();
 		if (!source) return;
 		setState(key, 'Reading folder\u2026');
-		const plan = importer.planImport(source, key, { includeVideos: false });
-		if (!plan.looksRight) {
-			problem = 'That does not look like the ' + target.label + ' folder (' + target.signature[0].toUpperCase() + ' not found).';
-			return;
+		const found = importer.detectInstall(source);
+		if (key === 'game') {
+			if (!found.game) {
+				problem = 'That folder does not look like Zero Hour, and none of its subfolders does either (INIZH.big not found).';
+				return;
+			}
+			try {
+				await importPlan(importer.planImport(importer.subSource(source, found.game), 'game', { includeVideos: false }), 'game', importer.TARGETS.game);
+			} catch (e) { if (typeof e === 'string') { problem = e; return; } throw e; }
+			if (found.base) {
+				problemKey = 'generals';
+				try {
+					await importPlan(importer.planImport(importer.subSource(source, found.base), 'generals', { includeVideos: false }), 'generals', importer.TARGETS.generals);
+				} catch (e) { if (typeof e === 'string') { problem = e; return; } throw e; }
+			}
+		} else {
+			// The secondary prompt: the folder of the base game (or one above it).
+			let sub = found.base ? importer.subSource(source, found.base) : source;
+			try {
+				await importPlan(importer.planImport(sub, 'generals', { includeVideos: false }), 'generals', importer.TARGETS.generals);
+			} catch (e) {
+				if (typeof e === 'string') { problem = 'That does not look like the base game folder (INI.big not found).'; return; }
+				throw e;
+			}
 		}
-		const { quota, usage } = await importer.storageEstimate();
-		if (quota && quota - usage < plan.bytes) {
-			problem = 'Not enough browser storage: need ' + importer.formatBytes(plan.bytes) + ', ' + importer.formatBytes(quota - usage) + ' available.';
-			return;
-		}
-		await importer.requestPersistence();
-		if (status.game && status.game.kind === 'starter') {
-			// The starter content lives in game/ too; it can be downloaded again at any time.
-			await importer.clearTarget('game');
-			await importer.clearTarget('generals');
-			status = await importer.getStatus();
-		}
-		setState(key, 'Copying ' + plan.files.length.toLocaleString() + ' files\u2026');
-		await importer.runImport(plan, { onProgress: showProgress, forceWorker: params.get('writer') === 'worker' });
 	} catch (e) {
 		if (!(e && e.name === 'AbortError')) {
 			problem = 'Import failed: ' + (e && e.message || e);
@@ -496,7 +534,10 @@ async function pickAndImport(key) {
 		busy = false;
 		$('progress').hidden = true;
 		await refreshStatus();
-		if (problem) setState(key, problem, 'err');
+		if (problem) {
+			if (problemKey === 'generals') $('row-generals').hidden = false;
+			setState(problemKey, problem, 'err');
+		}
 	}
 }
 

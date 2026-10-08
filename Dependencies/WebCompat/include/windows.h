@@ -536,6 +536,52 @@ typedef struct tagTEXTMETRICA {
 	BYTE tmCharSet;
 } TEXTMETRICA, TEXTMETRIC, *LPTEXTMETRIC;
 
+typedef struct tagTEXTMETRICW {
+	LONG  tmHeight;
+	LONG  tmAscent;
+	LONG  tmDescent;
+	LONG  tmInternalLeading;
+	LONG  tmExternalLeading;
+	LONG  tmAveCharWidth;
+	LONG  tmMaxCharWidth;
+	LONG  tmWeight;
+	LONG  tmOverhang;
+	LONG  tmDigitizedAspectX;
+	LONG  tmDigitizedAspectY;
+	WCHAR tmFirstChar;
+	WCHAR tmLastChar;
+	WCHAR tmDefaultChar;
+	WCHAR tmBreakChar;
+	BYTE  tmItalic;
+	BYTE  tmUnderlined;
+	BYTE  tmStruckOut;
+	BYTE  tmPitchAndFamily;
+	BYTE  tmCharSet;
+} TEXTMETRICW, *LPTEXTMETRICW;
+
+typedef struct _ABC {
+	int  abcA;
+	UINT abcB;
+	int  abcC;
+} ABC, *LPABC;
+
+typedef struct tagLOGFONTW {
+	LONG  lfHeight;
+	LONG  lfWidth;
+	LONG  lfEscapement;
+	LONG  lfOrientation;
+	LONG  lfWeight;
+	BYTE  lfItalic;
+	BYTE  lfUnderline;
+	BYTE  lfStrikeOut;
+	BYTE  lfCharSet;
+	BYTE  lfOutPrecision;
+	BYTE  lfClipPrecision;
+	BYTE  lfQuality;
+	BYTE  lfPitchAndFamily;
+	WCHAR lfFaceName[32];
+} LOGFONTW, *LPLOGFONTW;
+
 typedef struct tagLOGFONTA {
 	LONG lfHeight;
 	LONG lfWidth;
@@ -1115,6 +1161,16 @@ typedef LONG (WINAPI *LPTOP_LEVEL_EXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *
 #define BLACK_BRUSH         4
 #define WHITE_BRUSH         0
 #define NULL_BRUSH          5
+#define LTGRAY_BRUSH        1
+#define GRAY_BRUSH          2
+#define DKGRAY_BRUSH        3
+#define HOLLOW_BRUSH        NULL_BRUSH
+#define OEM_FIXED_FONT      10
+#define ANSI_FIXED_FONT     11
+#define ANSI_VAR_FONT       12
+#define SYSTEM_FONT         13
+#define DEVICE_DEFAULT_FONT 14
+#define SYSTEM_FIXED_FONT   16
 #define DEFAULT_GUI_FONT    17
 #define TRANSPARENT         1
 #define OPAQUE              2
@@ -1124,23 +1180,70 @@ typedef LONG (WINAPI *LPTOP_LEVEL_EXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *
 #define DIB_RGB_COLORS      0
 #define FW_NORMAL           400
 #define FW_BOLD             700
+#define FW_DONTCARE         0
+#define FW_THIN             100
+#define FW_LIGHT            300
+#define FW_MEDIUM           500
+#define FW_SEMIBOLD         600
+#define FW_HEAVY            900
 #define ANSI_CHARSET        0
 #define DEFAULT_CHARSET     1
+#define SYMBOL_CHARSET      2
+#define SHIFTJIS_CHARSET    128
+#define HANGEUL_CHARSET     129
+#define GB2312_CHARSET      134
+#define CHINESEBIG5_CHARSET 136
+#define OEM_CHARSET         255
 #define OUT_DEFAULT_PRECIS  0
+#define OUT_TT_PRECIS       4
+#define OUT_TT_ONLY_PRECIS  7
 #define CLIP_DEFAULT_PRECIS 0
-#define ANTIALIASED_QUALITY 4
-#define NONANTIALIASED_QUALITY 3
 #define DEFAULT_QUALITY     0
+#define DRAFT_QUALITY       1
+#define PROOF_QUALITY       2
+#define NONANTIALIASED_QUALITY 3
+#define ANTIALIASED_QUALITY 4
+#define CLEARTYPE_QUALITY   5
+#define CLEARTYPE_NATURAL_QUALITY 6
 #define DEFAULT_PITCH       0
 #define VARIABLE_PITCH      2
-#define FF_DONTCARE         0
+#define TMPF_FIXED_PITCH    0x01
+#define TMPF_VECTOR         0x02
+#define TMPF_TRUETYPE       0x04
+#define TMPF_DEVICE         0x08
+#define FF_DONTCARE         (0<<4)
+#define FF_ROMAN            (1<<4)
+#define FF_SWISS            (2<<4)
+#define FF_SCRIPT           (4<<4)
+#define FF_DECORATIVE       (5<<4)
+#define LF_FACESIZE         32
+#define LF_FULLFACESIZE     64
+#define TA_NOUPDATECP       0
+#define TA_UPDATECP         1
+#define TA_LEFT             0
+#define TA_RIGHT            2
+#define TA_CENTER           6
+#define TA_TOP              0
+#define TA_BOTTOM           8
+#define TA_BASELINE         24
+#define ETO_GLYPH_INDEX     0x0010
+#define FR_PRIVATE          0x10
+#define FR_NOT_ENUM         0x20
+#define BLACKNESS           0x00000042
+#define WHITENESS           0x00FF0062
+#define PATCOPY             0x00F00021
+#define CLR_INVALID         0xFFFFFFFF
+#define GDI_ERROR           0xFFFFFFFF
 #define ETO_OPAQUE          0x0002
 #define ETO_CLIPPED         0x0004
 #define DT_LEFT             0x00000000
 #define DT_CENTER           0x00000001
 #define DT_RIGHT            0x00000002
 #define DT_VCENTER          0x00000004
+#define DT_BOTTOM           0x00000008
+#define DT_WORDBREAK        0x00000010
 #define DT_SINGLELINE       0x00000020
+#define DT_EXPANDTABS       0x00000040
 #define DT_NOCLIP           0x00000100
 #define DT_CALCRECT         0x00000400
 #define DT_NOPREFIX         0x00000800
@@ -1187,7 +1290,7 @@ typedef LONG (WINAPI *LPTOP_LEVEL_EXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *
 #define WM_SETFONT     0x0030
 #define WM_GETFONT     0x0031
 #define FIXED_PITCH    1
-#define FF_MODERN      48
+#define FF_MODERN      (3<<4)
 #define CONTEXT_FLOATING_POINT 0x10008
 #define SIZE_OF_80387_REGISTERS 80
 
@@ -1865,7 +1968,9 @@ HICON   WINAPI LoadIconA(HINSTANCE hInstance, LPCSTR lpIconName);
 HANDLE  WINAPI LoadImageA(HINSTANCE hInst, LPCSTR name, UINT type, int cx, int cy, UINT fuLoad);
 #define LoadImage LoadImageA
 
-/* GDI. Only used by tools and debug output; no-ops in the browser. */
+/* GDI. Text is rasterised by Dependencies/WebCompat/src/win32_gdi.cpp (stb_truetype); only
+   the subset the game and its tools use exists: memory DCs with DIB sections, fonts, solid
+   brushes and text output. Everything else is a no-op. */
 HDC     WINAPI GetDC(HWND hWnd);
 int     WINAPI ReleaseDC(HWND hWnd, HDC hDC);
 HDC     WINAPI CreateCompatibleDC(HDC hdc);
@@ -1879,6 +1984,8 @@ HFONT   WINAPI CreateFontA(int cHeight, int cWidth, int cEscapement, int cOrient
 #define CreateFont CreateFontA
 HFONT   WINAPI CreateFontIndirectA(const LOGFONTA *lplf);
 #define CreateFontIndirect CreateFontIndirectA
+HFONT   WINAPI CreateFontW(int cHeight, int cWidth, int cEscapement, int cOrientation, int cWeight, DWORD bItalic, DWORD bUnderline, DWORD bStrikeOut, DWORD iCharSet, DWORD iOutPrecision, DWORD iClipPrecision, DWORD iQuality, DWORD iPitchAndFamily, LPCWSTR pszFaceName);
+HFONT   WINAPI CreateFontIndirectW(const LOGFONTW *lplf);
 HBITMAP WINAPI CreateDIBSection(HDC hdc, const BITMAPINFO *pbmi, UINT usage, void **ppvBits, HANDLE hSection, DWORD offset);
 HBITMAP WINAPI CreateCompatibleBitmap(HDC hdc, int cx, int cy);
 HBRUSH  WINAPI CreateSolidBrush(COLORREF color);
@@ -1893,12 +2000,34 @@ BOOL    WINAPI ExtTextOutW(HDC hdc, int x, int y, UINT options, const RECT *lpre
 BOOL    WINAPI ExtTextOutA(HDC hdc, int x, int y, UINT options, const RECT *lprect, LPCSTR lpString, UINT c, const INT *lpDx);
 #define ExtTextOut ExtTextOutA
 int     WINAPI DrawTextA(HDC hdc, LPCSTR lpchText, int cchText, LPRECT lprc, UINT format);
+int     WINAPI DrawTextW(HDC hdc, LPCWSTR lpchText, int cchText, LPRECT lprc, UINT format);
 #define DrawText DrawTextA
 BOOL    WINAPI GetTextExtentPoint32A(HDC hdc, LPCSTR lpString, int c, LPSIZE psizl);
 BOOL    WINAPI GetTextExtentPoint32W(HDC hdc, LPCWSTR lpString, int c, LPSIZE psizl);
 #define GetTextExtentPoint32 GetTextExtentPoint32A
 BOOL    WINAPI GetTextMetricsA(HDC hdc, LPTEXTMETRIC lptm);
+BOOL    WINAPI GetTextMetricsW(HDC hdc, LPTEXTMETRICW lptm);
 #define GetTextMetrics GetTextMetricsA
+BOOL    WINAPI GetCharWidth32A(HDC hdc, UINT iFirst, UINT iLast, LPINT lpBuffer);
+BOOL    WINAPI GetCharWidth32W(HDC hdc, UINT iFirst, UINT iLast, LPINT lpBuffer);
+#define GetCharWidth32 GetCharWidth32A
+BOOL    WINAPI GetCharABCWidthsA(HDC hdc, UINT wFirst, UINT wLast, LPABC lpABC);
+BOOL    WINAPI GetCharABCWidthsW(HDC hdc, UINT wFirst, UINT wLast, LPABC lpABC);
+#define GetCharABCWidths GetCharABCWidthsA
+int     WINAPI GetTextFaceA(HDC hdc, int c, LPSTR lpName);
+int     WINAPI GetTextFaceW(HDC hdc, int c, LPWSTR lpName);
+#define GetTextFace GetTextFaceA
+COLORREF WINAPI GetTextColor(HDC hdc);
+COLORREF WINAPI GetBkColor(HDC hdc);
+int     WINAPI GetBkMode(HDC hdc);
+UINT    WINAPI SetTextAlign(HDC hdc, UINT align);
+UINT    WINAPI GetTextAlign(HDC hdc);
+int     WINAPI AddFontResourceW(LPCWSTR);
+int     WINAPI AddFontResourceExA(LPCSTR name, DWORD fl, PVOID res);
+int     WINAPI AddFontResourceExW(LPCWSTR name, DWORD fl, PVOID res);
+BOOL    WINAPI RemoveFontResourceW(LPCWSTR);
+BOOL    WINAPI RemoveFontResourceExA(LPCSTR name, DWORD fl, PVOID pdv);
+BOOL    WINAPI RemoveFontResourceExW(LPCWSTR name, DWORD fl, PVOID pdv);
 BOOL    WINAPI BitBlt(HDC hdc, int x, int y, int cx, int cy, HDC hdcSrc, int x1, int y1, DWORD rop);
 int     WINAPI GetDeviceCaps(HDC hdc, int index);
 #define HORZRES 8
