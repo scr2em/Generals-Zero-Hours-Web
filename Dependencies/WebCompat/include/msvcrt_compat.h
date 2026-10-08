@@ -137,8 +137,6 @@ int _mkdir(const char *path);
 #define _logb logb
 #define _chgsign(x) (-(x))
 #define _fpclass(x) 0
-unsigned int _rotl(unsigned int value, int shift);
-unsigned int _rotr(unsigned int value, int shift);
 unsigned int _control87(unsigned int newValue, unsigned int mask);
 unsigned int _controlfp(unsigned int newValue, unsigned int mask);
 unsigned int _clearfp(void);
@@ -171,7 +169,6 @@ size_t malloc_usable_size(void *p);
 #define __max(a, b) (((a) > (b)) ? (a) : (b))
 #define __min(a, b) (((a) < (b)) ? (a) : (b))
 #define _countof(a) (sizeof(a) / sizeof((a)[0]))
-#define __debugbreak() ((void)0)
 #define _CrtDbgBreak() ((void)0)
 #define _ASSERTE(x) ((void)0)
 #define _ASSERT(x) ((void)0)

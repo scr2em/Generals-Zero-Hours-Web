@@ -29,6 +29,17 @@
 
 #include "msvcrt_compat.h"
 
+/* The game targets Windows 98 / 2000 and later. */
+#ifndef WINVER
+#define WINVER 0x0501
+#endif
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0501
+#endif
+#ifndef _WIN32_IE
+#define _WIN32_IE 0x0500
+#endif
+
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -163,7 +174,6 @@ typedef HINSTANCE           HMODULE;
 typedef HANDLE              HGLOBAL;
 typedef HANDLE              HLOCAL;
 typedef HANDLE              GLOBALHANDLE;
-typedef HANDLE              HWAVEOUT;
 typedef HKEY               *PHKEY;
 typedef int                 HFILE;
 
@@ -396,6 +406,27 @@ typedef struct tagBITMAPINFOHEADER {
 	DWORD biClrUsed;
 	DWORD biClrImportant;
 } BITMAPINFOHEADER, *LPBITMAPINFOHEADER, *PBITMAPINFOHEADER;
+
+typedef struct _RGNDATAHEADER {
+	DWORD dwSize;
+	DWORD iType;
+	DWORD nCount;
+	DWORD nRgnSize;
+	RECT  rcBound;
+} RGNDATAHEADER, *PRGNDATAHEADER;
+typedef struct _RGNDATA {
+	RGNDATAHEADER rdh;
+	char          Buffer[1];
+} RGNDATA, *PRGNDATA, *LPRGNDATA;
+
+typedef struct _POINTFLOAT { FLOAT x; FLOAT y; } POINTFLOAT, *PPOINTFLOAT;
+typedef struct _GLYPHMETRICSFLOAT {
+	FLOAT      gmfBlackBoxX;
+	FLOAT      gmfBlackBoxY;
+	POINTFLOAT gmfptGlyphOrigin;
+	FLOAT      gmfCellIncX;
+	FLOAT      gmfCellIncY;
+} GLYPHMETRICSFLOAT, *PGLYPHMETRICSFLOAT, *LPGLYPHMETRICSFLOAT;
 
 typedef struct tagBITMAPINFO {
 	BITMAPINFOHEADER bmiHeader;
@@ -1700,6 +1731,7 @@ BOOL    WINAPI IsClipboardFormatAvailable(UINT format);
 #endif
 
 /* Windows headers usually pulled in by windows.h */
+#include "tchar.h"
 #include "mmsystem.h"
 #include "winerror.h"
 #include "objbase.h"

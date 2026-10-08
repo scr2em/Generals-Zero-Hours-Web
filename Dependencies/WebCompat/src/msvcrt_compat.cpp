@@ -174,18 +174,6 @@ int _mkdir(const char *path)
 	return mkdir(path, 0777);
 }
 
-unsigned int _rotl(unsigned int value, int shift)
-{
-	shift &= 31;
-	return shift ? (value << shift) | (value >> (32 - shift)) : value;
-}
-
-unsigned int _rotr(unsigned int value, int shift)
-{
-	shift &= 31;
-	return shift ? (value >> shift) | (value << (32 - shift)) : value;
-}
-
 // WebAssembly has a fixed floating point environment: round to nearest,
 // no exceptions, and float operations always round to single precision
 // (what the game asks for with _PC_24). Report that and ignore changes.

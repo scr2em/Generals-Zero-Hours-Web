@@ -42,6 +42,19 @@ MMRESULT WINAPI timeGetDevCaps(LPTIMECAPS ptc, UINT cbtc);
 MMRESULT WINAPI timeSetEvent(UINT uDelay, UINT uResolution, LPTIMECALLBACK fptc, DWORD_PTR dwUser, UINT fuEvent);
 MMRESULT WINAPI timeKillEvent(UINT uTimerID);
 
+DECLARE_HANDLE(HWAVEOUT);
+typedef HWAVEOUT *LPHWAVEOUT;
+typedef struct wavehdr_tag {
+	LPSTR  lpData;
+	DWORD  dwBufferLength;
+	DWORD  dwBytesRecorded;
+	DWORD_PTR dwUser;
+	DWORD  dwFlags;
+	DWORD  dwLoops;
+	struct wavehdr_tag *lpNext;
+	DWORD_PTR reserved;
+} WAVEHDR, *PWAVEHDR, *LPWAVEHDR;
+
 typedef struct tWAVEFORMATEX {
 	WORD  wFormatTag;
 	WORD  nChannels;
@@ -57,7 +70,7 @@ typedef struct waveformat_tag {
 	DWORD nSamplesPerSec;
 	DWORD nAvgBytesPerSec;
 	WORD  nBlockAlign;
-} WAVEFORMAT;
+} WAVEFORMAT, *PWAVEFORMAT, *LPWAVEFORMAT;
 typedef struct pcmwaveformat_tag { WAVEFORMAT wf; WORD wBitsPerSample; } PCMWAVEFORMAT;
 #define WAVE_FORMAT_PCM 1
 #define WAVE_FORMAT_ADPCM 2

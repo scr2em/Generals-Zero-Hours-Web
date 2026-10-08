@@ -97,3 +97,5 @@ void    WINAPI OleUninitialize(void);
 #ifdef __cplusplus
 }
 #endif
+
+#include "objidl.h"

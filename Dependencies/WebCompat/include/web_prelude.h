@@ -18,8 +18,10 @@
 ** WebAssembly port: force-included ahead of every translation unit
 ** (see Dependencies/WebCompat/CMakeLists.txt).
 **
-** Makes the MSVC C runtime extensions available everywhere, as they were on
-** Windows. Win32 itself is only visible to files that include windows.h.
+** Makes the MSVC C runtime extensions and Win32 available everywhere, as
+** they were on Windows, where nearly every translation unit sees windows.h
+** through its precompiled header. The game guards its own windows.h
+** includes with _WIN32, which the web build deliberately leaves undefined.
 */
 #pragma once
 
@@ -27,4 +29,4 @@
 #define ZH_WEB 1
 #endif
 
-#include "msvcrt_compat.h"
+#include "windows.h"

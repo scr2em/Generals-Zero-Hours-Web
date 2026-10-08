@@ -87,6 +87,8 @@ static inline uint32_t _lrotl(uint32_t value, int shift)
 #ifdef _WIN32
 #include <intrin.h>
 #pragma intrinsic(__rdtsc)
+#elif defined(__EMSCRIPTEN__)
+#include <time.h>
 #endif // _WIN32
 #endif // _rdtsc
 #ifndef _rdtsc
@@ -94,6 +96,11 @@ static inline uint64_t _rdtsc()
 {
 #ifdef _WIN32
     return __rdtsc();
+#elif defined(__EMSCRIPTEN__)
+    // WebAssembly has no cycle counter, use nanoseconds of the monotonic clock instead.
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<uint64_t>(ts.tv_sec) * 1000000000ull + static_cast<uint64_t>(ts.tv_nsec);
 #elif defined(__has_builtin) && __has_builtin(__builtin_readcyclecounter)
     return __builtin_readcyclecounter();
 #elif defined(__has_builtin) && __has_builtin(__builtin_ia32_rdtsc)
@@ -107,6 +114,8 @@ static inline uint64_t _rdtsc()
 #ifdef _WIN32
 #include <intrin.h>
 #pragma intrinsic(_ReturnAddress)
+#elif defined(__EMSCRIPTEN__)
+// clang provides _ReturnAddress with -fms-extensions.
 #elif defined(__has_builtin)
     #if __has_builtin(__builtin_return_address)
     static inline uintptr_t _ReturnAddress()
