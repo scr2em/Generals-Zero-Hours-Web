@@ -1064,6 +1064,7 @@ ThingTemplate::ThingTemplate() :
 
 	m_structureRubbleHeight = 0;
 	m_instanceScaleFuzziness = 0;
+	m_assetScale = 1.0f;	// was left uninitialized: objects without a Scale line got a garbage (0 on wasm) scale and vanished
 	m_threatValue = 0;
 	m_maxSimultaneousOfType = 0;	// unlimited
   m_maxSimultaneousLinkKey = NAMEKEY_INVALID; // Not linked
