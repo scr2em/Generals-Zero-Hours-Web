@@ -271,9 +271,63 @@ def flag():
     return b.model()
 
 
+# --------------------------------------------------------------------------------------------------
+# models the engine loads by fixed name (InGameUI, waypoint drawing, the water code)
+# --------------------------------------------------------------------------------------------------
+
+def locater01():
+    """The anchor that marks where a building will stand while its facing is being chosen."""
+    b = Builder("Locater01")
+    b.prism((0, 0, 0.6), 12, 1.2, WHITE, sides=16)
+    b.prism((0, 0, 1.4), 9, 0.8, AMBER, sides=16)
+    b.prism((0, 0, 6), 1.0, 12, AMBER, sides=4)
+    return b.model()
+
+
+def locater02():
+    """The arrow that shows that facing."""
+    b = Builder("Locater02")
+    b.box((10, 0, 0.6), (20, 3, 1.2), WHITE)
+    b.wedge((24, 0, 0.6), (10, 12, 1.2), AMBER, rotate_z=-1.5708)
+    return b.model()
+
+
+def scmnode():
+    """A waypoint node, drawn while a path is shown."""
+    b = Builder("SCMNode")
+    b.sphere((0, 0, 3), 3, AMBER)
+    b.prism((0, 0, 0.5), 3.5, 1, WHITE, sides=8)
+    return b.model()
+
+
+def movehint():
+    """The marker that flashes where a move order was given."""
+    b = Builder("SPMoveHint")
+    b.prism((0, 0, 0.5), 8, 1.0, LEAF, sides=12)
+    b.prism((0, 0, 1.2), 5.5, 0.8, LEAF_DARK, sides=12)
+    b.prism((0, 0, 3), 1.2, 6, LEAF, sides=4, radius_top=0.2)
+    return b.model()
+
+
+def skybox():
+    """Five inward facing faces textured with the sky picture (the water code draws it when a map asks for it)."""
+    m = Mesh("SKYBOX", texture="swsky.tga", shader=Shader.opaque(),
+             material=VertexMaterial(name="iw_sky", diffuse=(255, 255, 255), ambient=(255, 255, 255)))
+    r, z0, z1 = 100.0, -20.0, 120.0
+    lo, hi = -r, r
+    c = [(lo, lo, z0), (hi, lo, z0), (hi, hi, z0), (lo, hi, z0), (lo, lo, z1), (hi, lo, z1), (hi, hi, z1), (lo, hi, z1)]
+    uv = ((0, 1), (1, 1), (1, 0), (0, 0))
+    for a, b_, c_, d in ((0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)):
+        m.add_quad(c[d], c[c_], c[b_], c[a], uv)          # reversed winding: faces the inside
+    m.add_quad(c[7], c[6], c[5], c[4], uv)
+    model = Model("new_skybox")
+    model.add_mesh(m)
+    return model
+
+
 def models():
     return [hq(), power(), barracks(), factory(), worker(), rifleman(), rocketeer(), scout(), tank(), tree(), pine(),
-            rock(), flag()]
+            rock(), flag(), locater01(), locater02(), scmnode(), movehint(), skybox()]
 
 
 # --------------------------------------------------------------------------------------------------

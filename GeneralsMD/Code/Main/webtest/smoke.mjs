@@ -10,9 +10,9 @@
 //   --until <regex>       stop waiting as soon as a log line matches (e.g. 'frame 300')
 //   --arg <game arg>      pass a command line argument to the game (repeatable), e.g. --arg -noshellmap
 //   --input               after the game runs, send mouse and key input and report the input log
+//   --quit                after the game runs, ask it to quit (Module._WebPlatform_RequestClose) and report how it ended
 //   --reload-after <s>    reload the page after this long and start the game again (OPFS persistence)
 //   --stack               at the end, print the call stacks of the engine's worker threads (diagnoses hangs)
-//   --port <n>            server port (default 8931)
 //   --headful-gl          use the default GL instead of SwiftShader
 //
 // The data set is imported through the launcher exactly like a user would (picker=input mode).
@@ -43,19 +43,25 @@ const opt = { page: "z_generals.html", shot: 'smoke.png', wait: 60, port: 8931, 
 			case '--until': opt.until = new RegExp(a[++i]); break;
 			case '--arg': opt.args.push(a[++i]); break;
 			case '--input': opt.input = true; break;
+			case '--quit': opt.quit = true; break;
 			case '--reload-after': opt.reloadAfter = Number(a[++i]); break;
 			case '--stack': opt.stack = true; break;
-			case '--port': opt.port = Number(a[++i]); break;
 			default: console.error('unknown option ' + a[i]); process.exit(2);
 		}
 	}
 	if (!opt.site || !opt.data) { console.error('--site and --data are required'); process.exit(2); }
 }
 
-const server = spawn('python3', [path.join(opt.site, 'serve.py'), '--port', String(opt.port), '--dir', opt.site],
-	{ env: { ...process.env, SERVE_QUIET: '1' }, stdio: 'inherit' });
+// An own server on a free port (other test runs and agents may use any fixed port).
+const server = spawn('python3', [path.join(opt.site, 'serve.py'), '--port', '0', '--dir', opt.site],
+	{ env: { ...process.env, SERVE_QUIET: '1', PYTHONUNBUFFERED: '1' }, stdio: ['ignore', 'pipe', 'inherit'] });
 process.on('exit', () => server.kill());
-await new Promise((r) => setTimeout(r, 800));
+process.on('uncaughtException', (e) => { console.error(e); server.kill(); process.exit(3); });
+opt.port = await new Promise((resolve, reject) => {
+	let text = '';
+	server.stdout.on('data', (d) => { text += d; const m = /127\.0\.0\.1:(\d+)/.exec(text); if (m) resolve(Number(m[1])); });
+	server.on('exit', () => reject(new Error('serve.py did not start')));
+});
 
 const exe = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium/chrome'].find((p) => fs.existsSync(p));
 const browser = await playwright.chromium.launch({
@@ -116,6 +122,22 @@ if (opt.input && how !== 'error-panel') {
 	const inputLines = logs.filter((l) => /input: /.test(l));
 	console.log(`input reached the engine: ${inputLines.length} events` + (opt.args.includes('-webinputlog') ? '' : ' (start with --arg -webinputlog to count them)'));
 	inputLines.slice(0, 12).forEach((l) => console.log('   ' + l.trim()));
+}
+
+if (opt.quit) {
+	const f0 = await page.evaluate(() => window.__zhFrames || 0);
+	await page.evaluate(() => Module._WebPlatform_RequestClose());
+	const t = Date.now();
+	let ended = false;
+	while (Date.now() - t < 15000 && !ended) {
+		ended = logs.some((l) => /Exited with code/.test(l)) || await page.evaluate(() => /ended/.test(document.getElementById('loading').textContent)).catch(() => false);
+		if (!ended) await page.waitForTimeout(200);
+	}
+	const f1 = await page.evaluate(() => window.__zhFrames || 0);
+	await page.waitForTimeout(1500);
+	const f2 = await page.evaluate(() => window.__zhFrames || 0);
+	console.log(`quit: ${ended ? 'the game ended' : 'THE GAME DID NOT END'} after ${((Date.now() - t) / 1000).toFixed(1)} s; frames ${f0} -> ${f1} -> ${f2}`);
+	console.log('loading text:', await page.textContent('#loading'));
 }
 
 if (opt.reloadAfter) {

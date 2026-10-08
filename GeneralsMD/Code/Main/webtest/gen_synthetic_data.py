@@ -131,6 +131,7 @@ GameData
   UseFPSLimit = Yes
   PlayIntro = No
   ShellMapOn = No
+  MaxTerrainTracks = 100
   FramesPerSecondLimit = 30
 End
 """

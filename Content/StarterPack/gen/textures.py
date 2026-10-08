@@ -245,6 +245,45 @@ def wave_texture(size):
     return c
 
 
+def moon_texture():
+    c = Canvas(64, 64)
+    for y in range(64):
+        for x in range(64):
+            d = math.hypot(x - 31.5, y - 31.5) / 30.0
+            a = clamp((1.0 - d) * 6.0, 0, 1)
+            n = fbm(x / 8.0, y / 8.0, 2, 3)
+            v = int(clamp(205 + n * 40, 0, 255))
+            c.set(x, y, (v, v, int(v * 0.95), int(255 * a)))
+    return c
+
+
+def edge_texture():
+    c = Canvas(64, 64)
+    for y in range(64):
+        for x in range(64):
+            a = clamp(x / 63.0, 0, 1)
+            c.set(x, y, (255, 255, 255, int(255 * a)))
+    return c
+
+
+def bubbles_texture():
+    c = Canvas(64, 64)
+    rng = Rng(61)
+    for _ in range(40):
+        cx, cy, r = rng.randint(0, 63), rng.randint(0, 63), rng.randint(1, 3)
+        c.circle(cx, cy, r, (255, 255, 255, 150), filled=True)
+    return c
+
+
+def laser_texture():
+    c = Canvas(16, 64)
+    for y in range(64):
+        for x in range(16):
+            d = abs(x - 7.5) / 7.5
+            c.set(x, y, (180, 220, 255, int(255 * clamp(1 - d, 0, 1) ** 1.5)))
+    return c
+
+
 def generate(emit):
     for name, sheet in (("swgrass", grass_sheet()), ("swdirt", dirt_sheet()), ("swrock", rock_sheet()),
                         ("swsand", sand_sheet()), ("swcliff", cliff_sheet())):
@@ -254,8 +293,10 @@ def generate(emit):
         "sp_shadow": shadow_texture(), "shadow": shadow_texture(), "TSNoiseUrb": noise_texture(4),
         "TSCloudMed": cloud_texture(), "cloudmap": cloud_texture(), "EXScorch01": scorch_texture(),
         "TBBib": bib_texture(), "alphaclip": alpha_clip(), "missing": missing_texture(),
+        "TSMoonLarg": moon_texture(), "Noise0000": noise_texture(9), "TWAlphaEdge": edge_texture(),
+        "WaterSurfaceBubbles": bubbles_texture(), "EXLaser": laser_texture(), "TBRedBib": bib_texture(),
         "wave1": wave_texture(64), "wave2": wave_texture(64), "wave256": wave_texture(128),
     }
     for name, canvas in textures.items():
-        has_alpha = name not in ("swsky", "swwater", "TSNoiseUrb", "TBBib", "TSCloudMed", "cloudmap", "alphaclip", "missing")
+        has_alpha = name not in ("Noise0000", "TBRedBib", "swsky", "swwater", "TSNoiseUrb", "TBBib", "TSCloudMed", "cloudmap", "alphaclip", "missing")
         emit("Art/Textures/%s.tga" % name, canvas.to_tga(alpha=has_alpha, rle=True))
