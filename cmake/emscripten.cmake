@@ -29,6 +29,11 @@ string(APPEND CMAKE_C_FLAGS " -fwasm-exceptions")
 string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions")
 string(APPEND CMAKE_EXE_LINKER_FLAGS " -fwasm-exceptions")
 
+# Win32 treats any pointer below 64 KB as an integer resource id
+# (IS_INTRESOURCE). Wasm places static data from address 1024, so string
+# literals would look like resource ids. Start static data at 1 MB.
+string(APPEND CMAKE_EXE_LINKER_FLAGS " -sGLOBAL_BASE=1048576")
+
 add_subdirectory(Dependencies/WebCompat)
 
 # Flags for every game target.
@@ -56,7 +61,9 @@ target_compile_options(deps_config INTERFACE
     -Wno-inconsistent-missing-override
     -Wno-suggest-override
     -Wno-switch
+    -Wno-implicit-exception-spec-mismatch
 )
+
 target_link_libraries(deps_config INTERFACE webcompat_headers)
 
 # DirectX 8 headers. The interfaces are implemented on WebGL2 by the

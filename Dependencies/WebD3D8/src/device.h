@@ -270,8 +270,12 @@ public:
                           const RECT &rc, uint8_t *rgbaOut);
     bool ReadRenderbuffer(GLuint rb, uint32_t w, uint32_t h, const RECT &rc, uint8_t *rgbaOut);
     GLuint ScratchFramebuffer() const { return m_scratchFbo; }
-    void BindArrayBufferForUpload(GLuint buf);
-    void MarkBufferBindingDirty() { m_boundArrayBuffer = 0xFFFFFFFF; }
+    /// Binds a buffer to ARRAY_BUFFER / ELEMENT_ARRAY_BUFFER through the state cache.
+    void BindBuffer(GLenum target, GLuint buf)
+    {
+        GLuint &cached = target == GL_ARRAY_BUFFER ? m_boundArrayBuffer : m_boundElementBuffer;
+        if (cached != buf) { glBindBuffer(target, buf); cached = buf; }
+    }
     Surface *BackBufferSurface() const { return m_backBuffer; }
     bool IsDecodingDXT() const { return !m_glcaps.s3tc; }
     GLuint BackBufferTexture() const { return m_bbColor; }

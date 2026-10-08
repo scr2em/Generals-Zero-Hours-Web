@@ -70,17 +70,18 @@ GLuint BufferStorage::Flush()
 {
     if (!m_allocated)
     {
-        glBindBuffer(GL_COPY_WRITE_BUFFER, m_buf);
-        glBufferData(GL_COPY_WRITE_BUFFER, (GLsizeiptr)m_data.size(), m_data.data(), GL_DYNAMIC_DRAW);
-        m_dev->MarkBufferBindingDirty();
+        // WebGL fixes a buffer's role on first use: index buffers may only ever
+        // be bound to ELEMENT_ARRAY_BUFFER, vertex buffers to ARRAY_BUFFER, so
+        // uploads go through the buffer's own target.
+        m_dev->BindBuffer(m_target, m_buf);
+        glBufferData(m_target, (GLsizeiptr)m_data.size(), m_data.data(), GL_DYNAMIC_DRAW);
         m_allocated = true;
         m_dirtyBegin = m_dirtyEnd = 0;
     }
     else if (m_dirtyBegin != m_dirtyEnd)
     {
-        glBindBuffer(GL_COPY_WRITE_BUFFER, m_buf);
-        glBufferSubData(GL_COPY_WRITE_BUFFER, m_dirtyBegin, m_dirtyEnd - m_dirtyBegin, m_data.data() + m_dirtyBegin);
-        m_dev->MarkBufferBindingDirty();
+        m_dev->BindBuffer(m_target, m_buf);
+        glBufferSubData(m_target, m_dirtyBegin, m_dirtyEnd - m_dirtyBegin, m_data.data() + m_dirtyBegin);
         m_dirtyBegin = m_dirtyEnd = 0;
     }
     return m_buf;

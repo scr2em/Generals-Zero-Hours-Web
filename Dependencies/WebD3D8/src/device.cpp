@@ -842,11 +842,6 @@ void Device::ForgetBuffer(GLuint buf)
     m_attribSig = 0;
 }
 
-void Device::BindArrayBufferForUpload(GLuint buf)
-{
-    glBindBuffer(GL_COPY_WRITE_BUFFER, buf);
-}
-
 bool Device::ReadTextureLevel(GLuint tex, GLenum target, GLenum faceTarget, int level, uint32_t, uint32_t,
                               const RECT &rc, uint8_t *rgbaOut)
 {

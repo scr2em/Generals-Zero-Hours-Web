@@ -640,11 +640,7 @@ bool Device::BindAttributes(UINT baseVertex, GLuint userBuffer, size_t userOffse
     {
         const VertexElement &e = layout->elems[i];
         const UINT stride = strides[e.stream];
-        if (m_boundArrayBuffer != bufs[e.stream])
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, bufs[e.stream]);
-            m_boundArrayBuffer = bufs[e.stream];
-        }
+        BindBuffer(GL_ARRAY_BUFFER, bufs[e.stream]);
         const size_t off = (e.stream == 0 && userBuffer ? userOffset : 0) + (size_t)e.offset + (size_t)baseVertex * stride;
         GLenum type = e.glType == 0 ? GL_FLOAT : (e.glType == 1 ? GL_UNSIGNED_BYTE : GL_SHORT);
         glVertexAttribPointer(e.reg, e.size, type, e.normalized ? GL_TRUE : GL_FALSE, stride, reinterpret_cast<const void *>(off));
@@ -715,9 +711,9 @@ uint32_t Device::UploadStream(const void *data, size_t size, bool index)
     GLuint &buf = index ? m_streamIB : m_streamVB;
     size_t &cap = index ? m_streamIBSize : m_streamVBSize;
     size_t &pos = index ? m_streamIBPos : m_streamVBPos;
-    GLenum target = GL_COPY_WRITE_BUFFER;
+    const GLenum target = index ? GL_ELEMENT_ARRAY_BUFFER : GL_ARRAY_BUFFER;
     if (!buf) glGenBuffers(1, &buf);
-    glBindBuffer(target, buf);
+    BindBuffer(target, buf);
     size = (size + 3) & ~size_t(3);
     if (size > cap || pos + size > cap)
     {
@@ -748,7 +744,6 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
         size_t bytes = (size_t)userVertCount * userStride;
         uoff = UploadStream(userVerts, bytes, false);
         ub = m_streamVB;
-        m_boundArrayBuffer = 0xFFFFFFFF;
     }
     else
         FlushBuffers();
@@ -783,11 +778,7 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
             indexOffset = (size_t)start * (wide ? 4 : 2);
             wireSrc = ib->m_storage.Data() + indexOffset;
         }
-        if (m_boundElementBuffer != ibuf)
-        {
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibuf);
-            m_boundElementBuffer = ibuf;
-        }
+        BindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibuf);
         GL_STAGE_CHECK("element buffer bind");
     }
 
@@ -817,8 +808,7 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
         else
             out = tri;
         size_t off = UploadStream(out.data(), out.size() * 4, true);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_streamIB);
-        m_boundElementBuffer = m_streamIB;
+        BindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_streamIB);
         glDrawElements(fill == D3DFILL_WIREFRAME ? GL_LINES : GL_POINTS, (GLsizei)out.size(), GL_UNSIGNED_INT, reinterpret_cast<const void *>(off));
         return true;
     }
