@@ -25,13 +25,14 @@
 
 extern "C" {
 
-char *_strupr(char *s)
+// Weak: the GameSpy SDK defines the same functions for POSIX platforms.
+__attribute__((weak)) char *_strupr(char *s)
 {
 	for (char *p = s; *p; ++p) *p = (char)toupper((unsigned char)*p);
 	return s;
 }
 
-char *_strlwr(char *s)
+__attribute__((weak)) char *_strlwr(char *s)
 {
 	for (char *p = s; *p; ++p) *p = (char)tolower((unsigned char)*p);
 	return s;

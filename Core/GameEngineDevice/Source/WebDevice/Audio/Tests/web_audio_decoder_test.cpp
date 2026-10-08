@@ -279,7 +279,8 @@ static void testFile(const std::string &dir, const std::string &refDir, const ch
 				// ffmpeg expands the nibbles as ((2 * delta + 1) * step) >> 3, the reference algorithm (which the
 				// encoder of gen_test_audio.py and Miles use) adds the shifted steps up; the results differ in
 				// the last bits of the steps.
-				CHECK(rn == pcm.size() && snr > 50.0, "%s: ADPCM differs from ffmpeg (SNR %f)", name, snr);
+				// (ffmpeg ignores the fact chunk and returns the padding of the last block, too)
+				CHECK(rn >= pcm.size() && rn - pcm.size() <= 1017 * channels && snr > 50.0, "%s: ADPCM differs from ffmpeg (SNR %f)", name, snr);
 			}
 			else
 			{

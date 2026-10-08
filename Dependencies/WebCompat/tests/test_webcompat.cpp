@@ -19,6 +19,9 @@
 ** run by run_tests.sh, not part of the game build.
 */
 #include <windows.h>
+#include <mbstring.h>
+#include <oaidl.h>
+#include <vfw.h>
 #include <io.h>
 #include <process.h>
 #include <tchar.h>
@@ -514,8 +517,65 @@ static void TestMisc()
 	SOCKADDR_IN from;
 	int fromLength = sizeof(from);
 	CHECK(recvfrom(s, datagram, sizeof(datagram), 0, (SOCKADDR *)&from, &fromLength) == SOCKET_ERROR);
+	// A literal null length matches neither overload of the int/socklen_t pair.
+	CHECK(recvfrom(s, datagram, (int)sizeof(datagram), 0, nullptr, nullptr) == SOCKET_ERROR);
 	closesocket(s);
 	WSACleanup();
+}
+
+static void TestOleAutomationAndExtras()
+{
+	// BSTR: length prefix, zero terminator, embedded zeros kept
+	BSTR bstr = SysAllocString(L"Hello");
+	CHECK(bstr != nullptr && SysStringLen(bstr) == 5 && wcscmp(bstr, L"Hello") == 0);
+	SysFreeString(bstr);
+	OLECHAR raw[3] = { L'a', 0, L'b' };
+	bstr = SysAllocStringLen(raw, 3);
+	CHECK(bstr != nullptr && SysStringLen(bstr) == 3 && bstr[2] == L'b' && bstr[3] == 0);
+	SysFreeString(bstr);
+	CHECK(SysAllocString(nullptr) == nullptr && SysStringLen(nullptr) == 0);
+
+	// There are no type libraries
+	ITypeLib *typeLib = (ITypeLib *)1;
+	CHECK(LoadTypeLib(L"x.tlb", &typeLib) == TYPE_E_CANTLOADLIBRARY && typeLib == nullptr);
+
+	// Wide module name
+	WCHAR wide[MAX_PATH];
+	CHECK(GetModuleFileNameW(nullptr, wide, MAX_PATH) > 0 && wcscmp(wide, L"/game/generalszh.exe") == 0);
+	WCHAR small[4];
+	CHECK(GetModuleFileNameW(nullptr, small, 4) == 4 && small[3] == 0);
+
+	// One monitor, the screen
+	webcompat_set_screen_size(1024, 768);
+	MONITORINFO info = { sizeof(MONITORINFO) };
+	CHECK(GetMonitorInfo(MonitorFromWindow(nullptr, MONITOR_DEFAULTTOPRIMARY), &info));
+	CHECK(info.rcMonitor.right == 1024 && info.rcWork.bottom == 768 && (info.dwFlags & MONITORINFOF_PRIMARY));
+
+	// Processes and pipes cannot be created
+	HANDLE read = (HANDLE)1, write = (HANDLE)1;
+	CHECK(!CreatePipe(&read, &write, nullptr, 0) && read == nullptr);
+	STARTUPINFOW startup = { sizeof(STARTUPINFOW) };
+	PROCESS_INFORMATION process = {};
+	WCHAR command[] = L"worker.exe";
+	CHECK(!CreateProcessW(nullptr, command, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process));
+
+	// Pointer-sized interlocked operations
+	void *volatile slot = nullptr;
+	int a, b;
+	CHECK(InterlockedCompareExchangePointer((PVOID volatile *)&slot, &a, nullptr) == nullptr && slot == &a);
+	CHECK(InterlockedCompareExchangePointer((PVOID volatile *)&slot, &b, nullptr) == &a && slot == &a);
+	CHECK(InterlockedExchangePointer((PVOID volatile *)&slot, &b) == &a && slot == &b);
+
+	// No input context for the IME, and AVI files cannot be written
+	CHECK(ImmGetContext(nullptr) == nullptr);
+	PAVIFILE avi = (PAVIFILE)1;
+	AVIFileInit();
+	CHECK(AVIFileOpen(&avi, "x.avi", OF_WRITE | OF_CREATE, nullptr) == AVIERR_FILEOPEN && avi == nullptr);
+	AVIFileExit();
+
+	// Multibyte characters are bytes
+	CHECK(_mbsnccnt((const unsigned char *)"abcdef", 4) == 4);
+	CHECK(_mbsnccnt((const unsigned char *)"ab", 4) == 2);
 }
 
 int main()
@@ -527,6 +587,7 @@ int main()
 	TestRegistry();
 	TestThreads();
 	TestMisc();
+	TestOleAutomationAndExtras();
 	printf("%d checks, %d failures\n", s_checks, s_failures);
 	return s_failures ? 1 : 0;
 }

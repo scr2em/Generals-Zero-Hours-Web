@@ -29,6 +29,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <locale.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -141,6 +142,18 @@ size_t wcsxfrm(wchar_t *dest, const wchar_t *src, size_t n)
 		dest[copy] = 0;
 	}
 	return length;
+}
+
+// libc++'s std::collate<wchar_t> calls the locale variants; defining them here
+// keeps the 32 bit wchar_t versions (and their wcscoll/wcsxfrm) out of the link.
+int wcscoll_l(const wchar_t *a, const wchar_t *b, locale_t)
+{
+	return wcscoll(a, b);
+}
+
+size_t wcsxfrm_l(wchar_t *dest, const wchar_t *src, size_t n, locale_t)
+{
+	return wcsxfrm(dest, src, n);
 }
 
 wchar_t *wcschr(const wchar_t *s, wchar_t c)
