@@ -712,6 +712,9 @@ bool Device::PrepareDraw(GLenum mode)
         Log("  viewport %u,%u %ux%u z %.2f-%.2f", (unsigned)m_s.viewport.X, (unsigned)m_s.viewport.Y, (unsigned)m_s.viewport.Width, (unsigned)m_s.viewport.Height, m_s.viewport.MinZ, m_s.viewport.MaxZ);
         Log("  world %g %g %g %g / %g %g %g %g / %g %g %g %g / %g %g %g %g", w.m[0], w.m[1], w.m[2], w.m[3], w.m[4], w.m[5], w.m[6], w.m[7], w.m[8], w.m[9], w.m[10], w.m[11], w.m[12], w.m[13], w.m[14], w.m[15]);
         Log("  view  %g %g %g %g / %g %g %g %g / %g %g %g %g / %g %g %g %g", v.m[0], v.m[1], v.m[2], v.m[3], v.m[4], v.m[5], v.m[6], v.m[7], v.m[8], v.m[9], v.m[10], v.m[11], v.m[12], v.m[13], v.m[14], v.m[15]);
+        Log("  lighting %u, alphatest %u func %u ref %u, colorwrite 0x%x, fog %u, stage0 colorop %u arg1 %u arg2 %u alphaop %u aarg1 %u aarg2 %u; stage1 colorop %u",
+            m_s.rs[D3DRS_LIGHTING], m_s.rs[D3DRS_ALPHATESTENABLE], m_s.rs[D3DRS_ALPHAFUNC], m_s.rs[D3DRS_ALPHAREF], m_s.rs[D3DRS_COLORWRITEENABLE], m_s.rs[D3DRS_FOGENABLE],
+            m_s.tss[0][D3DTSS_COLOROP], m_s.tss[0][D3DTSS_COLORARG1], m_s.tss[0][D3DTSS_COLORARG2], m_s.tss[0][D3DTSS_ALPHAOP], m_s.tss[0][D3DTSS_ALPHAARG1], m_s.tss[0][D3DTSS_ALPHAARG2], m_s.tss[1][D3DTSS_COLOROP]);
         Log("  proj  %g %g %g %g / %g %g %g %g / %g %g %g %g / %g %g %g %g", p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5], p.m[6], p.m[7], p.m[8], p.m[9], p.m[10], p.m[11], p.m[12], p.m[13], p.m[14], p.m[15]);
     }
     GL_STAGE_CHECK("entry");

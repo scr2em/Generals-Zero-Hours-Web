@@ -474,6 +474,8 @@ int main( int argc, char **argv )
 	{
 		if( strcmp( argv[i], "-webframelog" ) == 0 )
 			s_logFrames = true;
+		if( strcmp( argv[i], "-webinputlog" ) == 0 )
+			WebPlatform_SetInputLog( 1 );
 		if( strncmp( argv[i], "-webd3d8debug", 13 ) == 0 )
 			WebD3D8_SetDebug( argv[i][13] == '=' ? atoi( argv[i] + 14 ) | 1 : 1 );	// see WebD3D8.h
 	}

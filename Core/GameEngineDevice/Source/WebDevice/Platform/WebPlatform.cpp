@@ -826,6 +826,13 @@ extern "C" int WebPlatform_GetMessage(WebPlatformMsg *msg)
 	}
 }
 
+// Asks the game to quit like the window's close button does (WEBWM_CLOSE). For the page: any thread
+// may call it, so the launcher can use Module._WebPlatform_RequestClose() from the main thread.
+extern "C" EMSCRIPTEN_KEEPALIVE void WebPlatform_RequestClose(void)
+{
+	pushMessage(WEBWM_CLOSE, 0, 0);
+}
+
 extern "C" int WebPlatform_PostMessage(uint32_t message, uintptr_t wParam, intptr_t lParam)
 {
 	pushMessage(message, wParam, lParam);
@@ -843,11 +850,20 @@ extern "C" void WebPlatform_PostQuitMessage(int exitCode)
 	wakeEngineThread();
 }
 
+static std::atomic<int> s_inputLog{0};
+
+extern "C" void WebPlatform_SetInputLog(int enable)
+{
+	s_inputLog.store(enable);
+}
+
 extern "C" intptr_t WebPlatform_DispatchMessage(const WebPlatformMsg *msg)
 {
 	WebWindowProc proc = state().windowProc.load();
 	if (proc == nullptr || msg == nullptr)
 		return 0;
+	if (s_inputLog.load(std::memory_order_relaxed))
+		printf("input: message 0x%x wParam 0x%x lParam 0x%x at %d,%d\n", (unsigned)msg->message, (unsigned)msg->wParam, (unsigned)msg->lParam, msg->ptX, msg->ptY);
 	return proc(msg->hwnd ? msg->hwnd : s_windowHandle, msg->message, msg->wParam, msg->lParam);
 }
 
@@ -867,6 +883,8 @@ extern "C" int WebPlatform_PopKeyEvent(WebKeyEvent *event)
 		return 0;
 	if (event)
 		*event = s.keys[s.keyHead & (KEY_QUEUE_SIZE - 1)];
+	if (s_inputLog.load(std::memory_order_relaxed))
+		printf("input: key dik 0x%x %s\n", (unsigned)s.keys[s.keyHead & (KEY_QUEUE_SIZE - 1)].dik, s.keys[s.keyHead & (KEY_QUEUE_SIZE - 1)].down ? "down" : "up");
 	++s.keyHead;
 	return 1;
 }

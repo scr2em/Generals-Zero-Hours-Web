@@ -128,6 +128,14 @@ intptr_t WebPlatform_SendMessage(uint32_t message, uintptr_t wParam, intptr_t lP
 // Pops the oldest keyboard transition. Returns 0 when there is none.
 int WebPlatform_PopKeyEvent(WebKeyEvent *event);
 
+/** Asks the game to quit, as the close button of a window would. Callable from any thread; the page
+	calls it as Module._WebPlatform_RequestClose(). The game ends through Module.onExit(0). */
+void WebPlatform_RequestClose(void);
+
+/** Logs (printf) every input message and key event the engine takes from the queues, for tests
+	and for finding out whether input reaches the game. Off by default. */
+void WebPlatform_SetInputLog(int enable);
+
 // Forget queued transitions and release all keys (focus loss).
 void WebPlatform_ResetKeys(void);
 

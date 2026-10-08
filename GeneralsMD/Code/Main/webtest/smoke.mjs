@@ -113,6 +113,9 @@ if (opt.input && how !== 'error-panel') {
 	await page.mouse.down(); await page.mouse.up();
 	await page.keyboard.press('KeyA');
 	await page.waitForTimeout(1500);
+	const inputLines = logs.filter((l) => /input: /.test(l));
+	console.log(`input reached the engine: ${inputLines.length} events` + (opt.args.includes('-webinputlog') ? '' : ' (start with --arg -webinputlog to count them)'));
+	inputLines.slice(0, 12).forEach((l) => console.log('   ' + l.trim()));
 }
 
 if (opt.reloadAfter) {

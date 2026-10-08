@@ -155,7 +155,8 @@ End
 """
 
 
-# A window layout in the engine's .wnd text format: a screen filling window and two coloured
+# A window layout in the engine's .wnd text format (without the IMAGE status a window is drawn as
+# a coloured rectangle, with it only its image is drawn): a screen filling window and two coloured
 # rectangles, so that the 2D renderer (Display -> W3D -> Direct3D 8 -> WebGL2) has something to draw.
 def draw_data(r, g, b, a):
     one = 'IMAGE: NoImage, COLOR: %d %d %d %d, BORDERCOLOR: 255 255 255 255,' % (r, g, b, a)
@@ -170,7 +171,7 @@ WINDOW
                BOTTOMRIGHT: %d %d,
                CREATIONRESOLUTION: 800 600;
   NAME = "%s";
-  STATUS = ENABLED+IMAGE;
+  STATUS = ENABLED;
   STYLE = USER;
   SYSTEMCALLBACK = "[None]";
   INPUTCALLBACK = "[None]";
