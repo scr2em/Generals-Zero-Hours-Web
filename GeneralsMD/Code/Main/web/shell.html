@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zero Hour for the Web</title>
+<meta name="color-scheme" content="dark light">
+<style>
+	:root {
+		--bg: #0e1116;
+		--surface: #161b22;
+		--surface-2: #1d242d;
+		--border: #2b3440;
+		--text: #e6edf3;
+		--muted: #8b98a8;
+		--accent: #d4a017;
+		--accent-text: #14100a;
+		--good: #3fb950;
+		--bad: #f85149;
+		--radius: 10px;
+	}
+	@media (prefers-color-scheme: light) {
+		:root:not([data-theme="dark"]) {
+			--bg: #f3f5f7;
+			--surface: #ffffff;
+			--surface-2: #eef1f4;
+			--border: #d3dae2;
+			--text: #1b232c;
+			--muted: #5b6876;
+			--accent: #b8860b;
+			--accent-text: #ffffff;
+			--good: #1a7f37;
+			--bad: #cf222e;
+		}
+	}
+	* { box-sizing: border-box; }
+	html, body { height: 100%; margin: 0; }
+	body {
+		background: var(--bg);
+		color: var(--text);
+		font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	}
+	[hidden] { display: none !important; }
+
+	/* ---- setup ---- */
+	#setup {
+		min-height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 24px 16px;
+	}
+	.card {
+		width: 100%;
+		max-width: 620px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		padding: 28px;
+	}
+	h1 { margin: 0; font-size: 22px; letter-spacing: 0.2px; }
+	.subtitle { margin: 2px 0 20px; color: var(--muted); font-size: 13px; }
+	.notice {
+		margin: 0 0 16px;
+		padding: 10px 12px;
+		border: 1px solid var(--border);
+		border-left: 3px solid var(--bad);
+		border-radius: 6px;
+		background: var(--surface-2);
+		font-size: 13px;
+	}
+	.row {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 4px 12px;
+		align-items: center;
+		padding: 12px 0;
+		border-top: 1px solid var(--border);
+	}
+	.row .name { font-weight: 600; }
+	.row .state { color: var(--muted); font-size: 13px; grid-column: 1; }
+	.row .state.ok { color: var(--good); }
+	.row .state.err { color: var(--bad); }
+	.row button { grid-column: 2; grid-row: 1 / span 2; }
+	button, select {
+		font: inherit;
+		color: var(--text);
+		background: var(--surface-2);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 8px 14px;
+		cursor: pointer;
+	}
+	button:hover:not(:disabled) { border-color: var(--muted); }
+	button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	button:disabled { opacity: 0.5; cursor: default; }
+	button.primary {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--accent-text);
+		font-weight: 700;
+		padding: 10px 28px;
+	}
+	.progress { margin: 12px 0 4px; }
+	.bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+	.bar > div { height: 100%; width: 0; background: var(--accent); transition: width 0.1s linear; }
+	.progress-text { margin-top: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		align-items: center;
+		margin-top: 18px;
+		padding-top: 18px;
+		border-top: 1px solid var(--border);
+	}
+	.actions .spacer { flex: 1; }
+	label.inline { color: var(--muted); font-size: 13px; display: inline-flex; gap: 8px; align-items: center; }
+	.fine { margin: 16px 0 0; color: var(--muted); font-size: 12px; }
+	.link { background: none; border: none; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
+
+	/* ---- stage ---- */
+	#stage {
+		position: fixed;
+		inset: 0;
+		background: #000;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+	}
+	#canvas {
+		display: block;
+		background: #000;
+		outline: none;
+		/* sized from script to keep the game's aspect ratio */
+		width: 800px;
+		height: 600px;
+	}
+	#toolbar {
+		position: fixed;
+		top: 8px;
+		right: 8px;
+		display: flex;
+		gap: 6px;
+		opacity: 0;
+		transition: opacity 0.2s;
+	}
+	#toolbar:hover, #toolbar:focus-within, body.show-toolbar #toolbar { opacity: 1; }
+	#toolbar button { background: rgba(22, 27, 34, 0.85); color: #e6edf3; padding: 6px 10px; font-size: 13px; }
+	#loading {
+		position: fixed;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #8b98a8;
+		pointer-events: none;
+	}
+
+	/* ---- errors ---- */
+	#errors {
+		position: fixed;
+		left: 12px;
+		right: 12px;
+		bottom: 12px;
+		max-height: 40vh;
+		display: flex;
+		flex-direction: column;
+		background: var(--surface);
+		border: 1px solid var(--bad);
+		border-radius: var(--radius);
+		z-index: 10;
+	}
+	#errors header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+	#errors header strong { flex: 1; color: var(--bad); }
+	#errors pre {
+		margin: 0;
+		padding: 10px 12px;
+		overflow: auto;
+		font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+</style>
+</head>
+<body>
+
+<main id="setup">
+	<div class="card">
+		<h1>Command &amp; Conquer Generals: Zero Hour</h1>
+		<p class="subtitle">WebAssembly port &mdash; bring your own game files</p>
+
+		<div id="env-notice" class="notice" hidden></div>
+
+		<div class="row" id="row-game">
+			<div class="name">Zero Hour folder</div>
+			<button type="button" id="pick-game">Select your Zero Hour folder</button>
+			<div class="state" id="state-game">Checking&hellip;</div>
+		</div>
+		<div class="row" id="row-generals">
+			<div class="name">Generals folder</div>
+			<button type="button" id="pick-generals">Select your Generals folder</button>
+			<div class="state" id="state-generals">Checking&hellip;</div>
+		</div>
+
+		<div class="progress" id="progress" hidden>
+			<div class="bar"><div id="bar"></div></div>
+			<div class="progress-text" id="progress-text"></div>
+		</div>
+
+		<div class="actions">
+			<label class="inline">Resolution
+				<select id="resolution">
+					<option value="800x600">800 &times; 600</option>
+					<option value="1024x768" selected>1024 &times; 768</option>
+					<option value="1280x720">1280 &times; 720</option>
+					<option value="1600x900">1600 &times; 900</option>
+					<option value="1920x1080">1920 &times; 1080</option>
+				</select>
+			</label>
+			<span class="spacer"></span>
+			<button type="button" id="play" class="primary" disabled>Play</button>
+		</div>
+
+		<p class="fine">
+			The game files are copied once into this browser&rsquo;s private storage and never leave your computer.
+			Zero Hour also needs the original Generals files.
+			<button type="button" class="link" id="clear">Remove imported files</button>
+		</p>
+		<input type="file" id="folder-input" webkitdirectory multiple hidden>
+	</div>
+</main>
+
+<div id="stage" hidden>
+	<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+	<div id="loading">Loading&hellip;</div>
+	<div id="toolbar">
+		<button type="button" id="fullscreen" title="Toggle fullscreen">Fullscreen</button>
+		<button type="button" id="quit" title="Leave the game">Exit</button>
+	</div>
+</div>
+
+<section id="errors" hidden>
+	<header>
+		<strong id="errors-title">Something went wrong</strong>
+		<button type="button" id="errors-copy">Copy</button>
+		<button type="button" id="errors-close">Close</button>
+	</header>
+	<pre id="errors-log"></pre>
+</section>
+
+<!-- Emscripten puts the script tag of the game here; it is started by the Play button. -->
+<template id="game-script">{{{ SCRIPT }}}</template>
+
+<script type="module">
+import * as importer from './importer.js';
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+
+// ---------------------------------------------------------------------------------------------
+// Log and error panel
+// ---------------------------------------------------------------------------------------------
+
+const logLines = [];
+function pushLog(line, isError) {
+	logLines.push(line);
+	if (logLines.length > 400) logLines.shift();
+	if (isError) {
+		showErrors();
+	}
+}
+function showErrors(title) {
+	if (title) $('errors-title').textContent = title;
+	$('errors').hidden = false;
+	$('errors-log').textContent = logLines.join('\n');
+	$('errors-log').scrollTop = $('errors-log').scrollHeight;
+}
+$('errors-close').onclick = () => { $('errors').hidden = true; };
+$('errors-copy').onclick = () => navigator.clipboard && navigator.clipboard.writeText(logLines.join('\n'));
+window.addEventListener('error', (e) => { pushLog('Error: ' + e.message, true); });
+window.addEventListener('unhandledrejection', (e) => { pushLog('Unhandled: ' + (e.reason && e.reason.stack || e.reason), true); });
+
+// ---------------------------------------------------------------------------------------------
+// Environment
+// ---------------------------------------------------------------------------------------------
+
+const env = importer.checkEnvironment();
+function describeEnvironment() {
+	const problems = [];
+	if (!env.secureContext) problems.push('This page must be served over HTTPS (or from localhost).');
+	if (!env.crossOriginIsolated) problems.push('This page is not cross-origin isolated (COOP/COEP headers missing), which the game needs for threads. Serve it with serve.py.');
+	if (!env.opfs) problems.push('This browser has no Origin Private File System.');
+	if (!env.offscreenCanvas) problems.push('This browser cannot render WebGL from a worker (OffscreenCanvas).');
+	return problems;
+}
+
+// Hosts that cannot send COOP/COEP headers get them from a service worker.
+if (!env.crossOriginIsolated && env.secureContext && 'serviceWorker' in navigator && !params.has('nosw')) {
+	navigator.serviceWorker.register('./coi-serviceworker.js').then((reg) => {
+		if (reg.active && !navigator.serviceWorker.controller) {
+			location.reload();
+		} else {
+			reg.addEventListener('updatefound', () => location.reload());
+		}
+	}).catch(() => {});
+}
+
+const problems = describeEnvironment();
+if (problems.length) {
+	$('env-notice').hidden = false;
+	$('env-notice').textContent = problems.join(' ');
+}
+
+// ---------------------------------------------------------------------------------------------
+// Game data
+// ---------------------------------------------------------------------------------------------
+
+let status = {};
+let busy = false;
+
+function setState(key, text, kind) {
+	const el = $('state-' + key);
+	el.textContent = text;
+	el.className = 'state' + (kind ? ' ' + kind : '');
+}
+
+async function refreshStatus() {
+	status = await importer.getStatus();
+	for (const key of Object.keys(importer.TARGETS)) {
+		const m = status[key];
+		if (m) {
+			setState(key, 'Ready · ' + m.files.toLocaleString() + ' files · ' + importer.formatBytes(m.bytes), 'ok');
+		} else {
+			setState(key, 'Not imported yet');
+		}
+	}
+	updateButtons();
+}
+
+function updateButtons() {
+	const ready = !!(status.game && status.generals) && problems.length === 0;
+	$('play').disabled = busy || !ready;
+	$('pick-game').disabled = busy || !env.opfs;
+	$('pick-generals').disabled = busy || !env.opfs;
+	$('clear').disabled = busy;
+}
+
+function showProgress(p) {
+	$('progress').hidden = false;
+	const pct = p.bytesTotal ? (100 * p.bytesDone / p.bytesTotal) : 100;
+	$('bar').style.width = pct.toFixed(1) + '%';
+	$('progress-text').textContent =
+		importer.formatBytes(p.bytesDone) + ' of ' + importer.formatBytes(p.bytesTotal) +
+		' · file ' + Math.min(p.done + 1, p.total).toLocaleString() + ' of ' + p.total.toLocaleString() +
+		(p.path ? ' · ' + p.path : '');
+}
+
+async function pickSource() {
+	if (!params.has('picker') && env.directoryPicker) {
+		return importer.pickDirectory();
+	}
+	// Fallback: <input webkitdirectory>
+	return new Promise((resolve, reject) => {
+		const input = $('folder-input');
+		input.value = '';
+		input.onchange = () => {
+			if (input.files && input.files.length) resolve(importer.sourceFromFileList(input.files));
+			else reject(new DOMException('No folder selected', 'AbortError'));
+		};
+		input.oncancel = () => reject(new DOMException('No folder selected', 'AbortError'));
+		input.click();
+	});
+}
+
+async function pickAndImport(key) {
+	if (busy) return;
+	const target = importer.TARGETS[key];
+	busy = true;
+	updateButtons();
+	try {
+		const source = await pickSource();
+		if (!source) return;
+		setState(key, 'Reading folder…');
+		const plan = importer.planImport(source, key, { includeVideos: false });
+		if (!plan.looksRight) {
+			setState(key, 'That does not look like the ' + target.label + ' folder (' + target.signature[0].toUpperCase() + ' not found).', 'err');
+			return;
+		}
+		const { quota, usage } = await importer.storageEstimate();
+		if (quota && quota - usage < plan.bytes) {
+			setState(key, 'Not enough browser storage: need ' + importer.formatBytes(plan.bytes) + ', ' + importer.formatBytes(quota - usage) + ' available.', 'err');
+			return;
+		}
+		await importer.requestPersistence();
+		setState(key, 'Copying ' + plan.files.length.toLocaleString() + ' files…');
+		await importer.runImport(plan, { onProgress: showProgress, forceWorker: params.get('writer') === 'worker' });
+	} catch (e) {
+		if (e && e.name === 'AbortError') {
+			await refreshStatus();
+			return;
+		}
+		setState(key, 'Import failed: ' + (e && e.message || e), 'err');
+		pushLog('Import failed: ' + (e && e.stack || e), false);
+	} finally {
+		busy = false;
+		$('progress').hidden = true;
+		await refreshStatus();
+	}
+}
+
+$('pick-game').onclick = () => pickAndImport('game');
+$('pick-generals').onclick = () => pickAndImport('generals');
+$('clear').onclick = async () => {
+	if (busy || !confirm('Remove the imported game files from this browser? Saved games and options are kept.')) return;
+	for (const key of Object.keys(importer.TARGETS)) await importer.clearTarget(key);
+	await refreshStatus();
+};
+
+// ---------------------------------------------------------------------------------------------
+// Running the game
+// ---------------------------------------------------------------------------------------------
+
+const canvas = $('canvas');
+let clientSize = { width: 800, height: 600 };
+
+function layoutCanvas() {
+	const stage = $('stage');
+	if (stage.hidden) return;
+	const scale = Math.min(stage.clientWidth / clientSize.width, stage.clientHeight / clientSize.height);
+	canvas.style.width = Math.max(1, Math.floor(clientSize.width * scale)) + 'px';
+	canvas.style.height = Math.max(1, Math.floor(clientSize.height * scale)) + 'px';
+}
+window.addEventListener('resize', layoutCanvas);
+window.addEventListener('zh-clientsize', (e) => {
+	clientSize = e.detail;
+	layoutCanvas();
+});
+
+async function toggleFullscreen() {
+	if (document.fullscreenElement) {
+		await document.exitFullscreen();
+		return;
+	}
+	await $('stage').requestFullscreen({ navigationUI: 'hide' });
+	// Lets the game see Escape, Ctrl+digits and friends instead of the browser.
+	if (navigator.keyboard && navigator.keyboard.lock) {
+		navigator.keyboard.lock().catch(() => {});
+	}
+}
+document.addEventListener('fullscreenchange', () => {
+	if (!document.fullscreenElement && navigator.keyboard && navigator.keyboard.unlock) {
+		navigator.keyboard.unlock();
+	}
+	layoutCanvas();
+});
+$('fullscreen').onclick = () => toggleFullscreen().catch((e) => pushLog('Fullscreen: ' + e.message, false));
+$('quit').onclick = () => location.reload();
+
+function gameArguments() {
+	const [w, h] = $('resolution').value.split('x');
+	const args = ['-xres', w, '-yres', h];
+	for (const extra of params.getAll('arg')) args.push(extra);
+	return args;
+}
+
+function startGame() {
+	if ($('play').disabled) return;
+	try { localStorage.setItem('zh-resolution', $('resolution').value); } catch (e) { /* ignore */ }
+
+	const [w, h] = $('resolution').value.split('x').map(Number);
+	clientSize = { width: w, height: h };
+	$('setup').hidden = true;
+	$('stage').hidden = false;
+	layoutCanvas();
+	canvas.focus();
+
+	window.Module = {
+		canvas,
+		arguments: gameArguments(),
+		print: (text) => { console.log(text); pushLog(text, false); },
+		printErr: (text) => {
+			console.warn(text);
+			pushLog(text, /abort|RuntimeError|unreachable|out of memory|uncaught/i.test(text));
+		},
+		setStatus: () => {},
+		onAbort: (what) => {
+			pushLog('Aborted: ' + what, false);
+			showErrors('The game stopped unexpectedly');
+		},
+		onExit: (code) => {
+			pushLog('Exited with code ' + code, false);
+			$('loading').hidden = false;
+			$('loading').textContent = 'The game has ended (exit code ' + code + '). Use Exit to start again.';
+			if (code !== 0) showErrors('The game ended with an error');
+		},
+		postRun: [() => { $('loading').hidden = true; }],
+	};
+
+	const template = $('game-script').content.querySelector('script');
+	const script = document.createElement('script');
+	script.src = template.getAttribute('src');
+	document.body.appendChild(script);
+	document.body.classList.add('show-toolbar');
+	setTimeout(() => document.body.classList.remove('show-toolbar'), 3000);
+}
+$('play').onclick = startGame;
+
+try {
+	const saved = localStorage.getItem('zh-resolution');
+	if (saved && [...$('resolution').options].some(o => o.value === saved)) $('resolution').value = saved;
+} catch (e) { /* ignore */ }
+
+// For tests and automation.
+window.__zh = { importer, startGame, logLines, refreshStatus };
+
+refreshStatus().catch((e) => pushLog('Status: ' + e, false));
+</script>
+</body>
+</html>

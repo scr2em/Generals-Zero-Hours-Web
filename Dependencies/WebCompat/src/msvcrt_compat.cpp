@@ -169,11 +169,6 @@ char *_fullpath(char *absPath, const char *relPath, size_t maxLength)
 	return absPath;
 }
 
-int _mkdir(const char *path)
-{
-	return mkdir(path, 0777);
-}
-
 // WebAssembly has a fixed floating point environment: round to nearest,
 // no exceptions, and float operations always round to single precision
 // (what the game asks for with _PC_24). Report that and ignore changes.

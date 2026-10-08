@@ -51,8 +51,11 @@ extern "C" {
 #define _strnicmp  strncasecmp
 #define _strcmpi   strcasecmp
 #define _strdup    strdup
-#define _snprintf  snprintf
-#define _vsnprintf vsnprintf
+/* The Microsoft semantics (-1 on truncation, no terminator when the buffer is
+** exactly full) and the wide character formats are in printf16.cpp. */
+int _snprintf(char *buffer, size_t count, const char *format, ...);
+int _vsnprintf(char *buffer, size_t count, const char *format, va_list args);
+int _vscprintf(const char *format, va_list args);
 #define _scprintf(...) snprintf(NULL, 0, __VA_ARGS__)
 #ifndef stricmp
 #define stricmp    strcasecmp
@@ -103,31 +106,55 @@ wchar_t *_wcslwr(wchar_t *s);
 wchar_t *_wcsdup(const wchar_t *s);
 int _snwprintf(wchar_t *buffer, size_t count, const wchar_t *format, ...);
 int _vsnwprintf(wchar_t *buffer, size_t count, const wchar_t *format, va_list args);
+int _vscwprintf(const wchar_t *format, va_list args);
+wchar_t *_wcsrev(wchar_t *s);
 wchar_t *_itow(int value, wchar_t *buffer, int radix);
+wchar_t *_ltow(long value, wchar_t *buffer, int radix);
+wchar_t *_ultow(unsigned long value, wchar_t *buffer, int radix);
+wchar_t *_i64tow(long long value, wchar_t *buffer, int radix);
+wchar_t *_ui64tow(unsigned long long value, wchar_t *buffer, int radix);
+int _wtoi(const wchar_t *s);
+long _wtol(const wchar_t *s);
+long long _wtoi64(const wchar_t *s);
+double _wtof(const wchar_t *s);
+wchar_t *_wfullpath(wchar_t *absPath, const wchar_t *relPath, size_t maxLength);
 #define wcsicmp _wcsicmp
 #define wcsnicmp _wcsnicmp
 
 /* Paths */
+/* Resolves a Windows path (backslashes, any capitalisation) to the matching
+** path in the file system. Returns non-zero if it exists. */
+int webcompat_resolve_path(const char *path, char *resolved, size_t resolvedSize);
+FILE *webcompat_fopen(const char *path, const char *mode);
+FILE *webcompat_freopen(const char *path, const char *mode, FILE *stream);
+#define fopen(path, mode) webcompat_fopen((path), (mode))
+#define freopen(path, mode, stream) webcompat_freopen((path), (mode), (stream))
 void _splitpath(const char *path, char *drive, char *dir, char *fname, char *ext);
 void _makepath(char *path, const char *drive, const char *dir, const char *fname, const char *ext);
 char *_fullpath(char *absPath, const char *relPath, size_t maxLength);
 #define _getcwd getcwd
-#define _chdir chdir
-#define _rmdir rmdir
-#define _unlink unlink
-#define _access access
 #define _isatty isatty
 #define _fileno fileno
 #define _getpid getpid
 #define _putenv putenv
 #define _tzset tzset
+int _chdir(const char *path);
+int _rmdir(const char *path);
+int _unlink(const char *path);
+int _access(const char *path, int mode);
+int _chmod(const char *path, int mode);
 int _mkdir(const char *path);
-#define _stat stat
-#define _fstat fstat
+#define _S_IFMT S_IFMT
 #define _S_IFDIR S_IFDIR
 #define _S_IFREG S_IFREG
 #define _S_IREAD S_IRUSR
 #define _S_IWRITE S_IWUSR
+#define _S_IEXEC S_IXUSR
+#ifndef S_IREAD
+#define S_IREAD S_IRUSR
+#define S_IWRITE S_IWUSR
+#define S_IEXEC S_IXUSR
+#endif
 
 /* Math */
 #define _isnan isnan
@@ -175,4 +202,12 @@ size_t malloc_usable_size(void *p);
 
 #ifdef __cplusplus
 } /* extern "C" */
+
+/* Windows' struct _stat and _stat() are ordinary names for struct stat and
+** stat(), but the path is a Windows path. */
+struct _stat : public stat {};
+struct _stati64 : public stat {};
+int _stat(const char *path, struct _stat *buffer);
+int _stati64(const char *path, struct _stati64 *buffer);
+int _fstat(int fd, struct _stat *buffer);
 #endif

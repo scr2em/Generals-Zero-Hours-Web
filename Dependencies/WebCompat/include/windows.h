@@ -71,6 +71,23 @@ extern "C" {
 #define DECLSPEC_IMPORT
 #endif
 
+/* Calling conventions mean nothing on WebAssembly. */
+#ifndef __stdcall
+#define __stdcall
+#endif
+#ifndef __cdecl
+#define __cdecl
+#endif
+#ifndef _cdecl
+#define _cdecl
+#endif
+#ifndef __fastcall
+#define __fastcall
+#endif
+#ifndef _stdcall
+#define _stdcall
+#endif
+
 #ifndef IN
 #define IN
 #define OUT
@@ -1725,6 +1742,24 @@ HANDLE  WINAPI SetClipboardData(UINT uFormat, HANDLE hMem);
 BOOL    WINAPI IsClipboardFormatAvailable(UINT format);
 #define CF_TEXT 1
 #define CF_UNICODETEXT 13
+
+/* ---------------------------------------------------------------------------
+** Hooks for the platform layer (Dependencies/WebCompat/src)
+** ------------------------------------------------------------------------- */
+
+/* Answers MessageBox calls (e.g. with a dialog in the page). The default logs
+** the message and picks the answer that lets the program continue. */
+typedef int (*WebCompatMessageBoxHandler)(const char *text, const char *caption, unsigned int type);
+void webcompat_set_message_box_handler(WebCompatMessageBoxHandler handler);
+
+/* The size of the canvas, reported as the screen and as the size of the main
+** window. */
+void webcompat_set_screen_size(int width, int height);
+
+/* The state that GetCursorPos, GetAsyncKeyState and GetKeyState report. Key
+** and mouse messages are delivered with PostMessage. */
+void webcompat_set_cursor_position(int x, int y);
+void webcompat_set_key_state(int virtualKey, int down);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -211,6 +211,29 @@ if(NOT IS_VS6_BUILD)
     )
 endif()
 
+# The WebAssembly build has no Win32 devices (DirectInput, the Win32 file
+# systems and engine), no Miles audio and no Bink video. It keeps the window
+# message driven mouse and the message box based OS display, and swaps in the
+# browser devices. Rendering is the unchanged W3D.
+if(EMSCRIPTEN)
+    list(FILTER GAMEENGINEDEVICE_SRC EXCLUDE REGEX
+        "(Win32Device/Common/Win32(BIGFile|BIGFileSystem|GameEngine|LocalFile|LocalFileSystem)\\.(h|cpp)|Win32Device/GameClient/Win32DIKeyboard\\.(h|cpp)|MilesAudioDevice/|VideoDevice/Bink/)")
+
+    list(APPEND GAMEENGINEDEVICE_SRC
+        Include/WebDevice/Common/WebGameEngine.h
+        Include/WebDevice/Common/WebNullAudioManager.h
+        Include/WebDevice/GameClient/WebKeyboard.h
+        Include/WebDevice/Platform/WebPlatform.h
+        Source/WebDevice/Common/WebGameEngine.cpp
+        Source/WebDevice/Common/WebNullAudioManager.cpp
+        Source/WebDevice/GameClient/WebKeyboard.cpp
+        Source/WebDevice/Platform/WebKeyTable.cpp
+        Source/WebDevice/Platform/WebPlatform.cpp
+        Source/WebDevice/Platform/WebStorage.cpp
+        Source/WebDevice/Platform/WebWin32Shim.cpp
+    )
+endif()
+
 add_library(corei_gameenginedevice_private INTERFACE)
 add_library(corei_gameenginedevice_public INTERFACE)
 

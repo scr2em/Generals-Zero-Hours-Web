@@ -13,5 +13,6 @@ target_compile_options(webcompat_headers INTERFACE
 file(GLOB WEBCOMPAT_SRC CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
 add_library(webcompat STATIC ${WEBCOMPAT_SRC})
 target_link_libraries(webcompat PUBLIC webcompat_headers)
-target_compile_options(webcompat PRIVATE -fshort-wchar -fms-extensions)
+set_target_properties(webcompat PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON CXX_EXTENSIONS ON)
+target_compile_options(webcompat PRIVATE -fshort-wchar -fms-extensions -fno-strict-aliasing)
 target_link_libraries(webcompat_headers INTERFACE webcompat)
