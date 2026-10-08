@@ -18,6 +18,10 @@ import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
+// Browser: CHROMIUM_PATH if set, else the sandbox's preinstalled Chromium if present, else Playwright's own
+// (npx playwright install chromium), which is what a macOS machine uses.
+const CHROMIUM = [process.env.CHROMIUM_PATH, '/opt/pw-browsers/chromium-1194/chrome-linux/chrome']
+	.find((p) => p && existsSync(p));
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => {
 	if (a.startsWith('--')) acc.push([a.slice(2), all[i + 1]]);
@@ -60,7 +64,7 @@ process.on('exit', () => server.kill());
 await new Promise((r) => setTimeout(r, 800));
 
 const browser = await chromium.launch({
-	executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+	executablePath: CHROMIUM,
 	args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 
@@ -218,7 +222,7 @@ async function session(label, query) {
 {
 	const userDataDir = path.join(out, 'profile');
 	const context = await chromium.launchPersistentContext(userDataDir, {
-		executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+		executablePath: CHROMIUM,
 		args: ['--no-sandbox'],
 		viewport: { width: 1100, height: 800 },
 	});
