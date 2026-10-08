@@ -122,8 +122,9 @@ console.log(`stopped waiting after ${((Date.now() - tPlay) / 1000).toFixed(1)}s:
 	await page.waitForTimeout(3000);
 	const f2 = await frames();
 	console.log(`frames: ${f1} -> ${f2} in 3 s (${((f2 - f1) / 3).toFixed(1)} fps)`);
-	const info = await page.evaluate(() => ({ first: window.__zhFirstFrameAt || 0, heap: window.__zhHeapBytes || 0 })).catch(() => ({ first: 0, heap: 0 }));
+	const info = await page.evaluate(() => ({ first: window.__zhFirstFrameAt || 0, heap: window.__zhHeapBytes || 0, frameMs: window.__zhFrameMs || 0 })).catch(() => ({ first: 0, heap: 0 }));
 	if (info.first) console.log(`startup: first frame ${((info.first - playClickedAt) / 1000).toFixed(1)} s after Play (includes module download from localhost, compile and engine init)`);
+	if (info.frameMs) console.log(`engine time per frame: ${info.frameMs.toFixed(1)} ms`);
 	if (info.heap) console.log(`wasm heap: ${(info.heap / 1048576).toFixed(0)} MB`);
 }
 

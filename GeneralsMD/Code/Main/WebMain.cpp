@@ -375,6 +375,7 @@ static void reportFatal( const char *message )
 // Frames run since the game started, for the page (window.__zhFrames, about twice a second)
 // and for the log when -webframelog is on the command line.
 static unsigned s_frameCount = 0;
+static double s_busyMs = 0.0;	// time spent in executeFrame() since the last report
 static bool s_logFrames = false;
 
 // gameFrame ==================================================================
@@ -392,7 +393,9 @@ static void gameFrame( void * )
 		if( !TheFramePacer->isFrameDue() )
 			return;
 
+		const double frameStart = emscripten_get_now();
 		TheGameEngine->executeFrame();
+		s_busyMs += emscripten_get_now() - frameStart;
 
 		++s_frameCount;
 		if( s_frameCount == 1 )
@@ -402,7 +405,9 @@ static void gameFrame( void * )
 		}
 		if( s_frameCount % 30 == 0 )
 		{
-			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; }, s_frameCount, (unsigned)emscripten_get_heap_size() );
+			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; window.__zhFrameMs = $2; },
+				s_frameCount, (unsigned)emscripten_get_heap_size(), s_busyMs / 30.0 );
+			s_busyMs = 0.0;
 			if( s_logFrames && s_frameCount % 300 == 0 )
 				printf( "frame %u\n", s_frameCount );
 		}
