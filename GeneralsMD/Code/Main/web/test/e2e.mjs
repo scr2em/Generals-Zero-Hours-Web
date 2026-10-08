@@ -214,7 +214,7 @@ async function session(label, query) {
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 	const state = await importFolder(page, '#pick-game', 'state-game', fake);
 	check('parent folder: Zero Hour found inside', /Ready · 4 files/.test(state), state);
-	await page.waitForFunction(() => /Ready/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
+	await page.waitForFunction(() => /added/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
 	check('parent folder: the base game was found in the same pick', /added/.test(await page.textContent('#state-generals')));
 	check('parent folder: play enabled after one pick', !(await page.isDisabled('#play')));
 	await s.context.close();

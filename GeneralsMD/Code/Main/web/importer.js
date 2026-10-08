@@ -339,6 +339,89 @@ export async function runImport(plan, options = {}) {
 export async function writeManifest(plan, extra = {}) {
 	const root = await opfsRoot();
 	const target = TARGETS[plan.targetKey];
+	const manifest = {
+		version: MANIFEST_VERSION,
+		kind: plan.kind || 'install',
+		source: plan.sourceName,
+		...(plan.manifestExtra || {}),
+		...extra,
+		files: plan.files.length,
+		bytes: plan.bytes,
+		importedAt: new Date().toISOString(),
+	};
+	const manifestHandle = await root.getFileHandle(target.dir + '.manifest.json', { create: true });
+	const writable = await manifestHandle.createWritable().catch(() => null);
+	if (writable) {
+		await writable.write(JSON.stringify(manifest));
+		await writable.close();
+	} else {
+		await writeWithWorker([], target.dir + '.manifest.json', new Blob([JSON.stringify(manifest)]), () => {});
+	}
+	return manifest;
+}
+
+// Copies the planned files into OPFS. onProgress({ done, total, bytesDone, bytesTotal, path }).
+// Files already present with the same size are skipped, so an interrupted import resumes.
+// plan.prefetch (default 1) is how many files are requested ahead of the one being written,
+// which only matters when getFile() is slow (the starter download).
+async function copyIntoOpfs(plan, { onProgress = () => {}, signal = null, forceWorker = false } = {}) {
+	const root = await opfsRoot();
+	const target = TARGETS[plan.targetKey];
+	const base = await root.getDirectoryHandle(target.dir, { create: true });
+	const cache = new Map();
+	const useWorker = forceWorker || typeof FileSystemFileHandle.prototype.createWritable !== 'function';
+
+	let bytesDone = 0;
+	let lastReport = 0;
+	const report = (path, done, force) => {
+		const now = performance.now();
+		if (force || now - lastReport > 100) {
+			lastReport = now;
+			onProgress({ done, total: plan.files.length, bytesDone, bytesTotal: plan.bytes, path });
+		}
+	};
+
+	let copied = 0;
+	for (let i = 0; i < plan.files.length; i++) {
+		if (signal && signal.aborted) {
+			throw new DOMException('Import cancelled', 'AbortError');
+		}
+		const entry = plan.files[i];
+		const path = entry.segments.join('/');
+		const dirSegments = entry.segments.slice(0, -1);
+		const name = entry.segments[entry.segments.length - 1];
+		report(path, i, true);
+
+		const dir = await getDirectory(base, dirSegments, cache);
+		for (let ahead = i + 1; ahead <= i + (plan.prefetch || 1) && ahead < plan.files.length; ahead++) {
+			const next = plan.files[ahead];
+			if (!next.pending) {
+				next.pending = next.getFile();
+				next.pending.catch(() => {}); // reported when it is awaited
+			}
+		}
+		const file = await (entry.pending || entry.getFile());
+		entry.pending = null;
+
+		let existing = null;
+		try {
+			existing = await (await dir.getFileHandle(name)).getFile();
+		} catch (e) { /* not there yet */ }
+		if (existing && existing.size === file.size) {
+			bytesDone += file.size;
+			continue;
+		}
+
+		const onBytes = (n) => { bytesDone += n; report(path, i, false); };
+		if (useWorker) {
+			await writeWithWorker([target.dir].concat(dirSegments), name, file, onBytes);
+		} else {
+			const handle = await dir.getFileHandle(name, { create: true });
+			await writeWithWritable(handle, file, onBytes);
+		}
+		copied++;
+	}
+
 	const manifest = await writeManifest(plan);
 	onProgress({ done: plan.files.length, total: plan.files.length, bytesDone: plan.bytes, bytesTotal: plan.bytes, path: '' });
 	return { copied, manifest };
