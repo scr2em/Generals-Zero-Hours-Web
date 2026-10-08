@@ -68,7 +68,7 @@ def main_menu():
               size=10, style=MUTED_STYLE, centered=True),
         label("LabelVersion", (600, 8, 792, 28), text("GUI:MenuVersion", "Starter content"), size=10, style=MUTED_STYLE),
     )
-    return write_wnd("MainMenu.wnd", [parent], RES, init=None, update="MainMenuUpdate", shutdown="MainMenuShutdown")
+    return write_wnd("MainMenu.wnd", [parent], RES, init="MainMenuInit", update="MainMenuUpdate", shutdown="MainMenuShutdown")
 
 
 # --------------------------------------------------------------------------------------------------
