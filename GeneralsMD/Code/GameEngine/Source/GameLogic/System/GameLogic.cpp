@@ -132,6 +132,10 @@ FILE *g_UT_commaLog=nullptr;
 extern void externalAddTree(Coord3D location, Real scale, Real angle, AsciiString name);
 #endif
 
+#ifdef __EMSCRIPTEN__
+extern "C" void WebPlatform_WaitFrame(void);	// WebDevice/Platform/WebPlatform.h
+#endif
+
 
 
 
@@ -2237,6 +2241,12 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 				TheDisplay->draw();
 				setFPMode();
 				TheFramePacer->update();
+#ifdef __EMSCRIPTEN__
+				// The fade counts frames. The browser shows one frame per display frame, so pace
+				// the loop to the fps limit, as the frame pacer does on Windows.
+				while (!TheFramePacer->isFrameDue())
+					WebPlatform_WaitFrame();
+#endif
 			}
 
 		}

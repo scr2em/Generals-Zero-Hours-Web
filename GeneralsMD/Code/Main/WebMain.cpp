@@ -20,14 +20,15 @@
 //
 // Entry point of the WebAssembly build, the counterpart of WinMain.cpp.
 //
-// main() runs on a worker thread (-sPROXY_TO_PTHREAD). The engine's main loop
-// cannot block there, though: the browser only shows a frame once the thread
-// returns to its event loop, so the loop is run one frame per
-// requestAnimationFrame (emscripten_set_main_loop) and main() returns right
-// after starting it. The shutdown that follows GameMain() on Windows runs from
-// the loop when the game quits. There is no window to create: the page provides a
-// canvas, WebPlatform turns its input into the same window messages Windows
-// would deliver, and WebWndProc below is the game's window procedure.
+// main() runs on a worker thread (-sPROXY_TO_PTHREAD), on a JSPI stack (-sJSPI) that can
+// suspend, and runs the engine's frame loop on it: one frame of the game, then wait for the
+// browser's next animation frame. The browser only shows a frame once the thread returns to its
+// event loop, which a suspended JSPI stack does. The same goes for the game's own blocking loops
+// that render from inside themselves (load screen, fades, movies): the Direct3D 8 layer reports
+// every Present() to WebPlatform_FramePresented(), which suspends the thread until the next
+// display frame, so those loops show their frames without being restructured (see WebPlatform.h).
+// There is no window to create: the page provides a canvas, WebPlatform turns its input into the
+// same window messages Windows would deliver, and WebWndProc below is the game's window procedure.
 //
 // Data: the page either copied the player's game files into the Origin Private File
 // System before starting us, or (-webdirect) handed us the files of the folder the
@@ -380,67 +381,76 @@ static double s_busyMs = 0.0;	// time spent in executeFrame() since the last rep
 static bool s_logFrames = false;
 static bool s_logDirectStats = false;	// -webdirectstats: the read counters of the direct file mode, see WebStorage.cpp
 
-// gameFrame ==================================================================
-/** One browser frame of the game: the body of GameEngine::execute()'s loop. */
+// runFrames ==================================================================
+/** The body of GameEngine::execute()'s loop, paced by the browser: one frame of the game per
+	* display frame. A frame ends by waiting for the next display frame, which is what shows it
+	* (the frame's Present() already does that, see WebPlatform_FramePresented). Blocking loops
+	* inside a frame that render show their frames the same way.
+	* Returns true when the game ended normally, false when it failed. */
 //=============================================================================
-static void gameFrame( void * )
+static bool runFrames()
 {
 	try {
 
-		static unsigned s_calls = 0;
-		if( ++s_calls == 1 || s_calls == 100 )
-			DEBUG_LOG(("gameFrame call %u", s_calls));
-
-		// requestAnimationFrame runs at the display's rate, which can be above the game's fps limit.
-		if( !TheFramePacer->isFrameDue() )
-			return;
-
-		const double frameStart = emscripten_get_now();
-		TheGameEngine->executeFrame();
-		s_busyMs += emscripten_get_now() - frameStart;
-
-		++s_frameCount;
-		if( s_frameCount == 1 )
+		for(;;)
 		{
-			DEBUG_LOG(("First frame done"));
-			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFirstFrameAt = Date.now(); } );
-		}
-		if( s_logDirectStats && ( s_frameCount == 1 || s_frameCount % 300 == 0 ) )
-		{
-			char stats[512];
-			if( WebPlatform_GetDirectStats( stats, sizeof( stats ) ) > 0 )
-				printf( "direct file stats at frame %u: %s\n", s_frameCount, stats );
-		}
-		if( s_frameCount % 30 == 0 )
-		{
-			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; window.__zhFrameMs = $2; },
-				s_frameCount, (unsigned)emscripten_get_heap_size(), s_busyMs / 30.0 );
-			s_busyMs = 0.0;
-			if( s_logFrames && s_frameCount % 300 == 0 )
-				printf( "frame %u\n", s_frameCount );
-		}
+			static unsigned s_calls = 0;
+			if( ++s_calls == 1 || s_calls == 100 )
+				DEBUG_LOG(("gameFrame call %u", s_calls));
 
-		if( TheGameEngine->getQuitting() )
-		{
-			emscripten_cancel_main_loop();
-			finishGame();
-			shutdownApplication( 0 );
+			// Display frames come at the display's rate, which can be above the game's fps limit.
+			if( !TheFramePacer->isFrameDue() )
+			{
+				WebPlatform_WaitFrame();
+				continue;
+			}
+
+			const double frameStart = emscripten_get_now();
+			const double yieldedBefore = WebPlatform_GetYieldedMs();
+			WebPlatform_BeginFrame();
+			TheGameEngine->executeFrame();
+			WebPlatform_EndFrame();
+			// The time the thread was suspended is the browser's, not the game's.
+			s_busyMs += emscripten_get_now() - frameStart - ( WebPlatform_GetYieldedMs() - yieldedBefore );
+
+			++s_frameCount;
+			if( s_frameCount == 1 )
+			{
+				DEBUG_LOG(("First frame done"));
+				MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFirstFrameAt = Date.now(); } );
+			}
+			if( s_logDirectStats && ( s_frameCount == 1 || s_frameCount % 300 == 0 ) )
+			{
+				char stats[512];
+				if( WebPlatform_GetDirectStats( stats, sizeof( stats ) ) > 0 )
+					printf( "direct file stats at frame %u: %s\n", s_frameCount, stats );
+			}
+			if( s_frameCount % 30 == 0 )
+			{
+				MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; window.__zhFrameMs = $2; window.__zhYields = $3; },
+					s_frameCount, (unsigned)emscripten_get_heap_size(), s_busyMs / 30.0, WebPlatform_GetYieldCount() );
+				s_busyMs = 0.0;
+				if( s_logFrames && s_frameCount % 300 == 0 )
+					printf( "frame %u (%u waits for the browser)\n", s_frameCount, WebPlatform_GetYieldCount() );
+			}
+
+			if( TheGameEngine->getQuitting() )
+				return true;
 		}
 	}
 	catch (...)
 	{
 		// An exception that reaches the frame loop is a failure of the game, not of one frame.
 		fprintf( stderr, "Fatal error: unhandled exception in game frame %u\n", s_frameCount );
-		emscripten_cancel_main_loop();
-		WebPlatform_NotifyExit( 1 );
+		return false;
 	}
 }
 
 // runGame ====================================================================
 /** The counterpart of GameMain(): creates and initializes the engine, then runs
-	* it. Returns true when the game was only started and runs frame by frame
-	* from now on (see gameFrame), and false when it already ended, with the
-	* exit code in exitcode. */
+	* it. Returns true when the game ended and was shut down here (the page was told),
+	* and false when it only ended and main() has to shut down, with the exit code in
+	* exitcode. */
 //=============================================================================
 static Bool runGame( Int &exitcode )
 {
@@ -464,9 +474,17 @@ static Bool runGame( Int &exitcode )
 	}
 	else
 	{
-		// Frames are driven by requestAnimationFrame (fps 0); the stack is not unwound
-		// (simulate_infinite_loop 0), main() returns and the thread stays alive for the frames.
-		emscripten_set_main_loop_arg( gameFrame, nullptr, 0, 0 );
+		// This thread suspends (JSPI) to let the browser show the frames, see runFrames().
+		if( runFrames() )
+		{
+			finishGame();
+			shutdownApplication( 0 );
+		}
+		else
+		{
+			// The engine is in an unknown state: tell the page and leave everything as it is.
+			WebPlatform_NotifyExit( 1 );
+		}
 		return true;
 	}
 
@@ -495,6 +513,8 @@ int main( int argc, char **argv )
 			WebPlatform_SetInputLog( 1 );
 		if( strcmp( argv[i], "-webdirect" ) == 0 )
 			WebPlatform_RequireDirectStorage( 1 );
+		if( strcmp( argv[i], "-webyieldlog" ) == 0 )
+			WebPlatform_SetYieldLog( 1 );
 		if( strcmp( argv[i], "-webdirectstats" ) == 0 )
 			s_logDirectStats = true;
 		if( strncmp( argv[i], "-webd3d8debug", 13 ) == 0 )
@@ -544,10 +564,13 @@ int main( int argc, char **argv )
 		WebPlatform_SetTitle( "Command and Conquer Generals Zero Hour" );
 
 		// The renderer (Direct3D 8 on WebGL2) draws on the page's canvas, tells the page when the
-		// back buffer size changes, and leaves presenting the frame to the browser: the frames
-		// end by returning to the event loop, see gameFrame().
+		// back buffer size changes, and leaves presenting the frame to the browser: the browser
+		// shows it when this thread suspends to its event loop, see runFrames().
 		WebD3D8_PlatformHooks d3dHooks = {};
 		d3dHooks.OnClientSize = []( unsigned width, unsigned height ) { WebPlatform_SetClientSize( (int)width, (int)height ); };
+		// Every Present() lets the browser show the frame: the frame loop's pacing and, from inside
+		// blocking loops that render (load screens, movies), their progress.
+		d3dHooks.OnFramePresented = []() { WebPlatform_FramePresented(); };
 		WebD3D8_SetPlatformHooks( &d3dHooks );
 		WebD3D8_SetCanvas( WebPlatform_GetCanvasSelector() );
 		WebD3D8_SetPresentMode( WEBD3D8_PRESENT_IMPLICIT );
@@ -568,10 +591,13 @@ int main( int argc, char **argv )
 
 		DEBUG_LOG(("CRC message is %d", GameMessage::MSG_LOGIC_CRC));
 
+		// From here on this thread suspends (JSPI) to let the browser show the frames.
+		WebPlatform_SetYieldEnabled( 1 );
+
 		// run the game main loop
 		if( runGame( exitcode ) )
 		{
-			// The game runs from the browser's frames now; they shut down when it ends.
+			// The game ran from the browser's frames and shut down when it ended.
 			return 0;
 		}
 	}

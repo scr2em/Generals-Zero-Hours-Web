@@ -371,6 +371,8 @@ function describeEnvironment() {
 	if (!env.crossOriginIsolated) problems.push('This page is not cross-origin isolated (COOP/COEP headers missing), which the game needs for threads. Serve it with serve.py.');
 	if (!env.opfs) problems.push('This browser has no Origin Private File System.');
 	if (!env.offscreenCanvas) problems.push('This browser cannot render WebGL from a worker (OffscreenCanvas).');
+	// The engine thread suspends to let the browser show loading screens (JSPI, shipped in Chrome 137).
+	if (typeof WebAssembly === 'undefined' || typeof WebAssembly.Suspending !== 'function' || typeof WebAssembly.promising !== 'function') problems.push('This browser has no WebAssembly JavaScript Promise Integration, which the game needs. Use Chrome 137 or newer.');
 	return problems;
 }
 

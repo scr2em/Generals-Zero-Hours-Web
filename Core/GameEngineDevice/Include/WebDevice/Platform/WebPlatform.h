@@ -108,6 +108,56 @@ void WebPlatform_SetCursorVisible(int visible);
 // 1 while the page has focus and is visible.
 int WebPlatform_IsActive(void);
 
+// ---- yielding to the browser (JSPI) ----------------------------------------
+//
+// The browser shows what the engine thread drew only when that thread returns to its event loop.
+// The game's blocking loops that draw from inside themselves (load screens, fades, movie loops)
+// would never show a frame. The build uses JSPI (-sJSPI): the whole engine thread runs on a
+// suspendable stack, so a call here suspends it, the browser runs its event loop (and presents the
+// canvas), and the thread resumes after the next display frame (requestAnimationFrame). The game
+// code is not restructured: the Direct3D 8 layer calls WebPlatform_FramePresented() at the end of
+// every Present(), which covers every place that renders. Only the thread that called
+// WebPlatform_SetYieldEnabled() ever suspends, and only while it is not in a non-suspendable call
+// (an event loop callback); everywhere else these functions return at once.
+
+// Marks the calling thread as the one that may suspend (call from the engine thread, which runs
+// under JSPI) or, with 0, stops yielding. Off by default: programs whose frames run from
+// emscripten_set_main_loop (the platform tests) never suspend.
+void WebPlatform_SetYieldEnabled(int enabled);
+
+// 1 when WebPlatform_SetYieldEnabled(1) was called and the browser can suspend (WebAssembly.Suspending).
+int WebPlatform_CanYield(void);
+
+// The frame loop brackets every frame of the game with these two (see WebPlatform_FramePresented).
+// EndFrame waits for the next display frame if the frame did not already wait in its Present().
+void WebPlatform_BeginFrame(void);
+void WebPlatform_EndFrame(void);
+
+// Suspends until the browser has shown its next display frame (requestAnimationFrame fired). This is
+// how the frame loop paces itself, like a vsynced Present(): no-op unless yielding is enabled.
+void WebPlatform_WaitFrame(void);
+
+// Like WebPlatform_WaitFrame(), but at most once per display frame (every 12 ms at the fastest) and never
+// while the page is hidden (its animation frames do not run then), so a loop may call it for every
+// progress step without slowing down. For
+// blocking loops that do not render but should let the browser show the last frame and run its events.
+void WebPlatform_YieldFrame(void);
+
+// The Direct3D 8 layer calls it at the end of every Present(). The first present after
+// WebPlatform_BeginFrame() waits for the next display frame, which is the frame loop's pacing; any
+// further present in the same frame comes from a blocking loop inside the frame (load screen, movie)
+// and yields like WebPlatform_YieldFrame().
+void WebPlatform_FramePresented(void);
+
+// With enable != 0, logs (printf) every wait that a blocking loop inside a frame causes (not the frame
+// loop's own pacing), for tests and for finding loops that do not show their frames. Off by default.
+void WebPlatform_SetYieldLog(int enable);
+
+// Time the engine thread spent suspended in the calls above since the program started, in
+// milliseconds, and how many times it suspended. For frame timing and for the tests.
+double WebPlatform_GetYieldedMs(void);
+unsigned WebPlatform_GetYieldCount(void);
+
 // ---- the message pump ------------------------------------------------------
 
 // Returns 1 and fills msg when a message is waiting; removes it when remove != 0.

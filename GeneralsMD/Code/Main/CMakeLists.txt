@@ -115,6 +115,12 @@ if(EMSCRIPTEN)
             -sOFFSCREENCANVAS_SUPPORT
             "-sOFFSCREENCANVASES_TO_PTHREAD=#canvas"
             -sWASMFS
+            # JSPI (JavaScript Promise Integration, Chrome 137+): the engine thread's stack can
+            # suspend, so the frame loop and the game's blocking loops that render from inside
+            # themselves (load screens, fades, movies) can return to the browser for a frame without
+            # being restructured, see WebPlatform_FramePresented(). Unlike ASYNCIFY it does not
+            # rewrite the code (no size or speed cost); only the imports that wait (EM_ASYNC_JS) suspend.
+            -sJSPI
             -sALLOW_MEMORY_GROWTH
             # Not GROWABLE_ARRAYBUFFERS: Chrome's WebGL rejects views of resizable/growable
             # buffers ("The provided ArrayBuffer value must not be resizable"), and WebD3D8

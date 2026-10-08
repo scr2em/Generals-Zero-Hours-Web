@@ -37,6 +37,7 @@
 
 #include <atomic>
 #include <math.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -55,6 +56,28 @@ EM_JS(int, web_platform_get_canvas_rect, (const char *selector, double *out), {
 	return 1;
 });
 
+
+// Suspends the calling thread (JSPI: EM_ASYNC_JS functions are suspending imports) until the browser has
+// run its next animation frame, so that it presents what the thread drew, or until timeoutMs have passed
+// when that is above 0. Only call it from a suspendable stack, see WebPlatform_SetYieldEnabled().
+EM_ASYNC_JS(void, web_platform_wait_display_frame, (int timeoutMs), {
+	await new Promise((resolve) => {
+		let timer = 0, raf = 0, done = false;
+		const finish = () => {
+			if (done) return;
+			done = true;
+			if (timer) clearTimeout(timer);
+			if (raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf);
+			resolve();
+		};
+		if (typeof requestAnimationFrame === 'function')
+			raf = requestAnimationFrame(finish);
+		else
+			timer = setTimeout(finish, 16);	// no animation frames in this context: about one at 60 Hz
+		if (timeoutMs > 0 && !timer)
+			timer = setTimeout(finish, timeoutMs);
+	});
+});
 
 // Win32 GetTickCount from Dependencies/WebCompat, if it is part of the program.
 // (Declared under another name because windows.h may declare GetTickCount with its own types.)
@@ -133,6 +156,7 @@ struct PlatformState
 	std::atomic<int> clientWidth{DEFAULT_CLIENT_WIDTH};
 	std::atomic<int> clientHeight{DEFAULT_CLIENT_HEIGHT};
 	std::atomic<int> active{1};
+	std::atomic<int> pageHidden{0};	// document.visibilityState is "hidden": no animation frames run
 	std::atomic<uint8_t> vkState[256];	// bit 7 down, bit 0 toggled
 
 	std::atomic<WebWindowProc> windowProc{nullptr};
@@ -629,6 +653,7 @@ bool onFocus(int eventType, const EmscriptenFocusEvent *, void *)
 bool onVisibility(int, const EmscriptenVisibilityChangeEvent *e, void *)
 {
 	state().pageVisible = !e->hidden;
+	state().pageHidden.store(e->hidden ? 1 : 0, std::memory_order_relaxed);
 	updateActive();
 	return false;
 }
@@ -669,6 +694,7 @@ extern "C" int WebPlatform_Init(const char *canvasSelector)
 
 	s.pageFocused = MAIN_THREAD_EM_ASM_INT({ return (document.hasFocus() && document.visibilityState === 'visible') ? 1 : 0; }) != 0;
 	s.pageVisible = true;
+	s.pageHidden.store(MAIN_THREAD_EM_ASM_INT({ return document.visibilityState === 'hidden' ? 1 : 0; }), std::memory_order_relaxed);
 	s.active.store(s.pageFocused ? 1 : 0);
 
 	check(emscripten_set_keydown_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, onKey, mainThread), "keydown");
@@ -776,6 +802,136 @@ extern "C" void WebPlatform_SetCursorVisible(int visible)
 extern "C" int WebPlatform_IsActive(void)
 {
 	return state().active.load(std::memory_order_relaxed);
+}
+
+//-------------------------------------------------------------------------------------------------
+// Yielding to the browser
+//-------------------------------------------------------------------------------------------------
+
+namespace
+{
+
+// A blocking loop that renders (load screen, movie) is shown at most this often, so a loop that
+// reports progress thousands of times does not spend its time waiting for animation frames. A bit
+// under one display frame at 60 Hz (16.7 ms), so a movie that draws every frame of its own is
+// shown frame by frame.
+const double YIELD_MIN_INTERVAL_MS = 12.0;
+
+// How long a wait for an animation frame may take while the page is visible before the thread goes on
+// anyway (a canvas that is not displayed gets none), so it can never hang for good.
+const int YIELD_VISIBLE_TIMEOUT_MS = 500;
+
+// Only touched by the yielding thread.
+struct YieldState
+{
+	bool enabled = false;
+	bool waiting = false;			// suspended right now: nothing may suspend again
+	bool framePaced = false;	// the frame in progress has already waited for a display frame
+	bool log = false;
+	pthread_t thread = 0;
+	double lastWaitEnd = -1.0e9;
+	double yieldedMs = 0.0;
+	unsigned count = 0;
+};
+
+YieldState &yieldState()
+{
+	static YieldState y;
+	return y;
+}
+
+bool mayYield()
+{
+	YieldState &y = yieldState();
+	return y.enabled && !y.waiting && pthread_equal(pthread_self(), y.thread);
+}
+
+void waitDisplayFrame()
+{
+	YieldState &y = yieldState();
+	const bool hidden = state().pageHidden.load(std::memory_order_relaxed) != 0;
+	y.waiting = true;
+	const double start = emscripten_get_now();
+	web_platform_wait_display_frame(hidden ? 0 : YIELD_VISIBLE_TIMEOUT_MS);
+	const double end = emscripten_get_now();
+	y.waiting = false;
+	y.yieldedMs += end - start;
+	++y.count;
+	y.lastWaitEnd = end;
+}
+
+} // namespace
+
+extern "C" void WebPlatform_SetYieldEnabled(int enabled)
+{
+	YieldState &y = yieldState();
+	y.enabled = enabled != 0;
+	y.thread = pthread_self();
+	y.framePaced = false;
+}
+
+extern "C" void WebPlatform_SetYieldLog(int enable)
+{
+	yieldState().log = enable != 0;
+}
+
+extern "C" int WebPlatform_CanYield(void)
+{
+	return yieldState().enabled ? 1 : 0;
+}
+
+extern "C" void WebPlatform_BeginFrame(void)
+{
+	yieldState().framePaced = false;
+}
+
+extern "C" void WebPlatform_EndFrame(void)
+{
+	if (!mayYield() || yieldState().framePaced)
+		return;
+	WebPlatform_WaitFrame();
+}
+
+extern "C" void WebPlatform_WaitFrame(void)
+{
+	if (!mayYield())
+		return;
+	yieldState().framePaced = true;
+	waitDisplayFrame();
+}
+
+extern "C" void WebPlatform_YieldFrame(void)
+{
+	if (!mayYield())
+		return;
+	// A hidden page gets no animation frames; waiting would stall the loop for nothing.
+	if (state().pageHidden.load(std::memory_order_relaxed) != 0)
+		return;
+	if (emscripten_get_now() - yieldState().lastWaitEnd < YIELD_MIN_INTERVAL_MS)
+		return;
+	waitDisplayFrame();
+	if (yieldState().log)
+		printf("WebPlatform: yielded to the browser inside a frame, wait #%u, %.0f ms\n", yieldState().count, emscripten_get_now());
+}
+
+extern "C" void WebPlatform_FramePresented(void)
+{
+	if (!mayYield())
+		return;
+	if (!yieldState().framePaced)
+		WebPlatform_WaitFrame();	// the frame's own present: pace the frame loop like a vsynced Present()
+	else
+		WebPlatform_YieldFrame();	// a further present within the frame: a blocking loop is rendering
+}
+
+extern "C" double WebPlatform_GetYieldedMs(void)
+{
+	return yieldState().yieldedMs;
+}
+
+extern "C" unsigned WebPlatform_GetYieldCount(void)
+{
+	return yieldState().count;
 }
 
 extern "C" int WebPlatform_PeekMessage(WebPlatformMsg *msg, int remove)
