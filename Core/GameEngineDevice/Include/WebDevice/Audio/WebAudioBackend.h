@@ -86,7 +86,6 @@ enum
 {
 	// WebAudio_VoiceQueue flags
 	WEBAUDIO_SEGMENT_ENDS_LOOP = 1,	// counts as one completed pass of looping music when it ends
-	WEBAUDIO_SEGMENT_KEEP_IF_SUSPENDED = 2,	// do not drop it when the context is not running yet
 };
 
 // ---- life cycle (engine thread) --------------------------------------------------------------

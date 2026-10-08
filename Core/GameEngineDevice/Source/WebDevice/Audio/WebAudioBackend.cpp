@@ -40,6 +40,7 @@
 #include <emscripten/threading.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -605,8 +606,8 @@ struct Backend
 	em_proxying_queue *queue = nullptr;
 	std::atomic<bool> available{false};
 
-	uint32_t generation[WEBAUDIO_MAX_VOICES] = {};
-	bool inUse[WEBAUDIO_MAX_VOICES] = {};
+	uint32_t generation[WEBAUDIO_MAX_VOICES] = {};	// under lock
+	bool inUse[WEBAUDIO_MAX_VOICES] = {};						// under lock
 	std::atomic<int32_t> submitted[WEBAUDIO_MAX_VOICES] = {};	// segments queued on the voice
 	uint32_t nextVoiceSearch = 0;
 	std::atomic<uint32_t> nextBuffer{1};
@@ -624,6 +625,21 @@ inline int32_t bits(float f)
 inline uint32_t voiceIndex(WebAudioVoice v) { return v & 0xFFFu; }
 inline uint32_t voiceGeneration(WebAudioVoice v) { return v >> 12; }
 
+/// Whether the id still names the voice slot (the voice is not destroyed and the slot not reused).
+/// The caller holds g_backend.lock.
+inline bool voiceAllocatedLocked(WebAudioVoice v)
+{
+	if (v == 0 || voiceIndex(v) >= WEBAUDIO_MAX_VOICES)
+		return false;
+	return g_backend.inUse[voiceIndex(v)] && g_backend.generation[voiceIndex(v)] == voiceGeneration(v);
+}
+
+inline bool voiceAllocated(WebAudioVoice v)
+{
+	std::lock_guard<std::mutex> g(g_backend.lock);
+	return voiceAllocatedLocked(v);
+}
+
 /// Whether the main thread has set the voice up (and not destroyed it since).
 inline bool voiceLive(WebAudioVoice v)
 {
@@ -632,19 +648,25 @@ inline bool voiceLive(WebAudioVoice v)
 	return __atomic_load_n(&g_shared.voices[voiceIndex(v)].generation, __ATOMIC_ACQUIRE) == (int32_t)voiceGeneration(v);
 }
 
-/// Whether this id still names the voice slot (it is not destroyed or reused). Does not take the lock: only
-/// meant for ids held by their owner.
-inline bool voiceAllocated(WebAudioVoice v)
-{
-	if (v == 0 || voiceIndex(v) >= WEBAUDIO_MAX_VOICES)
-		return false;
-	return g_backend.inUse[voiceIndex(v)] && g_backend.generation[voiceIndex(v)] == voiceGeneration(v);
-}
+inline bool isAvailable() { return g_backend.available.load(); }
 
 void push(std::initializer_list<int32_t> words)
 {
 	std::lock_guard<std::mutex> g(g_backend.lock);
 	g_backend.commands.insert(g_backend.commands.end(), words.begin(), words.end());
+}
+
+/// Appends a command for a voice, counting a queued segment if asked to. Returns false (and
+/// appends nothing) if the voice does not exist (any more).
+bool pushForVoice(WebAudioVoice voice, bool countsSegment, std::initializer_list<int32_t> words)
+{
+	std::lock_guard<std::mutex> g(g_backend.lock);
+	if (!voiceAllocatedLocked(voice))
+		return false;
+	if (countsSegment)
+		g_backend.submitted[voiceIndex(voice)].fetch_add(1);
+	g_backend.commands.insert(g_backend.commands.end(), words.begin(), words.end());
+	return true;
 }
 
 void freeBlock(void *p)
@@ -659,6 +681,8 @@ void runBatch(void *arg)
 	delete batch;
 }
 
+/// Hands the queued commands to the main thread. The caller holds g_backend.lock, which also
+/// orders the batches of the different threads.
 void flushLocked()
 {
 	if (g_backend.commands.empty() || !g_backend.queue)
@@ -675,311 +699,15 @@ void flushLocked()
 	}
 }
 
+void runOnMainThread(void (*fn)(void *), void *arg)
+{
+	if (emscripten_is_main_runtime_thread())
+		fn(arg);
+	else
+		emscripten_proxy_sync(g_backend.queue, emscripten_main_runtime_thread_id(), fn, arg);
+}
+
 } // namespace
-
-//-------------------------------------------------------------------------------------------------
-static void installOnMainThread(void *result)
-{
-	*static_cast<int *>(result) = wa_js_install(&g_shared, 0, 0);
-}
-
-extern "C" {
-
-//-------------------------------------------------------------------------------------------------
-int WebAudio_Init(int sampleRate)
-{
-	if (g_backend.available.load())
-		return 1;
-
-	if (!g_backend.queue)
-		g_backend.queue = em_proxying_queue_create();
-
-	// The interpreter needs the pointer of the C function that frees blocks, and the rate.
-	struct Args { int rate; int result; } args = { sampleRate, 0 };
-	auto install = [](void *p)
-	{
-		Args *a = static_cast<Args *>(p);
-		a->result = wa_js_install(&g_shared, a->rate, (int)(intptr_t)&freeBlock);
-	};
-	if (emscripten_is_main_runtime_thread())
-		install(&args);
-	else
-		emscripten_proxy_sync(g_backend.queue, emscripten_main_runtime_thread_id(), install, &args);
-
-	if (!args.result)
-		return 0;
-	g_backend.available.store(true);
-	return 1;
-}
-
-//-------------------------------------------------------------------------------------------------
-static void stopStreamThread();
-
-void WebAudio_Shutdown(void)
-{
-	if (!g_backend.available.load())
-		return;
-	stopStreamThread();
-	{
-		std::lock_guard<std::mutex> g(g_backend.lock);
-		flushLocked();
-	}
-	g_backend.available.store(false);
-	auto shut = [](void *) { wa_js_shutdown(); };
-	if (emscripten_is_main_runtime_thread())
-		shut(nullptr);
-	else
-		emscripten_proxy_sync(g_backend.queue, emscripten_main_runtime_thread_id(), shut, nullptr);
-	std::lock_guard<std::mutex> g(g_backend.lock);
-	for (uint32_t i = 0; i < WEBAUDIO_MAX_VOICES; ++i)
-	{
-		g_backend.inUse[i] = false;
-		g_backend.submitted[i].store(0);
-	}
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_Resume(void)
-{
-	if (!g_backend.available.load())
-		return;
-	push({ OP_RESUME });
-	WebAudio_Flush();
-}
-
-//-------------------------------------------------------------------------------------------------
-int WebAudio_GetState(void)
-{
-	if (!g_backend.available.load())
-		return WEBAUDIO_STATE_NONE;
-	return __atomic_load_n(&g_shared.contextState, __ATOMIC_ACQUIRE);
-}
-
-//-------------------------------------------------------------------------------------------------
-int WebAudio_GetSampleRate(void)
-{
-	if (!g_backend.available.load())
-		return 0;
-	return __atomic_load_n(&g_shared.sampleRate, __ATOMIC_ACQUIRE);
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_SetMasterVolume(float volume)
-{
-	if (!g_backend.available.load())
-		return;
-	push({ OP_MASTER_GAIN, bits(volume) });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_SetPanningModel(int hrtf)
-{
-	if (!g_backend.available.load())
-		return;
-	push({ OP_PANNING_MODEL, hrtf ? 1 : 0 });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_SetListener(const float position[3], const float forward[3], const float up[3])
-{
-	if (!g_backend.available.load())
-		return;
-	push({ OP_LISTENER, bits(position[0]), bits(position[1]), bits(position[2]),
-		bits(forward[0]), bits(forward[1]), bits(forward[2]), bits(up[0]), bits(up[1]), bits(up[2]) });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_Flush(void)
-{
-	if (!g_backend.available.load())
-		return;
-	std::lock_guard<std::mutex> g(g_backend.lock);
-	flushLocked();
-}
-
-//-------------------------------------------------------------------------------------------------
-WebAudioBuffer WebAudio_CreateBuffer(const int16_t *interleaved, uint32_t frames, uint32_t channels, uint32_t sampleRate)
-{
-	if (!g_backend.available.load() || !interleaved || frames == 0 || channels == 0 || channels > 8)
-		return 0;
-	float *planar = static_cast<float *>(malloc((size_t)frames * channels * sizeof(float)));
-	if (!planar)
-		return 0;
-	for (uint32_t c = 0; c < channels; ++c)
-	{
-		float *dst = planar + (size_t)c * frames;
-		const int16_t *src = interleaved + c;
-		for (uint32_t i = 0; i < frames; ++i)
-			dst[i] = (float)src[(size_t)i * channels] * (1.0f / 32768.0f);
-	}
-	const WebAudioBuffer id = g_backend.nextBuffer.fetch_add(1);
-	push({ OP_CREATE_BUFFER, (int32_t)id, (int32_t)(intptr_t)planar, (int32_t)frames, (int32_t)channels, (int32_t)sampleRate });
-	return id;
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_DestroyBuffer(WebAudioBuffer buffer)
-{
-	if (!g_backend.available.load() || buffer == 0)
-		return;
-	push({ OP_DESTROY_BUFFER, (int32_t)buffer });
-}
-
-//-------------------------------------------------------------------------------------------------
-WebAudioVoice WebAudio_CreateVoice(WebAudioVoiceKind kind)
-{
-	if (!g_backend.available.load())
-		return 0;
-	std::lock_guard<std::mutex> g(g_backend.lock);
-	for (uint32_t n = 0; n < WEBAUDIO_MAX_VOICES; ++n)
-	{
-		const uint32_t idx = (g_backend.nextVoiceSearch + n) % WEBAUDIO_MAX_VOICES;
-		if (g_backend.inUse[idx])
-			continue;
-		g_backend.nextVoiceSearch = idx + 1;
-		g_backend.inUse[idx] = true;
-		uint32_t gen = (g_backend.generation[idx] + 1) & 0xFFFFFu;
-		if (gen == 0)
-			gen = 1;
-		g_backend.generation[idx] = gen;
-		g_backend.submitted[idx].store(0);
-		const WebAudioVoice id = (gen << 12) | idx;
-		const int32_t words[] = { OP_CREATE_VOICE, (int32_t)id, (int32_t)kind };
-		g_backend.commands.insert(g_backend.commands.end(), words, words + 3);
-		return id;
-	}
-	return 0;
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_DestroyVoice(WebAudioVoice voice, float fadeOutSeconds)
-{
-	if (!g_backend.available.load() || !voiceAllocated(voice))
-		return;
-	std::lock_guard<std::mutex> g(g_backend.lock);
-	const int32_t words[] = { OP_DESTROY_VOICE, (int32_t)voice, bits(fadeOutSeconds) };
-	g_backend.commands.insert(g_backend.commands.end(), words, words + 3);
-	g_backend.inUse[voiceIndex(voice)] = false;
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_VoiceQueue(WebAudioVoice voice, WebAudioBuffer buffer, float delaySeconds, int flags)
-{
-	if (!g_backend.available.load() || !voiceAllocated(voice) || buffer == 0)
-		return;
-	g_backend.submitted[voiceIndex(voice)].fetch_add(1);
-	push({ OP_QUEUE, (int32_t)voice, (int32_t)buffer, bits(delaySeconds), flags & ~WEBAUDIO_SEGMENT_KEEP_IF_SUSPENDED });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_VoiceCancelPending(WebAudioVoice voice)
-{
-	if (!g_backend.available.load() || !voiceAllocated(voice))
-		return;
-	push({ OP_CANCEL_PENDING, (int32_t)voice });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_VoiceSetGain(WebAudioVoice voice, float gain)
-{
-	if (!g_backend.available.load() || !voiceAllocated(voice))
-		return;
-	push({ OP_SET_GAIN, (int32_t)voice, bits(gain) });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_VoiceSetPitch(WebAudioVoice voice, float rate)
-{
-	if (!g_backend.available.load() || !voiceAllocated(voice))
-		return;
-	push({ OP_SET_PITCH, (int32_t)voice, bits(rate) });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_VoiceSetPan(WebAudioVoice voice, float pan)
-{
-	if (!g_backend.available.load() || !voiceAllocated(voice))
-		return;
-	push({ OP_SET_PAN, (int32_t)voice, bits(pan) });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_VoiceSetPosition(WebAudioVoice voice, float x, float y, float z)
-{
-	if (!g_backend.available.load() || !voiceAllocated(voice))
-		return;
-	push({ OP_SET_POSITION, (int32_t)voice, bits(x), bits(y), bits(z) });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_VoiceSetLowPass(WebAudioVoice voice, float cutoffHz)
-{
-	if (!g_backend.available.load() || !voiceAllocated(voice))
-		return;
-	push({ OP_SET_LOWPASS, (int32_t)voice, bits(cutoffHz) });
-}
-
-//-------------------------------------------------------------------------------------------------
-void WebAudio_VoicePause(WebAudioVoice voice, int paused)
-{
-	if (!g_backend.available.load() || !voiceAllocated(voice))
-		return;
-	push({ OP_PAUSE, (int32_t)voice, paused ? 1 : 0 });
-}
-
-//-------------------------------------------------------------------------------------------------
-uint32_t WebAudio_VoicePendingSegments(WebAudioVoice voice)
-{
-	if (!voiceAllocated(voice))
-		return 0;
-	const uint32_t idx = voiceIndex(voice);
-	const int32_t submitted = g_backend.submitted[idx].load();
-	// Until the main thread has created the voice the counters of the shared block are those of
-	// an earlier voice of the slot.
-	const int32_t finished = voiceLive(voice) ? __atomic_load_n(&g_shared.voices[idx].segmentsFinished, __ATOMIC_ACQUIRE) : 0;
-	return submitted > finished ? (uint32_t)(submitted - finished) : 0u;
-}
-
-//-------------------------------------------------------------------------------------------------
-uint32_t WebAudio_VoiceLoopsDone(WebAudioVoice voice)
-{
-	if (!voiceLive(voice) || !voiceAllocated(voice))
-		return 0;
-	return (uint32_t)__atomic_load_n(&g_shared.voices[voiceIndex(voice)].loopsDone, __ATOMIC_ACQUIRE);
-}
-
-//-------------------------------------------------------------------------------------------------
-int32_t WebAudio_VoiceRemainingMs(WebAudioVoice voice)
-{
-	if (!voiceLive(voice) || !voiceAllocated(voice))
-		return 0;
-	double end;
-	const double* src = &g_shared.voices[voiceIndex(voice)].endWallMs;
-	__atomic_load(src, &end, __ATOMIC_RELAXED);
-	if (end <= 0.0)
-		return 0;
-	if (end >= 1e17)
-		return INT32_MAX;
-	const double left = end - emscripten_date_now();
-	return left <= 0.0 ? 0 : (left >= 2e9 ? INT32_MAX : (int32_t)left);
-}
-
-//-------------------------------------------------------------------------------------------------
-int WebAudio_GetStats(WebAudioStats *stats)
-{
-	if (!g_backend.available.load())
-		return 0;
-	static_assert(sizeof(WebAudioStats) == 8 * sizeof(uint32_t), "mirrored in wa_js_stats");
-	auto read = [](void *p) { wa_js_stats(static_cast<uint32_t *>(p)); };
-	WebAudio_Flush();
-	if (emscripten_is_main_runtime_thread())
-		read(stats);
-	else
-		emscripten_proxy_sync(g_backend.queue, emscripten_main_runtime_thread_id(), read, stats);
-	return 1;
-}
-
-} // extern "C"
 
 // ============================================================================================
 // 3. Streams
@@ -990,7 +718,7 @@ namespace
 
 enum
 {
-	STREAM_TARGET_CHUNKS = 6,			// chunks queued ahead of the playback
+	STREAM_TARGET_CHUNKS = 6,			// chunks queued ahead of the playback (3 seconds)
 	STREAM_CHUNKS_PER_PASS = 3,		// decoded per stream before looking at the others
 };
 
@@ -1027,8 +755,8 @@ struct Streams
 
 Streams g_streams;
 
-/// Decodes the next chunk of the stream. Returns false when there is nothing more to decode in
-/// this pass; lastOfPass tells that the chunk returned is the last of the pass of the file.
+/// Decodes the next chunk of the stream into s.current. Returns false when there is nothing more
+/// to decode in this pass; *lastOfPass tells that the chunk is the last of the pass over the file.
 bool fetchChunk(Stream &s, bool *lastOfPass)
 {
 	const size_t ch = s.decoder->info().channels;
@@ -1049,14 +777,15 @@ bool fetchChunk(Stream &s, bool *lastOfPass)
 	return true;
 }
 
-void pushChunk(Stream &s, int flags)
+/// Queues s.current as a segment of the stream's voice. Returns false if the voice is gone.
+bool pushChunk(Stream &s, int flags)
 {
 	const WebAudio::StreamInfo &info = s.decoder->info();
 	const uint32_t ch = info.channels;
 	const uint32_t frames = (uint32_t)(s.current.size() / ch);
 	float *planar = static_cast<float *>(malloc((size_t)frames * ch * sizeof(float)));
 	if (!planar)
-		return;
+		return false;
 	for (uint32_t c = 0; c < ch; ++c)
 	{
 		float *dst = planar + (size_t)c * frames;
@@ -1064,8 +793,12 @@ void pushChunk(Stream &s, int flags)
 		for (uint32_t i = 0; i < frames; ++i)
 			dst[i] = (float)src[(size_t)i * ch] * (1.0f / 32768.0f);
 	}
-	g_backend.submitted[voiceIndex(s.voice)].fetch_add(1);
-	push({ OP_STREAM_CHUNK, (int32_t)s.voice, (int32_t)(intptr_t)planar, (int32_t)frames, (int32_t)ch, (int32_t)info.sampleRate, flags });
+	if (!pushForVoice(s.voice, true, { OP_STREAM_CHUNK, (int32_t)s.voice, (int32_t)(intptr_t)planar, (int32_t)frames, (int32_t)ch, (int32_t)info.sampleRate, flags }))
+	{
+		free(planar);
+		return false;
+	}
+	return true;
 }
 
 /// Decodes and queues chunks of one stream until it has enough ahead.
@@ -1079,32 +812,29 @@ void pumpStream(Stream &s)
 	{
 		if (s.closed.load() || s.eof.load())
 			return;
+		if (!voiceAllocated(s.voice))
+		{
+			s.closed.store(true);	// the owner destroyed the voice without closing the stream
+			return;
+		}
 		if (WebAudio_VoicePendingSegments(s.voice) >= STREAM_TARGET_CHUNKS)
 			return;
 
 		bool lastOfPass = false;
 		if (!fetchChunk(s, &lastOfPass))
 		{
-			// An empty pass (damaged file) must not loop forever.
-			s.eof.store(true);
+			s.eof.store(true);	// the end, or an empty pass of a damaged file (which must not loop forever)
 			return;
 		}
-		if (s.closed.load())
+		if (s.closed.load() || !pushChunk(s, lastOfPass ? WEBAUDIO_SEGMENT_ENDS_LOOP : 0))
 			return;
-
-		pushChunk(s, lastOfPass ? WEBAUDIO_SEGMENT_ENDS_LOOP : 0);
 
 		if (lastOfPass)
 		{
 			if (s.loop && s.decoder->rewind())
-			{
 				s.haveNext = false;
-			}
 			else
-			{
 				s.eof.store(true);
-				return;
-			}
 		}
 	}
 }
@@ -1114,7 +844,6 @@ void pumpAll()
 	std::vector<std::shared_ptr<Stream>> snapshot;
 	{
 		std::lock_guard<std::mutex> g(g_streams.lock);
-		// forget closed streams
 		for (size_t i = 0; i < g_streams.list.size();)
 		{
 			if (g_streams.list[i]->closed.load())
@@ -1126,11 +855,6 @@ void pumpAll()
 	}
 	for (auto &s : snapshot)
 		pumpStream(*s);
-	if (!snapshot.empty())
-	{
-		std::lock_guard<std::mutex> g(g_backend.lock);
-		flushLocked();
-	}
 }
 
 void streamThreadMain()
@@ -1143,10 +867,10 @@ void streamThreadMain()
 		if (g_streams.quit)
 			break;
 		lk.unlock();
-		pumpAll();
-		// Also deliver commands that the engine thread has queued but not flushed (it may be busy loading).
-		if (g_backend.available.load())
+		if (isAvailable())
 		{
+			pumpAll();
+			// Also deliver commands that the engine thread has queued but not flushed (it may be busy loading).
 			std::lock_guard<std::mutex> g(g_backend.lock);
 			flushLocked();
 		}
@@ -1170,10 +894,7 @@ void startStreamThread()
 	}
 }
 
-} // namespace
-
-//-------------------------------------------------------------------------------------------------
-static void stopStreamThread()
+void stopStreamThread()
 {
 	if (g_streams.threadRunning.load())
 	{
@@ -1191,12 +912,287 @@ static void stopStreamThread()
 	g_streams.list.clear();
 }
 
+} // namespace
+
+// ============================================================================================
+// The C API
+// ============================================================================================
+
 extern "C" {
+
+//-------------------------------------------------------------------------------------------------
+int WebAudio_Init(int sampleRate)
+{
+	if (isAvailable())
+		return 1;
+
+	if (!g_backend.queue)
+		g_backend.queue = em_proxying_queue_create();
+
+	struct Args { int rate; int result; } args = { sampleRate, 0 };
+	runOnMainThread([](void *p)
+	{
+		Args *a = static_cast<Args *>(p);
+		// The interpreter frees the PCM blocks of commands through this C function.
+		a->result = wa_js_install(&g_shared, a->rate, (int)(intptr_t)&freeBlock);
+	}, &args);
+
+	if (!args.result)
+		return 0;
+	g_backend.available.store(true);
+	return 1;
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_Shutdown(void)
+{
+	if (!isAvailable())
+		return;
+	stopStreamThread();
+	{
+		std::lock_guard<std::mutex> g(g_backend.lock);
+		flushLocked();
+	}
+	g_backend.available.store(false);
+	runOnMainThread([](void *) { wa_js_shutdown(); }, nullptr);
+	std::lock_guard<std::mutex> g(g_backend.lock);
+	g_backend.commands.clear();
+	for (uint32_t i = 0; i < WEBAUDIO_MAX_VOICES; ++i)
+	{
+		g_backend.inUse[i] = false;
+		g_backend.submitted[i].store(0);
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_Resume(void)
+{
+	if (!isAvailable())
+		return;
+	push({ OP_RESUME });
+	WebAudio_Flush();
+}
+
+//-------------------------------------------------------------------------------------------------
+int WebAudio_GetState(void)
+{
+	if (!isAvailable())
+		return WEBAUDIO_STATE_NONE;
+	return __atomic_load_n(&g_shared.contextState, __ATOMIC_ACQUIRE);
+}
+
+//-------------------------------------------------------------------------------------------------
+int WebAudio_GetSampleRate(void)
+{
+	if (!isAvailable())
+		return 0;
+	return __atomic_load_n(&g_shared.sampleRate, __ATOMIC_ACQUIRE);
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_SetMasterVolume(float volume)
+{
+	if (isAvailable())
+		push({ OP_MASTER_GAIN, bits(volume) });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_SetPanningModel(int hrtf)
+{
+	if (isAvailable())
+		push({ OP_PANNING_MODEL, hrtf ? 1 : 0 });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_SetListener(const float position[3], const float forward[3], const float up[3])
+{
+	if (isAvailable())
+		push({ OP_LISTENER, bits(position[0]), bits(position[1]), bits(position[2]),
+			bits(forward[0]), bits(forward[1]), bits(forward[2]), bits(up[0]), bits(up[1]), bits(up[2]) });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_Flush(void)
+{
+	if (!isAvailable())
+		return;
+	std::lock_guard<std::mutex> g(g_backend.lock);
+	flushLocked();
+}
+
+//-------------------------------------------------------------------------------------------------
+WebAudioBuffer WebAudio_CreateBuffer(const int16_t *interleaved, uint32_t frames, uint32_t channels, uint32_t sampleRate)
+{
+	if (!isAvailable() || !interleaved || frames == 0 || channels == 0 || channels > 8)
+		return 0;
+	float *planar = static_cast<float *>(malloc((size_t)frames * channels * sizeof(float)));
+	if (!planar)
+		return 0;
+	for (uint32_t c = 0; c < channels; ++c)
+	{
+		float *dst = planar + (size_t)c * frames;
+		const int16_t *src = interleaved + c;
+		for (uint32_t i = 0; i < frames; ++i)
+			dst[i] = (float)src[(size_t)i * channels] * (1.0f / 32768.0f);
+	}
+	const WebAudioBuffer id = g_backend.nextBuffer.fetch_add(1);
+	push({ OP_CREATE_BUFFER, (int32_t)id, (int32_t)(intptr_t)planar, (int32_t)frames, (int32_t)channels, (int32_t)sampleRate });
+	return id;
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_DestroyBuffer(WebAudioBuffer buffer)
+{
+	if (isAvailable() && buffer != 0)
+		push({ OP_DESTROY_BUFFER, (int32_t)buffer });
+}
+
+//-------------------------------------------------------------------------------------------------
+WebAudioVoice WebAudio_CreateVoice(WebAudioVoiceKind kind)
+{
+	if (!isAvailable())
+		return 0;
+	std::lock_guard<std::mutex> g(g_backend.lock);
+	for (uint32_t n = 0; n < WEBAUDIO_MAX_VOICES; ++n)
+	{
+		const uint32_t idx = (g_backend.nextVoiceSearch + n) % WEBAUDIO_MAX_VOICES;
+		if (g_backend.inUse[idx])
+			continue;
+		g_backend.nextVoiceSearch = idx + 1;
+		g_backend.inUse[idx] = true;
+		uint32_t gen = (g_backend.generation[idx] + 1) & 0xFFFFFu;
+		if (gen == 0)
+			gen = 1;
+		g_backend.generation[idx] = gen;
+		g_backend.submitted[idx].store(0);
+		const WebAudioVoice id = (gen << 12) | idx;
+		const int32_t words[] = { OP_CREATE_VOICE, (int32_t)id, (int32_t)kind };
+		g_backend.commands.insert(g_backend.commands.end(), words, words + 3);
+		return id;
+	}
+	return 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_DestroyVoice(WebAudioVoice voice, float fadeOutSeconds)
+{
+	if (!isAvailable())
+		return;
+	std::lock_guard<std::mutex> g(g_backend.lock);
+	if (!voiceAllocatedLocked(voice))
+		return;
+	const int32_t words[] = { OP_DESTROY_VOICE, (int32_t)voice, bits(fadeOutSeconds) };
+	g_backend.commands.insert(g_backend.commands.end(), words, words + 3);
+	g_backend.inUse[voiceIndex(voice)] = false;
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_VoiceQueue(WebAudioVoice voice, WebAudioBuffer buffer, float delaySeconds, int flags)
+{
+	if (isAvailable() && buffer != 0)
+		pushForVoice(voice, true, { OP_QUEUE, (int32_t)voice, (int32_t)buffer, bits(delaySeconds), flags });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_VoiceCancelPending(WebAudioVoice voice)
+{
+	if (isAvailable())
+		pushForVoice(voice, false, { OP_CANCEL_PENDING, (int32_t)voice });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_VoiceSetGain(WebAudioVoice voice, float gain)
+{
+	if (isAvailable())
+		pushForVoice(voice, false, { OP_SET_GAIN, (int32_t)voice, bits(gain) });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_VoiceSetPitch(WebAudioVoice voice, float rate)
+{
+	if (isAvailable())
+		pushForVoice(voice, false, { OP_SET_PITCH, (int32_t)voice, bits(rate) });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_VoiceSetPan(WebAudioVoice voice, float pan)
+{
+	if (isAvailable())
+		pushForVoice(voice, false, { OP_SET_PAN, (int32_t)voice, bits(pan) });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_VoiceSetPosition(WebAudioVoice voice, float x, float y, float z)
+{
+	if (isAvailable())
+		pushForVoice(voice, false, { OP_SET_POSITION, (int32_t)voice, bits(x), bits(y), bits(z) });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_VoiceSetLowPass(WebAudioVoice voice, float cutoffHz)
+{
+	if (isAvailable())
+		pushForVoice(voice, false, { OP_SET_LOWPASS, (int32_t)voice, bits(cutoffHz) });
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudio_VoicePause(WebAudioVoice voice, int paused)
+{
+	if (isAvailable())
+		pushForVoice(voice, false, { OP_PAUSE, (int32_t)voice, paused ? 1 : 0 });
+}
+
+//-------------------------------------------------------------------------------------------------
+uint32_t WebAudio_VoicePendingSegments(WebAudioVoice voice)
+{
+	if (!isAvailable() || !voiceAllocated(voice))
+		return 0;
+	const uint32_t idx = voiceIndex(voice);
+	const int32_t submitted = g_backend.submitted[idx].load();
+	// Until the main thread has created the voice, the counters of the shared block are those of
+	// an earlier voice of the slot.
+	const int32_t finished = voiceLive(voice) ? __atomic_load_n(&g_shared.voices[idx].segmentsFinished, __ATOMIC_ACQUIRE) : 0;
+	return submitted > finished ? (uint32_t)(submitted - finished) : 0u;
+}
+
+//-------------------------------------------------------------------------------------------------
+uint32_t WebAudio_VoiceLoopsDone(WebAudioVoice voice)
+{
+	if (!isAvailable() || !voiceLive(voice) || !voiceAllocated(voice))
+		return 0;
+	return (uint32_t)__atomic_load_n(&g_shared.voices[voiceIndex(voice)].loopsDone, __ATOMIC_ACQUIRE);
+}
+
+//-------------------------------------------------------------------------------------------------
+int32_t WebAudio_VoiceRemainingMs(WebAudioVoice voice)
+{
+	if (!isAvailable() || !voiceLive(voice) || !voiceAllocated(voice))
+		return 0;
+	double end;
+	__atomic_load(&g_shared.voices[voiceIndex(voice)].endWallMs, &end, __ATOMIC_RELAXED);
+	if (end <= 0.0)
+		return 0;
+	if (end >= 1e17)
+		return INT32_MAX;
+	const double left = end - emscripten_date_now();
+	return left <= 0.0 ? 0 : (left >= 2e9 ? INT32_MAX : (int32_t)left);
+}
+
+//-------------------------------------------------------------------------------------------------
+int WebAudio_GetStats(WebAudioStats *stats)
+{
+	if (!isAvailable())
+		return 0;
+	static_assert(sizeof(WebAudioStats) == 8 * sizeof(uint32_t), "mirrored in wa_js_stats");
+	WebAudio_Flush();
+	runOnMainThread([](void *p) { wa_js_stats(static_cast<uint32_t *>(p)); }, stats);
+	return 1;
+}
 
 //-------------------------------------------------------------------------------------------------
 WebAudioStream WebAudio_StreamOpen(const void *fileData, uint32_t fileSize, WebAudioVoice voice, int loop)
 {
-	if (!g_backend.available.load() || !fileData || fileSize == 0 || !voiceAllocated(voice))
+	if (!isAvailable() || !fileData || fileSize == 0 || !voiceAllocated(voice))
 		return 0;
 
 	std::shared_ptr<Stream> s = std::make_shared<Stream>();
@@ -1211,7 +1207,7 @@ WebAudioStream WebAudio_StreamOpen(const void *fileData, uint32_t fileSize, WebA
 		s->chunkFrames = 1024;
 	s->id = g_streams.nextId.fetch_add(1);
 
-	// The voice creation (and its gain) must reach the main thread before the first chunk.
+	// The creation of the voice and its settings must reach the main thread before the first chunk.
 	WebAudio_Flush();
 
 	{
@@ -1222,7 +1218,7 @@ WebAudioStream WebAudio_StreamOpen(const void *fileData, uint32_t fileSize, WebA
 	if (g_streams.threadRunning.load())
 		g_streams.wake.notify_all();
 	else
-		WebAudio_PumpStreams();	// no thread: the caller keeps pumping, start with the first chunk now
+		WebAudio_PumpStreams();	// no thread: the caller keeps pumping; start with the first chunks now
 	return s->id;
 }
 
@@ -1256,7 +1252,7 @@ int WebAudio_StreamIsFinished(WebAudioStream stream)
 			}
 		}
 	}
-	if (!s)
+	if (!s || s->closed.load())
 		return 1;
 	if (!s->eof.load())
 		return 0;
@@ -1266,9 +1262,11 @@ int WebAudio_StreamIsFinished(WebAudioStream stream)
 //-------------------------------------------------------------------------------------------------
 void WebAudio_PumpStreams(void)
 {
-	if (!g_backend.available.load())
+	if (!isAvailable())
 		return;
 	pumpAll();
+	std::lock_guard<std::mutex> g(g_backend.lock);
+	flushLocked();
 }
 
 //-------------------------------------------------------------------------------------------------
