@@ -115,6 +115,18 @@ const tPlay = Date.now();
 const how = await waitForEnd(opt.wait);
 console.log(`stopped waiting after ${((Date.now() - tPlay) / 1000).toFixed(1)}s: ${how}`);
 
+// The frame loop (WebMain.cpp) publishes its frame counter on the page about twice a second.
+{
+	const frames = async () => page.evaluate(() => window.__zhFrames || 0).catch(() => -1);
+	const f1 = await frames();
+	await page.waitForTimeout(3000);
+	const f2 = await frames();
+	console.log(`frames: ${f1} -> ${f2} in 3 s (${((f2 - f1) / 3).toFixed(1)} fps)`);
+	const info = await page.evaluate(() => ({ first: window.__zhFirstFrameAt || 0, heap: window.__zhHeapBytes || 0 })).catch(() => ({ first: 0, heap: 0 }));
+	if (info.first) console.log(`startup: first frame ${((info.first - playClickedAt) / 1000).toFixed(1)} s after Play (includes module download from localhost, compile and engine init)`);
+	if (info.heap) console.log(`wasm heap: ${(info.heap / 1048576).toFixed(0)} MB`);
+}
+
 if (opt.input && how !== 'error-panel') {
 	await page.mouse.move(300, 300);
 	await page.mouse.move(400, 350, { steps: 5 });
@@ -155,18 +167,6 @@ if (opt.reloadAfter) {
 if (opt.stack) {
 	const { dumpWorkerStacks } = await import('./cdpstack.mjs');
 	console.log(await dumpWorkerStacks(9333));
-}
-
-// The frame loop (WebMain.cpp) publishes its frame counter on the page about twice a second.
-{
-	const frames = async () => page.evaluate(() => window.__zhFrames || 0).catch(() => -1);
-	const f1 = await frames();
-	await page.waitForTimeout(3000);
-	const f2 = await frames();
-	console.log(`frames: ${f1} -> ${f2} in 3 s (${((f2 - f1) / 3).toFixed(1)} fps)`);
-	const info = await page.evaluate(() => ({ first: window.__zhFirstFrameAt || 0, heap: window.__zhHeapBytes || 0 })).catch(() => ({ first: 0, heap: 0 }));
-	if (info.first) console.log(`startup: first frame ${((info.first - playClickedAt) / 1000).toFixed(1)} s after Play (includes module download from localhost, compile and engine init)`);
-	if (info.heap) console.log(`wasm heap: ${(info.heap / 1048576).toFixed(0)} MB`);
 }
 
 const panel = await page.evaluate(() => ({

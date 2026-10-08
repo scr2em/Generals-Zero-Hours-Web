@@ -41,6 +41,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <emscripten.h>
+#include <emscripten/heap.h>
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "WinMain.h"

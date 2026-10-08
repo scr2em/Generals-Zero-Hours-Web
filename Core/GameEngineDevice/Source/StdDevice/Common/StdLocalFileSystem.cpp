@@ -34,12 +34,78 @@
 
 #include <filesystem>
 
+#ifdef __EMSCRIPTEN__
+#include <mutex>
+#include <unordered_set>
+#endif
+
 StdLocalFileSystem::StdLocalFileSystem() : LocalFileSystem()
 {
 }
 
 StdLocalFileSystem::~StdLocalFileSystem() {
 }
+
+#ifdef __EMSCRIPTEN__
+// The game looks for every file on the local file system first and in the archives second, so
+// nearly all lookups of a normal game (everything is in a .big) end with "not found". Each one costs
+// a round trip to the browser's file system worker (about 0.6 ms), because WasmFS does not cache
+// misses. Install relative files (as opposed to the absolute paths of the user data) are never
+// created while the game runs, so a miss stays a miss. Opening a file for writing forgets it.
+namespace
+{
+	class MissingFileCache
+	{
+	public:
+		// Only paths relative to the install, in the form the game writes them: "Data\\INI\\x.ini".
+		static bool isCacheable(const Char *filename)
+		{
+			return filename[0] != '\0' && filename[0] != '/' && filename[0] != '\\' && filename[1] != ':';
+		}
+
+		bool isKnownMissing(const Char *filename)
+		{
+			const std::string key = makeKey(filename);
+			std::lock_guard<std::mutex> lock(m_mutex);
+			return m_missing.find(key) != m_missing.end();
+		}
+
+		void addMissing(const Char *filename)
+		{
+			const std::string key = makeKey(filename);
+			std::lock_guard<std::mutex> lock(m_mutex);
+			m_missing.insert(key);
+		}
+
+		void forget(const Char *filename)
+		{
+			const std::string key = makeKey(filename);
+			std::lock_guard<std::mutex> lock(m_mutex);
+			m_missing.erase(key);
+		}
+
+	private:
+		static std::string makeKey(const Char *filename)
+		{
+			std::string key(filename);
+			for (char &c : key)
+			{
+				c = (c == '\\') ? '/' : static_cast<char>(tolower(static_cast<unsigned char>(c)));
+			}
+			return key;
+		}
+
+		std::mutex m_mutex;
+		std::unordered_set<std::string> m_missing;
+	};
+
+	MissingFileCache &getMissingFileCache()
+	{
+		static MissingFileCache cache;
+		return cache;
+	}
+}
+#endif
 
 //DECLARE_PERF_TIMER(StdLocalFileSystem_openFile)
 static std::filesystem::path fixFilenameFromWindowsPath(const Char *filename, Int access)
@@ -54,7 +120,8 @@ static std::filesystem::path fixFilenameFromWindowsPath(const Char *filename, In
 	// Convert the filename to a std::filesystem::path and pass that
 	std::filesystem::path path(std::move(fixedFilename));
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+	// (In the browser the file system is case insensitive already, see WebStorage.cpp.)
 	// check if the file exists to see if fixup is required
 	// if it's not found try to match disregarding case sensitivity
 	// For cases where a write is happening, we should check if the parent path exists, if so, let it through, since the file may not exist yet.
@@ -134,6 +201,17 @@ File * StdLocalFileSystem::openFile(const Char *filename, Int access, size_t buf
 		return nullptr;
 	}
 
+#ifdef __EMSCRIPTEN__
+	const Bool cacheable = MissingFileCache::isCacheable(filename);
+	if (cacheable)
+	{
+		if (access & File::WRITE)
+			getMissingFileCache().forget(filename);
+		else if (getMissingFileCache().isKnownMissing(filename))
+			return nullptr;
+	}
+#endif
+
 	std::filesystem::path path = fixFilenameFromWindowsPath(filename, access);
 
 	if (path.empty()) {
@@ -158,6 +236,10 @@ File * StdLocalFileSystem::openFile(const Char *filename, Int access, size_t buf
 	if (file->open(path.string().c_str(), access, bufferSize) == FALSE) {
 		deleteInstance(file);
 		file = nullptr;
+#ifdef __EMSCRIPTEN__
+		if (cacheable && !(access & File::WRITE))
+			getMissingFileCache().addMissing(filename);
+#endif
 	} else {
 		file->deleteOnClose();
 	}
@@ -199,13 +281,24 @@ void StdLocalFileSystem::reset()
 //DECLARE_PERF_TIMER(StdLocalFileSystem_doesFileExist)
 Bool StdLocalFileSystem::doesFileExist(const Char *filename) const
 {
+#ifdef __EMSCRIPTEN__
+	const Bool cacheable = MissingFileCache::isCacheable(filename);
+	if (cacheable && getMissingFileCache().isKnownMissing(filename))
+		return FALSE;
+#endif
+
 	std::filesystem::path path = fixFilenameFromWindowsPath(filename, 0);
 	if(path.empty()) {
 		return FALSE;
 	}
 
 	std::error_code ec;
-	return std::filesystem::exists(path, ec);
+	const Bool exists = std::filesystem::exists(path, ec);
+#ifdef __EMSCRIPTEN__
+	if (cacheable && !exists)
+		getMissingFileCache().addMissing(filename);
+#endif
+	return exists;
 }
 
 void StdLocalFileSystem::getFileListInDirectory(const AsciiString& currentDirectory, const AsciiString& originalDirectory, const AsciiString& searchName, FilenameList & filenameList, Bool searchSubdirectories) const

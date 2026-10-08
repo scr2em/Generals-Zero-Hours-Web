@@ -33,6 +33,9 @@ public:
 private:
 	Int64 m_freq;
 	Int64 m_start;
+#ifdef __EMSCRIPTEN__
+	Int64 m_lastFrame; ///< When wait() was last called. m_start is the time the last frame was due.
+#endif
 };
 
 

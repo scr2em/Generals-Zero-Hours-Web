@@ -13,7 +13,7 @@
 
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
-import { mkdirSync, cpSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, cpSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const require = createRequire(import.meta.url);
@@ -24,8 +24,15 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) =>
 	return acc;
 }, []));
 const site = path.resolve(args.site);
-const fake = path.resolve(args.fake);
 const out = path.resolve(args.out || '.');
+// A private copy of the fake install, plus the one executable the engine reads (it fingerprints generalszh.exe
+// at start up) which the importer must keep, next to a foreign Generals.exe which it must not.
+const fake = path.join(out, 'fake-install');
+rmSync(fake, { recursive: true, force: true });
+rmSync(path.join(out, 'profile'), { recursive: true, force: true });   // the persistence test needs a fresh profile
+mkdirSync(out, { recursive: true });
+cpSync(path.resolve(args.fake), fake, { recursive: true });
+writeFileSync(path.join(fake, 'ZeroHour', 'generalszh.exe'), 'MZ placeholder executable');
 const page_name = args.page || 'web_platform_test.html';
 const port = Number(args.port || 8099);
 const starter = args.starter ? path.resolve(args.starter) : null;
@@ -88,7 +95,7 @@ async function session(label, query) {
 
 	const gameState = await importFolder(page, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
 	check('zero hour imported', /Ready/.test(gameState), gameState);
-	check('videos/exe skipped (3 files expected)', /3 files/.test(gameState), gameState);
+	check('videos/exe skipped, engine exe kept (4 files expected)', /4 files/.test(gameState), gameState);
 	check('play still disabled with only one folder', await page.isDisabled('#play'));
 	const generalsState = await importFolder(page, '#pick-generals', 'state-generals', path.join(fake, 'Generals'));
 	check('generals imported', /Ready/.test(generalsState), generalsState);
@@ -109,7 +116,7 @@ async function session(label, query) {
 	});
 	console.log('OPFS: ' + tree.join(' '));
 	check('names lower-cased in OPFS', tree.includes('game/data/ini/gamedata.ini:26') && tree.includes('game/inizh.big:3000000'), tree.join(','));
-	check('exe/bik not copied', !tree.some((t) => /\.exe|\.bik/.test(t)));
+	check('only the engine exe is copied, no bik', tree.some((t) => /^game\/generalszh\.exe:/.test(t)) && !tree.some((t) => /generals\.exe|\.bik/.test(t.replace('generalszh.exe', ''))));
 
 	await page.click('#play');
 	await page.waitForFunction(() => document.getElementById('stage').hidden === false);

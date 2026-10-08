@@ -3,7 +3,7 @@
 
     python3 build_pack.py <out-dir> [--big] [--no-generate]
 
-Produces ``<out-dir>/StarterPack/`` laid out like a game install directory (all paths lower case,
+Produces ``<out-dir>/StarterPack/`` (``--name`` changes the directory name) laid out like a game install directory (all paths lower case,
 because the browser file system layer is case insensitive on top of lower case names), plus
 ``manifest.json`` which the web launcher downloads. The result is deterministic: building twice
 gives byte identical files (no timestamps, fixed seeds).
@@ -95,20 +95,22 @@ def write_manifest(files, out_root, big_name=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("out", help="output directory; the pack goes to <out>/StarterPack")
+    ap.add_argument("out", help="output directory; the pack goes to <out>/<name>")
+    ap.add_argument("--name", default="StarterPack",
+                    help="directory name of the pack inside <out> (the web launcher downloads 'starterpack')")
     ap.add_argument("--big", action="store_true", help="also write starterpack.big (all files in one archive)")
     ap.add_argument("--no-generate", action="store_true", help="only copy the hand written data files")
     args = ap.parse_args(argv)
 
     files = collect(generate=not args.no_generate)
-    out_root = os.path.join(os.path.abspath(args.out), "StarterPack")
+    out_root = os.path.join(os.path.abspath(args.out), args.name)
     write_tree(files, out_root)
     if args.big:
         from spk.bigfile import BigWriter
         big = BigWriter()
         for rel, data in sorted(files.items()):
             big.add(rel.replace("/", "\\"), data)
-        big.write(os.path.join(out_root, "..", "StarterPack.big"))
+        big.write(os.path.join(os.path.abspath(args.out), args.name + ".big"))
     manifest = write_manifest(files, out_root)
     print("StarterPack: %d files, %d bytes -> %s" % (len(files), manifest["totalSize"], out_root))
     return 0

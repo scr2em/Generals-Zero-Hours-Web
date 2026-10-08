@@ -12,6 +12,7 @@ import unittest
 
 import _path  # noqa: F401
 import build_pack
+import engine_requirements
 import validate_pack
 from spk.bigfile import read_big
 
@@ -39,11 +40,13 @@ class PackTest(unittest.TestCase):
 
     def test_manifest_lists_every_file_with_matching_hash(self):
         root = os.path.join(self.out, "StarterPack")
-        manifest = json.load(open(os.path.join(root, "manifest.json")))
+        with open(os.path.join(root, "manifest.json")) as f:
+            manifest = json.load(f)
         listed = {e["path"]: e for e in manifest["files"]}
         self.assertEqual(set(listed), set(self.files))
         for path, entry in listed.items():
-            data = open(os.path.join(root, *path.split("/")), "rb").read()
+            with open(os.path.join(root, *path.split("/")), "rb") as f:
+                data = f.read()
             self.assertEqual(entry["size"], len(data), path)
             self.assertEqual(entry["sha256"], hashlib.sha256(data).hexdigest(), path)
 
@@ -62,6 +65,9 @@ class PackTest(unittest.TestCase):
     def test_references_resolve(self):
         rc = validate_pack.main([self.out])
         self.assertEqual(rc, 0)
+
+    def test_every_ini_folder_the_engine_loads_is_provided(self):
+        self.assertEqual(engine_requirements.main([self.out]), 0)
 
     def test_big_build_contains_the_same_files(self):
         out = os.path.join(self.tmp, "big")

@@ -142,6 +142,29 @@ int main()
 		check(remove(cur) == 0, "remove crash log", errnoText());
 	}
 
+	// Cost of lookups: the engine looks files up on the OPFS before it asks the archives.
+	{
+		char name[64];
+		double t0 = emscripten_get_now();
+		int found = 0;
+		for (int i = 0; i < 500; ++i)
+		{
+			snprintf(name, sizeof(name), "Art/W3D/missing%d.w3d", i);
+			found += access(name, F_OK) == 0;
+		}
+		double t1 = emscripten_get_now();
+		for (int i = 0; i < 500; ++i)
+			found += access("Data/INI/GameData.ini", F_OK) == 0;
+		double t2 = emscripten_get_now();
+		for (int i = 0; i < 500; ++i)
+		{
+			snprintf(name, sizeof(name), "Art/W3D/missing%d.w3d", i % 10);
+			found += std::filesystem::exists(name);
+		}
+		double t3 = emscripten_get_now();
+		printf("FS: timing per call: missing file %.3f ms, existing file %.3f ms, missing file via std::filesystem %.3f ms (found %d)\n", (t1 - t0) / 500, (t2 - t1) / 500, (t3 - t2) / 500, found);
+	}
+
 	printf("FS: %d failures\nFS_DONE\n", s_failures);
 	return 0;
 }
