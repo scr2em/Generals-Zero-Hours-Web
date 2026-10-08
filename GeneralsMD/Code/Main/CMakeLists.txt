@@ -112,7 +112,10 @@ if(EMSCRIPTEN)
             "-sOFFSCREENCANVASES_TO_PTHREAD=#canvas"
             -sWASMFS
             -sALLOW_MEMORY_GROWTH
-            -sGROWABLE_ARRAYBUFFERS=1
+            # Not GROWABLE_ARRAYBUFFERS: Chrome's WebGL rejects views of resizable/growable
+            # buffers ("The provided ArrayBuffer value must not be resizable"), and WebD3D8
+            # uploads straight from HEAPU8.
+            -sGROWABLE_ARRAYBUFFERS=0
             -sINITIAL_MEMORY=512MB
             -sMAXIMUM_MEMORY=4GB
             -sSTACK_SIZE=8MB
