@@ -98,7 +98,7 @@ class FFmpegVideoPlayer : public VideoPlayer
 
 	protected:
 
-		VideoStreamInterface* createStream( File* file );
+		virtual VideoStreamInterface* createStream( File* file );		///< wraps an open movie file in a stream
 
 	public:
 

@@ -653,10 +653,10 @@ async function pickAndImport(key, preset = null) {
 				problem = 'That folder does not look like Zero Hour, and none of its subfolders does either (INIZH.big not found).';
 				return;
 			}
-			const gamePlan = importer.planImport(importer.subSource(source, found.game), 'game', { includeVideos: false });
+			const gamePlan = importer.planImport(importer.subSource(source, found.game), 'game', { includeVideos: mode === 'direct' });
 			// Identical archives (Music.big is in both installs) are copied once, from Zero Hour. Read in place there is nothing to save.
 			const basePlan = found.base
-				? importer.planImport(importer.subSource(source, found.base), 'generals', { includeVideos: false, skip: mode === 'copy' ? gamePlan.manifestExtra.bigs : undefined })
+				? importer.planImport(importer.subSource(source, found.base), 'generals', { includeVideos: mode === 'direct', skip: mode === 'copy' ? gamePlan.manifestExtra.bigs : undefined })
 				: null;
 			gamePlan.mode = mode;
 			if (basePlan) basePlan.mode = mode;
@@ -676,7 +676,7 @@ async function pickAndImport(key, preset = null) {
 			const sub = found.base ? importer.subSource(source, found.base) : source;
 			const own = status.game && status.game.bigs || [];
 			try {
-				const plan = importer.planImport(sub, 'generals', { includeVideos: false, skip: mode === 'copy' ? own : undefined });
+				const plan = importer.planImport(sub, 'generals', { includeVideos: mode === 'direct', skip: mode === 'copy' ? own : undefined });
 				plan.mode = mode;
 				await importPlan(plan, 'generals', importer.TARGETS.generals);
 				if (mode === 'direct' && !preset) await rememberFolders('generals', source, false);

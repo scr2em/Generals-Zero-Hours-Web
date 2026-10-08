@@ -56,10 +56,16 @@ public:
 	// Read & decode a packet from the container. Note that we could/should split this step
 	Bool decodePacket();
 	void seekFrame(int frame_idx);
+	/// Restarts the container and the decoders at the first frame. Needs a file that can seek.
+	Bool rewind();
+	/// True when the container has no more packets (or it cannot be read any further).
+	Bool atEnd() const { return m_eof; }
 	Bool hasAudio() const;
 
 	// Audio specific
 	Int getSizeForSamples(Int numSamples) const;
+	/// The index of the first audio stream in the file, -1 if there is none.
+	Int getAudioStreamIndex() const;
 	Int getNumChannels() const;
 	Int getSampleRate() const;
 	Int getBytesPerSample() const;
@@ -71,6 +77,8 @@ public:
 	Int getCurrentFrame() const;
 	Int getPixelFormat() const;
 	UnsignedInt getFrameTime() const;
+	/// The frame rate of the video as a fraction (frames = num / den per second); 0/1 if unknown.
+	void getFrameRate(Int &num, Int &den) const;
 
 private:
 	struct FFmpegStream
@@ -83,6 +91,7 @@ private:
 	};
 
 	static Int readPacket(void *opaque, UnsignedByte *buf, Int buf_size);
+	static Int64 seekPacket(void *opaque, Int64 offset, Int whence);
 	const FFmpegStream *findMatch(int type) const;
 
 	FFmpegFrameCallback 		m_frameCallback = nullptr; ///< Callback for frame processing
@@ -92,4 +101,5 @@ private:
 	std::vector<FFmpegStream> 	m_streams; ///< List of streams in the file
 	File 						*m_file = nullptr;	///< File handle for the file
 	void 						*m_userData = nullptr; ///< User data for the callback
+	Bool						m_eof = false; ///< No more packets to read
 };

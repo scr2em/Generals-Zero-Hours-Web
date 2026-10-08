@@ -47,6 +47,9 @@
 #include "W3DDevice/GameClient/W3DDisplayStringManager.h"
 #ifdef __EMSCRIPTEN__
 #include "GameClient/VideoPlayer.h"
+#ifdef RTS_HAS_FFMPEG
+#include "WebDevice/Video/WebVideoPlayer.h"
+#endif
 #include "WebDevice/GameClient/WebKeyboard.h"
 #else
 #include "VideoDevice/Bink/BinkVideoPlayer.h"
@@ -117,8 +120,12 @@ protected:
   /// Manager for display strings
 	virtual DisplayStringManager *createDisplayStringManager() override { return NEW W3DDisplayStringManager; }
 #if defined(__EMSCRIPTEN__)
-	// Videos are not played in the browser yet.
+#ifdef RTS_HAS_FFMPEG
+	// The Bink videos play through the FFmpeg of Dependencies/FFmpegWeb.
+	virtual VideoPlayerInterface *createVideoPlayer() override { return NEW WebVideoPlayer; }
+#else
 	virtual VideoPlayerInterface *createVideoPlayer() override { return NEW NullVideoPlayer; }
+#endif
 #elif defined(RTS_HAS_FFMPEG)
 	virtual VideoPlayerInterface *createVideoPlayer() { return NEW FFmpegVideoPlayer; }
 #else

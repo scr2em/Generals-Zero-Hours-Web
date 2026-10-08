@@ -290,3 +290,18 @@ if(RTS_BUILD_OPTION_FFMPEG)
     endif()
 endif()
 
+# The web build plays the Bink videos with a minimal FFmpeg built by Dependencies/FFmpegWeb. The
+# reused FFmpegFile reads the container through the engine's File API; WebVideoPlayer adds the
+# playback clock and sends the sound of the videos to the Web Audio device.
+if(EMSCRIPTEN AND TARGET deps_ffmpeg_web)
+    target_sources(corei_gameenginedevice_private INTERFACE
+        Include/VideoDevice/FFmpeg/FFmpegFile.h
+        Include/VideoDevice/FFmpeg/FFmpegVideoPlayer.h
+        Include/WebDevice/Video/WebVideoPlayer.h
+        Source/VideoDevice/FFmpeg/FFmpegFile.cpp
+        Source/VideoDevice/FFmpeg/FFmpegVideoPlayer.cpp
+        Source/WebDevice/Video/WebVideoPlayer.cpp
+    )
+    target_link_libraries(corei_gameenginedevice_private INTERFACE deps_ffmpeg_web)
+    target_compile_definitions(corei_gameenginedevice_public INTERFACE RTS_HAS_FFMPEG)
+endif()

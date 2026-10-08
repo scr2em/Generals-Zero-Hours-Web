@@ -336,7 +336,8 @@ async function session(label, query) {
 	await page.screenshot({ path: path.join(out, '9-direct-first-visit.png') });
 
 	const state = await importFolder(page, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
-	check('direct: zero hour is ready, read in place', /^Ready · 4 files/.test(state) && /not copied/.test(state), state);
+	// Read in place includes the videos (Data/English/Movies/Intro.bik): 4 files plus the movie.
+	check('direct: zero hour is ready, read in place', /^Ready · 5 files/.test(state) && /not copied/.test(state), state);
 	const base = await importFolder(page, '#pick-generals', 'state-generals', path.join(fake, 'Generals'));
 	check('direct: the original Generals files are added in place', /added/.test(base) && /read in place/.test(base), base);
 	check('direct: play enabled', !(await page.isDisabled('#play')));
@@ -344,7 +345,7 @@ async function session(label, query) {
 	let files = await opfs();
 	check('direct: no game file was copied into browser storage', !files.some((f) => /^(game|generals)\//.test(f)), files.join(','));
 	const manifest = await page.evaluate(async () => JSON.parse(await (await (await (await navigator.storage.getDirectory()).getFileHandle('game.manifest.json')).getFile()).text()));
-	check('direct: the manifest records the mode', manifest.mode === 'direct' && manifest.files === 4, JSON.stringify(manifest).slice(0, 160));
+	check('direct: the manifest records the mode', manifest.mode === 'direct' && manifest.files === 5, JSON.stringify(manifest).slice(0, 160));
 	await page.screenshot({ path: path.join(out, '10-direct-ready.png') });
 
 	await page.click('#play');
@@ -352,7 +353,7 @@ async function session(label, query) {
 	await page.waitForFunction(() => window.__zh.logLines.some((l) => l.includes('TEST: ready')), null, { timeout: 30000 }).catch(() => {});
 	const log = () => logs.filter((l) => l.startsWith('TEST:') || /direct mode/.test(l)).join('\n');
 	check('direct: engine thread runs', /TEST: ready/.test(log()), log().slice(-300));
-	check('direct: the engine mounted the page\'s files', /WebPlatform: direct mode, 5 files/.test(log()) && /TEST: mount=0/.test(log()), log().slice(0, 300));
+	check('direct: the engine mounted the page\'s files', /WebPlatform: direct mode, 6 files/.test(log()) && /TEST: mount=0/.test(log()), log().slice(0, 300));
 	check('direct: file read via other case', /TEST: read \d+ bytes: ; Hello from GameData.ini/.test(log()), log().split('\n').filter((l) => /read|cannot/.test(l)).join('|'));
 	check('direct: directory listing (lower case names)', /TEST: \/game\/inizh.big/.test(log()) && /TEST: \/generals\/ini.big/.test(log()), '');
 	check('direct: user data still goes to OPFS', /TEST: userdata runs=1/.test(log()));
