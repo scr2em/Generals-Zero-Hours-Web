@@ -14,6 +14,10 @@
 **	You should have received a copy of the GNU General Public License
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-/* WebAssembly port: everything this header provides lives in oaidl.h. */
-#pragma once
-#include "oaidl.h"
+/*
+** WebAssembly port: the interface id MIDL generates into BrowserDispatch_i.c.
+*/
+#include "EABrowserDispatch/BrowserDispatch.h"
+
+// BC834510-C5BC-4B90-8C9A-0E4B1998796F
+extern "C" const IID IID_IBrowserDispatch = { 0xBC834510, 0xC5BC, 0x4B90, { 0x8C, 0x9A, 0x0E, 0x4B, 0x19, 0x98, 0x79, 0x6F } };

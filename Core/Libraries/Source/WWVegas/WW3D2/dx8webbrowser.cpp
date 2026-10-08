@@ -34,7 +34,49 @@
 #include "ww3d.h"
 #include "dx8wrapper.h"
 
-#if ENABLE_EMBEDDED_BROWSER
+#if ENABLE_EMBEDDED_BROWSER && defined(__EMSCRIPTEN__)
+
+// The browser has no embedded Internet Explorer: there is never a browser to
+// create, so everything does nothing, as when the browser control is not
+// installed.
+
+HWND		DX8WebBrowser::hWnd = nullptr;
+
+bool DX8WebBrowser::Initialize(const char*, const char*, const char*, const char*)
+{
+	return false;
+}
+
+void DX8WebBrowser::Shutdown()
+{
+}
+
+void DX8WebBrowser::Update()
+{
+}
+
+void DX8WebBrowser::Render(int)
+{
+}
+
+void DX8WebBrowser::CreateBrowser(const char*, const char*, int, int, int, int, int, LONG, LPDISPATCH)
+{
+}
+
+void DX8WebBrowser::DestroyBrowser(const char*)
+{
+}
+
+bool DX8WebBrowser::Is_Browser_Open(const char*)
+{
+	return false;
+}
+
+void DX8WebBrowser::Navigate(const char*, const char*)
+{
+}
+
+#elif ENABLE_EMBEDDED_BROWSER
 
 #if defined(_MSC_VER) && _MSC_VER < 1300
 

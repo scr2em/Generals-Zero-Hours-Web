@@ -29,4 +29,12 @@ if(WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows")
     endif()
 endif()
 
-target_include_directories(core_browserdispatch INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/..)
+if(IS_WEB_BUILD)
+    # No IDL compiler on the web: the interface is declared by hand.
+    add_library(core_browserdispatchweb STATIC web/BrowserDispatch_i.cpp)
+    target_include_directories(core_browserdispatchweb PUBLIC ${CMAKE_CURRENT_LIST_DIR}/web)
+    target_link_libraries(core_browserdispatchweb PRIVATE deps_config)
+    target_link_libraries(core_browserdispatch INTERFACE core_browserdispatchweb)
+else()
+    target_include_directories(core_browserdispatch INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/..)
+endif()

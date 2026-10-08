@@ -40,6 +40,8 @@ public:
     std::vector<DWORD> declaration;
     float defConstants[VS_CONSTANTS][4]; ///< values of `def c#` and D3DVSD_CONST
     uint8_t defMask[VS_CONSTANTS];
+    bool writesPointSize = false;
+    bool writesFog = false;
     DWORD handle = 0;
 };
 
