@@ -47,10 +47,12 @@ def main_menu():
     # campaigns by name; the ones the starter content does not use stay hidden and empty.
     hidden_buttons = [button("Button%s" % n, (0, 0, 2, 2), None, hidden=True) for n in
                       ("USARecentSave", "USALoadGame", "GLARecentSave", "GLALoadGame", "ChinaRecentSave", "ChinaLoadGame")]
-    main_panel = panel("MapBorder2", (56, 196, 316, 396), fill=PANEL, border=AMBER, hidden=True, children=[
+    main_panel = panel("MapBorder2", (56, 196, 316, 456), fill=PANEL, border=AMBER, hidden=True, children=[
         button("ButtonSkirmish", (76, 218, 296, 262), text("GUI:MenuSkirmish", "Skirmish"), size=16),
+        # the network lobby: players who joined the same room on the launcher page are on one virtual LAN
+        button("ButtonNetwork", (76, 274, 296, 318), text("GUI:MenuNetwork", "Play with friends"), size=16),
         button("ButtonExit", (76, 330, 296, 374), text("GUI:MenuExit", "Exit"), size=16),
-        label("LabelMenuHint", (76, 280, 296, 322), text("GUI:MenuHint", "One original faction, one map,\nplayed against the computer."),
+        label("LabelMenuHint", (76, 388, 296, 440), text("GUI:MenuHint", "One original faction, one map,\nplayed against the computer\nor, in a room, against friends."),
               size=10, style=MUTED_STYLE, centered=True),
     ])
     parent = Window("USER", "MainMenuParent", (0, 0, 800, 600), status=("ENABLED",),

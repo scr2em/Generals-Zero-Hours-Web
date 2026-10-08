@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>web_net_test</title>
+<style>
+  body { margin: 8px; background: #222; color: #ddd; font: 12px monospace; }
+  pre { margin: 4px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h3>web_net_test</h3>
+<div id="status">starting</div>
+<pre id="log"></pre>
+<script src="zhnet.js"></script>
+<script>
+  // ?room=CODE&signal=ws://host:port/signal&name=X&relay=1 : joins the room first, then starts the program.
+  var params = new URLSearchParams(location.search);
+  var logEl = document.getElementById('log');
+  function logLine(s) { console.log(s); logEl.textContent += s + '\n'; }
+  var Module = {
+    print: logLine, printErr: logLine,
+    preRun: [function () {
+      Module.addRunDependency('room');
+      if (params.get('relay') === '1') zhNet.debug.forceRelay = true;
+      zhNet.join(params.get('room'), { name: params.get('name') || undefined, server: params.get('signal') || undefined })
+        .then(function (state) { document.getElementById('status').textContent = 'joined ' + state.room + ' as ' + state.self.ip; })
+        .catch(function (e) { logLine('JOIN FAILED ' + e.message); })
+        .then(function () { Module.removeRunDependency('room'); });
+    }],
+  };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

@@ -66,6 +66,7 @@
 #include "GameLogic/GameLogic.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/Keyboard.h"
+#include "GameClient/IMEManager.h"
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "WebDevice/Common/WebGameEngine.h"
 #include "WebDevice/Platform/WebPlatform.h"
@@ -102,6 +103,12 @@ static intptr_t WebWndProc( uintptr_t hWnd, uint32_t message, uintptr_t wParam, 
 
 	try
 	{
+		// First let the IME manager do its stuff: it turns WM_CHAR into the characters of the text entry fields.
+		if ( TheIMEManager )
+		{
+			if ( TheIMEManager->serviceIMEMessage( (HWND)hWnd, message, (Int)wParam, (Int)lParam ) )
+				return TheIMEManager->result();
+		}
 
 		// handle all window messages
 		switch( message )

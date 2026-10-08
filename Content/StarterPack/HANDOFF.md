@@ -5,6 +5,14 @@ For an AI coding agent or developer who has never seen the session that produced
 
 ## Status and changelog (newest first; keep this section current)
 
+* **Network (LAN) menus, for playing with friends over the virtual LAN of the web port's rooms**
+  (`GeneralsMD/Code/Main/webnet/README.md`). New `gen/wnd_lan.py`: `LanLobbyMenu.wnd`, `LanGameOptionsMenu.wnd`,
+  `LanMapSelectMenu.wnd`, `GameInfoWindow.wnd` (the box next to the lobby's game list) and `DisconnectScreen.wnd` (the
+  code dereferences its buttons without a check, so a network game that lost a player would have crashed without it),
+  plus the `GUI:`/`LAN:`/`Network:` strings the engine's LAN code fetches. The main menu got `ButtonNetwork`
+  ("Play with friends", `MainMenu.cpp` pushes the lobby for it). Verified with two browsers: lobby, chat, host/join, start,
+  lockstep with equal checksums (`webnet/test/lan_flow.mjs`). Not provided: `NetworkDirectConnect.wnd` (the lobby's
+  hidden `ButtonDirectConnect` stands in; the room is the network).
 * **Session 1, later: the pack runs in the engine.** With the runtime agent's display fixes the engine now shows the
   pack's main menu, the skirmish setup screen finds "Ironwood Crossing", Start loads the map, both sides get their
   base, the AI starts building (`Forcing build of power plant`), the control bar draws and takes a worker. Driven with

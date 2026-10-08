@@ -98,6 +98,8 @@ if(EMSCRIPTEN)
     # "Read in place" mode (see webdirect/INTEGRATION.md): a WasmFS backend that serves the files of
     # the folder the player picked, without copying them into OPFS.
     set(ZH_DIRECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/webdirect)
+    # The virtual LAN over WebRTC (webnet/README.md): the page's network module; the signaling server is in webnet/server.
+    set(ZH_NET_DIR ${CMAKE_CURRENT_SOURCE_DIR}/webnet)
 
     # The linker settings shared by the game and the platform test.
     #
@@ -156,6 +158,7 @@ if(EMSCRIPTEN)
                 ${ZH_WEB_DIR}/coi-serviceworker.js
                 ${ZH_WEB_DIR}/serve.py
                 ${ZH_DIRECT_DIR}/direct-source.js
+                ${ZH_NET_DIR}/client/zhnet.js
                 $<TARGET_FILE_DIR:${target}>
             COMMENT "Copying the web page scripts"
         )

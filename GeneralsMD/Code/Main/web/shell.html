@@ -165,6 +165,26 @@
 	.fine { margin: 16px 0 0; color: var(--muted); font-size: 12px; }
 	.link { background: none; border: none; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
 
+	/* ---- multiplayer room ---- */
+	.netform { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; padding: 12px 0 4px; border-top: 1px solid var(--border); }
+	.netform label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+	.netform input, .netinvite input {
+		font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+		border-radius: 8px; padding: 7px 10px; min-width: 0;
+	}
+	.netform input:focus-visible, .netinvite input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	#net-room { width: 9em; text-transform: uppercase; letter-spacing: 1px; }
+	#net-name { width: 11em; }
+	#state-net { margin: 6px 0 10px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+	#state-net.ok { color: var(--good); }
+	#state-net.err { color: var(--bad); }
+	.netinvite { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+	.netinvite input { flex: 1; font-size: 12px; }
+	#net-badge {
+		align-self: center; padding: 4px 10px; border-radius: 12px;
+		background: rgba(22, 27, 34, 0.85); color: #e6edf3; font-size: 12px;
+	}
+
 	/* ---- stage ---- */
 	#stage {
 		position: fixed;
@@ -279,6 +299,24 @@
 			</div>
 		</section>
 
+		<section class="choice" id="choice-net" aria-labelledby="net-title">
+			<h2 id="net-title">Play with friends <span class="badge">LAN over the internet</span></h2>
+			<p>Everyone who joins the same room is on one virtual LAN. In the game, open Multiplayer &rarr; Network to see each
+				other&rsquo;s games, chat and play. Send your friends the invite link once you are in.</p>
+			<div class="netform">
+				<label>Room code<input id="net-room" maxlength="16" placeholder="e.g. K7M2Q" autocomplete="off" spellcheck="false"></label>
+				<label>Your name<input id="net-name" maxlength="24" placeholder="Player" autocomplete="nickname"></label>
+				<button type="button" id="net-join">Join room</button>
+				<button type="button" id="net-create" class="secondary">New room</button>
+				<button type="button" id="net-leave" class="secondary" hidden>Leave</button>
+			</div>
+			<div id="state-net" aria-live="polite">Not connected</div>
+			<div class="netinvite" id="net-invite" hidden>
+				<span>Invite link</span><input id="net-link" readonly aria-label="Invite link">
+				<button type="button" id="net-copy">Copy</button>
+			</div>
+		</section>
+
 		<div class="progress" id="progress" hidden>
 			<div class="bar"><div id="bar"></div></div>
 			<div class="progress-text" id="progress-text"></div>
@@ -313,6 +351,7 @@
 	<div id="loading">Loading&hellip;</div>
 	<div id="toolbar">
 		<span id="mode-badge" hidden>Free starter content &middot; original placeholder game</span>
+		<span id="net-badge" hidden></span>
 		<button type="button" id="fullscreen" title="Toggle fullscreen">Fullscreen</button>
 		<button type="button" id="quit" title="Leave the game">Exit</button>
 	</div>
@@ -330,6 +369,7 @@
 <!-- Emscripten puts the script tag of the game here; it is started by the Play button. -->
 <template id="game-script">{{{ SCRIPT }}}</template>
 
+<script src="zhnet.js"></script>
 <script type="module">
 import * as importer from './importer.js';
 import * as direct from './direct-source.js';
@@ -714,6 +754,100 @@ $('clear').onclick = async () => {
 };
 
 // ---------------------------------------------------------------------------------------------
+// Multiplayer room (webnet/client/zhnet.js): a virtual LAN over WebRTC, see webnet/README.md
+// ---------------------------------------------------------------------------------------------
+
+const net = window.zhNet;
+let netBusy = false;
+
+function setNetState(text, kind) {
+	$('state-net').textContent = text;
+	$('state-net').className = kind || '';
+}
+
+function roomLink(code) {
+	const url = new URL(location.href);
+	url.search = '';
+	url.hash = '';
+	url.searchParams.set('room', code);
+	if (params.get('signal')) url.searchParams.set('signal', params.get('signal'));
+	return url.toString();
+}
+
+function renderNet() {
+	if (!net) { $('choice-net').hidden = true; return; }
+	const st = net.state;
+	const online = st.status === 'online';
+	const connecting = st.status === 'connecting';
+	$('net-join').hidden = online;
+	$('net-create').hidden = online;
+	$('net-leave').hidden = !online;
+	$('net-join').disabled = $('net-create').disabled = connecting || netBusy;
+	$('net-room').disabled = $('net-name').disabled = online || connecting;
+	$('net-invite').hidden = !online;
+	if (online) {
+		const others = st.peers.map((p) => p.name + (p.mode === 'p2p' ? '' : ' (via the server)')).join(', ');
+		setNetState('Room ' + st.room + ' \u00b7 you are ' + st.self.ip + ' as \u201c' + st.self.name + '\u201d \u00b7 ' +
+			(st.peers.length ? st.peers.length + (st.peers.length === 1 ? ' other player: ' : ' other players: ') + others : 'nobody else is here yet'), 'ok');
+		$('net-room').value = st.room;
+		$('net-link').value = roomLink(st.room);
+		$('net-badge').hidden = false;
+		$('net-badge').textContent = 'Room ' + st.room + ' \u00b7 ' + (st.peers.length + 1) + (st.peers.length ? ' players' : ' player');
+		if (st.error) setNetState(st.error, 'err');
+	} else if (connecting) {
+		setNetState('Connecting\u2026', '');
+	} else if (st.status === 'failed') {
+		setNetState(st.error || 'Could not join the room', 'err');
+		$('net-badge').hidden = true;
+	} else {
+		setNetState('Not connected', '');
+		$('net-badge').hidden = true;
+	}
+}
+
+async function joinRoom(code) {
+	if (!net || netBusy) return;
+	netBusy = true;
+	renderNet();
+	const name = $('net-name').value.trim();
+	try { localStorage.setItem('zh-net-name', name); } catch (e) { /* ignore */ }
+	try {
+		const st = await net.join(code, { name, server: params.get('signal') || undefined });
+		const link = new URL(location.href);
+		link.searchParams.set('room', st.room);
+		history.replaceState(null, '', link);
+	} catch (e) {
+		pushLog('Room: ' + (e && e.message || e), false);
+	} finally {
+		netBusy = false;
+		renderNet();
+	}
+}
+
+if (net) {
+	net.on('change', renderNet);
+	try { $('net-name').value = params.get('name') || localStorage.getItem('zh-net-name') || ''; } catch (e) { /* ignore */ }
+	if (params.get('room')) $('net-room').value = params.get('room').toUpperCase();
+	$('net-name').oninput = () => net.setName($('net-name').value.trim());
+	$('net-join').onclick = () => joinRoom($('net-room').value.trim());
+	$('net-room').onkeydown = (e) => { if (e.key === 'Enter') joinRoom($('net-room').value.trim()); };
+	$('net-create').onclick = () => joinRoom('');
+	$('net-leave').onclick = () => {
+		net.leave();
+		const link = new URL(location.href);
+		link.searchParams.delete('room');
+		history.replaceState(null, '', link);
+	};
+	$('net-copy').onclick = () => navigator.clipboard && navigator.clipboard.writeText($('net-link').value);
+	net.setName($('net-name').value.trim());
+	renderNet();
+	// A shared invite link (?room=CODE) joins at once: no click is needed for that.
+	if (params.get('room')) joinRoom($('net-room').value.trim());
+} else {
+	$('choice-net').hidden = true;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Running the game
 // ---------------------------------------------------------------------------------------------
 
@@ -811,7 +945,11 @@ function startGame() {
 	document.body.classList.add('show-toolbar');
 	setTimeout(() => document.body.classList.remove('show-toolbar'), 3000);
 }
-$('play').onclick = startGame;
+$('play').onclick = async () => {
+	// A room that is still being joined is joined before the engine asks for its network address.
+	for (let i = 0; net && net.state.status === 'connecting' && i < 100; ++i) await new Promise((r) => setTimeout(r, 100));
+	startGame();
+};
 
 // The game module (and with it the Web Audio context) is only loaded from the Play click, so the
 // context starts running. If the browser still suspended it (autoplay policy), any later click or key
@@ -829,7 +967,7 @@ try {
 } catch (e) { /* ignore */ }
 
 // For tests and automation.
-window.__zh = { importer, direct, startGame, logLines, refreshStatus, fail: (text) => pushLog(text, true) };
+window.__zh = { importer, direct, startGame, logLines, refreshStatus, joinRoom, fail: (text) => pushLog(text, true) };
 
 refreshStatus().catch((e) => pushLog('Status: ' + e, false));
 </script>

@@ -27,6 +27,9 @@
 #include "GameNetwork/IPEnumeration.h"
 #include "GameNetwork/networkutil.h"
 #include "GameClient/ClientInstance.h"
+#ifdef __EMSCRIPTEN__
+#include "GameNetwork/WebNet.h"
+#endif
 
 IPEnumeration::IPEnumeration()
 {
@@ -72,6 +75,16 @@ EnumeratedIP * IPEnumeration::getAddresses()
 		}
 		m_isWinsockInitialized = true;
 	}
+
+#ifdef __EMSCRIPTEN__
+	// The browser's only network is the virtual LAN of the room the player joined: its one address is the
+	// player's virtual address (10.77.0.n), or loopback without a room. See GameNetwork/WebNet.h.
+	{
+		const UnsignedInt webIP = WebNet_GetLocalIP();
+		addNewIP((UnsignedByte)(webIP >> 24), (UnsignedByte)(webIP >> 16), (UnsignedByte)(webIP >> 8), (UnsignedByte)webIP);
+		return m_IPlist;
+	}
+#endif
 
 	// get the local machine's host name
 	char hostname[256];
@@ -181,6 +194,11 @@ AsciiString IPEnumeration::getMachineName()
 		}
 		m_isWinsockInitialized = true;
 	}
+
+#ifdef __EMSCRIPTEN__
+	// The name chosen on the launcher page; players in one room must not all be called "emscripten".
+	return AsciiString(WebNet_GetPlayerName());
+#endif
 
 	// get the local machine's host name
 	char hostname[256];

@@ -227,6 +227,7 @@ if(EMSCRIPTEN)
         Include/WebDevice/Audio/WebAudioMix.h
         Include/WebDevice/Common/WebNullAudioManager.h
         Include/WebDevice/GameClient/WebKeyboard.h
+        Include/WebDevice/Network/WebNetShared.h
         Include/WebDevice/Platform/WebPlatform.h
         Source/WebDevice/Audio/WebAudioBackend.cpp
         Source/WebDevice/Audio/WebAudioDecoder.cpp
@@ -234,6 +235,7 @@ if(EMSCRIPTEN)
         Source/WebDevice/Common/WebGameEngine.cpp
         Source/WebDevice/Common/WebNullAudioManager.cpp
         Source/WebDevice/GameClient/WebKeyboard.cpp
+        Source/WebDevice/Network/WebNet.cpp
         Source/WebDevice/Platform/WebKeyTable.cpp
         Source/WebDevice/Platform/WebPlatform.cpp
         Source/WebDevice/Platform/WebStorage.cpp
@@ -261,6 +263,8 @@ if(EMSCRIPTEN)
     target_link_libraries(corei_gameenginedevice_private INTERFACE deps_minimp3)
     # The audio device's own tests (web_audio_test and friends), not part of the game build.
     add_subdirectory(Source/WebDevice/Audio EXCLUDE_FROM_ALL)
+    # The transport level test of the browser network (web_net_test), see GeneralsMD/Code/Main/webnet/README.md.
+    add_subdirectory(Source/WebDevice/Network EXCLUDE_FROM_ALL)
 endif()
 
 target_link_libraries(corei_gameenginedevice_public INTERFACE
@@ -285,3 +289,4 @@ if(RTS_BUILD_OPTION_FFMPEG)
         target_compile_definitions(corei_gameenginedevice_public INTERFACE RTS_HAS_FFMPEG)
     endif()
 endif()
+
