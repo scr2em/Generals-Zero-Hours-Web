@@ -9,6 +9,7 @@
 // --steps    space separated steps; coordinates are the 800x600 design resolution of the menus, mapped onto the canvas
 //              m:X,Y   move the mouse          c:X,Y   click (move, press, release)       d:X,Y   double click
 //              w:SEC   wait                     k:Key   press a key (Playwright names: Escape, Enter, KeyA)
+//              r:X1,Y1,X2,Y2  drag a selection box   R:X,Y  right click (move/attack order)
 //              s:NAME  screenshot to <out>/NAME.png      l:PATTERN  wait until a log line matches the regex (30 s)
 //              n       print the new log lines (done after every step anyway; this just marks a point)
 // Use tools/wnd_pos.py <pack> <layout.wnd> to find the centre of a button.
@@ -103,6 +104,11 @@ for (const step of opt.steps.split(/\s+/).filter(Boolean)) {
 		case 'm': { const p = await point(...xy()); await page.mouse.move(p.x, p.y, { steps: 4 }); break; }
 		case 'c': { const p = await point(...xy()); await page.mouse.move(p.x, p.y, { steps: 4 }); await page.waitForTimeout(150);
 			await page.mouse.down(); await page.waitForTimeout(80); await page.mouse.up(); break; }
+		case 'r': { const [x1, y1, x2, y2] = xy(); const a = await point(x1, y1), b = await point(x2, y2);
+			await page.mouse.move(a.x, a.y, { steps: 3 }); await page.mouse.down(); await page.mouse.move(b.x, b.y, { steps: 8 });
+			await page.waitForTimeout(100); await page.mouse.up(); break; }
+		case 'R': { const p = await point(...xy()); await page.mouse.move(p.x, p.y, { steps: 4 }); await page.waitForTimeout(150);
+			await page.mouse.down({ button: 'right' }); await page.waitForTimeout(80); await page.mouse.up({ button: 'right' }); break; }
 		case 'd': { const p = await point(...xy()); await page.mouse.move(p.x, p.y, { steps: 4 }); await page.mouse.dblclick(p.x, p.y); break; }
 		case 'w': await page.waitForTimeout(Number(arg) * 1000); break;
 		case 'k': await page.keyboard.press(arg); break;

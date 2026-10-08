@@ -43,7 +43,7 @@ def escape_text(text):
 class StringTable:
     """An ordered collection of (label -> text) entries."""
 
-    LABEL_RE = re.compile(r"^[A-Za-z0-9_:.\- ]+$")
+    LABEL_RE = re.compile(r"^[A-Za-z0-9_:.?\- ]+$")
 
     def __init__(self):
         self.entries = {}

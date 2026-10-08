@@ -463,17 +463,6 @@ void RTS3DScene::Visibility_Check(CameraClass * camera)
 			} else {
 
 				bool isVisible=!camera->Cull_Sphere(robj->Get_Bounding_Sphere());
-				{ // TEMP-DEBUG (starter content bring-up)
-					static int s_n = 0;
-					DrawableInfo *di = (DrawableInfo *)robj->Get_User_Data();
-					if (s_n < 40 && di && di->m_drawable && di->m_drawable->getObject() && !di->m_drawable->isKindOf(KINDOF_SHRUBBERY))
-					{
-						++s_n;
-						SphereClass sp = robj->Get_Bounding_Sphere();
-						DEBUG_LOG(("SPDBG vis %s visible=%d sphere=%f,%f,%f r=%f hiddenEff=%d obscured=%d", "obj", (int)isVisible,
-							sp.Center.X, sp.Center.Y, sp.Center.Z, sp.Radius, (int)di->m_drawable->isDrawableEffectivelyHidden(), (int)di->m_drawable->getFullyObscuredByShroud()));
-					}
-				}
 
 				if (isVisible)
 				{

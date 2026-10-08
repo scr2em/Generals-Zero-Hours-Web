@@ -842,6 +842,7 @@ void ControlBar::updateContextCommand()
 
 		// is the command available
 		CommandAvailability availability = getCommandAvailability( command, obj, win );
+		if (command->getCommandType() == GUI_COMMAND_DOZER_CONSTRUCT) DEBUG_LOG(("SPDBG cmd %s avail=%d buildable=%d", command->getName().str(), (int)availability, command->getThingTemplate() ? (int)command->getThingTemplate()->getBuildable() : -1)); // TEMP-DEBUG
 
 		// enable/disable the window control
 		switch( availability )

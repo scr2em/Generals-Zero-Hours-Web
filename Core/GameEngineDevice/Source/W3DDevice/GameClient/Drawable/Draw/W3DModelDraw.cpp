@@ -2042,17 +2042,6 @@ void W3DModelDraw::adjustTransformMtx(Matrix3D& mtx) const
 //-------------------------------------------------------------------------------------------------
 void W3DModelDraw::doDrawModule(const Matrix3D* transformMtx)
 {
-	{ // TEMP-DEBUG (starter content bring-up)
-		static int s_n = 0;
-		if (s_n < 12 && getDrawable()->getObject() && getDrawable()->getObject()->getControllingPlayer() && !getDrawable()->getObject()->isKindOf(KINDOF_SHRUBBERY))
-		{
-			++s_n;
-			Real x = transformMtx->Get_X_Translation(), y = transformMtx->Get_Y_Translation(), z = transformMtx->Get_Z_Translation();
-			DEBUG_LOG(("SPDBG draw %s ro=%p hidden=%d scene=%p pos=%f,%f,%f class=%d subs=%d name=%s", getDrawable()->getTemplate()->getName().str(), m_renderObject,
-				m_renderObject ? (int)m_renderObject->Is_Hidden() : -1, m_renderObject ? m_renderObject->Peek_Scene() : nullptr, x, y, z,
-				m_renderObject ? (int)m_renderObject->Class_ID() : -1, m_renderObject ? m_renderObject->Get_Num_Sub_Objects() : -1, m_renderObject ? m_renderObject->Get_Name() : "-"));
-		}
-	}
 	// update whether or not we should be animating.
 	setPauseAnimation( !getDrawable()->getShouldAnimate(getW3DModelDrawModuleData()->m_animationsRequirePower) );
 

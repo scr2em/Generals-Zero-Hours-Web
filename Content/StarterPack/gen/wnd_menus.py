@@ -127,12 +127,13 @@ def skirmish_options():
     children = []
     children.append(label("StaticTextTitle", (24, 14, 520, 52), text("GUI:SkirmishTitle", "Skirmish"), size=26, bold=True,
                           style=AMBER_STYLE))
+    # the backdrop goes first: later siblings draw on top of earlier ones, and it used to hide the headings
+    children.append(panel("RowsBackdrop", (16, 116, 530, ROW_Y0 + ROW_H * MAX_SLOTS + 6), fill=PANEL, border=AMBER_DIM))
     # column headings
     children.append(label("StaticTextPlayers", (24, 122, 190, 144), text("GUI:Players", "Player"), size=11, style=MUTED_STYLE))
     children.append(label("StaticTextFaction", (200, 122, 330, 144), text("GUI:Faction", "Faction"), size=11, style=MUTED_STYLE))
     children.append(label("StaticTextColor", (340, 122, 430, 144), text("GUI:Color", "Color"), size=11, style=MUTED_STYLE))
     children.append(label("StaticTextTeam", (440, 122, 520, 144), text("GUI:Team", "Team"), size=11, style=MUTED_STYLE))
-    children.append(panel("RowsBackdrop", (16, 116, 530, ROW_Y0 + ROW_H * MAX_SLOTS + 6), fill=PANEL, border=AMBER_DIM))
     for i in range(MAX_SLOTS):
         y = ROW_Y0 + i * ROW_H
         if i == 0:
