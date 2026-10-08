@@ -93,6 +93,7 @@ class WebAudioFileCache
 		WebCachedAudio *openFile( AudioEventRTS *eventToOpenFrom );
 		void closeFile( WebCachedAudio *fileToClose );
 		void setMaxSize( UnsignedInt size );
+		void releaseAll();	///< forgets all sounds (for when the device goes away); none may be open
 
 		UnsignedInt getCurrentlyUsedSize() const { return m_currentlyUsedSize; }
 		UnsignedInt getMaxSize() const { return m_maxSize; }

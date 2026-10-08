@@ -18,6 +18,13 @@
     print: logLine, printErr: logLine,
     // ?args=chain,streams runs only those scenarios (decode volume positional lowpass chain suspend streams)
     arguments: (new URLSearchParams(location.search).get('args') || '').split(',').filter(Boolean),
+    // ?wait=1 holds the start of the program until the first click, like the launcher's Play button does
+    // (the click is the user gesture that lets the page play audio from then on).
+    preRun: [function () {
+      if (new URLSearchParams(location.search).get('wait') !== '1') return;
+      Module.addRunDependency('play-click');
+      document.addEventListener('pointerdown', function () { Module.removeRunDependency('play-click'); }, { once: true });
+    }],
   };
 </script>
 {{{ SCRIPT }}}

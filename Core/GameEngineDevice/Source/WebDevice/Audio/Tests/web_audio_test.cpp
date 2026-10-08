@@ -506,6 +506,23 @@ static void testLowPass()
 static void testLatency()
 {
 	printf("== latency from queueing a sound to the first rendered sample\n");
+	{
+		// What one synchronous call to the main thread costs (every OpenAL call of Emscripten's library is one),
+		// against queueing a command for the next batch.
+		const int n = 300;
+		double t0 = nowMs();
+		for (int i = 0; i < n; ++i)
+			MAIN_THREAD_EM_ASM_INT({ return 1; });
+		const double syncUs = (nowMs() - t0) * 1000.0 / n;
+		WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
+		t0 = nowMs();
+		for (int i = 0; i < 20000; ++i)
+			WebAudio_VoiceSetGain(v, 0.5f);
+		const double queueUs = (nowMs() - t0) * 1000.0 / 20000;
+		WebAudio_DestroyVoice(v, 0.0f);
+		WebAudio_Flush();
+		printf("  a synchronous call to the main thread: %.0f us, a queued command: %.2f us\n", syncUs, queueUs);
+	}
 	Sound s = makeTones(440, 0, 1.0, 44100);
 	double worst = 0, sum = 0;
 	const int runs = 6;
@@ -762,7 +779,7 @@ static void testSuspendedContext()
 static void testHeapGrowth()
 {
 	printf("== heap growth while playing\n");
-	Sound s = makeTones(440, 0, 4.0, 44100);
+	Sound s = makeTones(440, 0, 20.0, 22050);	// long enough for slow growth
 	WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_3D);
 	WebAudio_VoiceSetGain(v, 1.0f);
 	WebAudio_VoiceSetPosition(v, 50, 100, 0);
@@ -939,23 +956,122 @@ static void testRestart()
 	CHECK(WebAudio_CreateBuffer(nullptr, 0, 0, 0) == 0, "no buffers without a device");
 	WebAudio_Flush();	// harmless
 
-	MAIN_THREAD_EM_ASM({ zhTest.reset(); });
-	CHECK(WebAudio_Init(48000) == 1, "init again");
-	CHECK(MAIN_THREAD_EM_ASM_INT({ return zhTest.startRecording(); }) == 1, "recording tap");
-	CHECK(waitFor([](void *) { return WebAudio_GetState() == WEBAUDIO_STATE_RUNNING && MAIN_THREAD_EM_ASM_INT({ return zhTest.ready; }) == 1; }, nullptr, 3000), "running again");
-	CHECK(WebAudio_GetSampleRate() == 48000, "new sample rate %d", WebAudio_GetSampleRate());
-	Sound s = makeTones(440, 0, 1.0, 44100);	// a 44.1 kHz sound on a 48 kHz context
-	WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
-	WebAudio_VoiceSetGain(v, 1.0f);
-	WebAudio_VoiceQueue(v, s.buffer, 0, 0);
+	const int rates[2] = { 48000, 44100 };
+	for (int rate : rates)
+	{
+		MAIN_THREAD_EM_ASM({ zhTest.reset(); });
+		CHECK(WebAudio_Init(rate) == 1, "init again");
+		CHECK(MAIN_THREAD_EM_ASM_INT({ return zhTest.startRecording(); }) == 1, "recording tap");
+		CHECK(waitFor([](void *) { return WebAudio_GetState() == WEBAUDIO_STATE_RUNNING && MAIN_THREAD_EM_ASM_INT({ return zhTest.ready; }) == 1; }, nullptr, 3000), "running again");
+		CHECK(WebAudio_GetSampleRate() == rate, "new sample rate %d", WebAudio_GetSampleRate());
+		Sound s = makeTones(440, 0, 1.0, 44100);	// a 44.1 kHz sound on a 48 kHz context
+		WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
+		WebAudio_VoiceSetGain(v, 1.0f);
+		WebAudio_VoiceQueue(v, s.buffer, 0, 0);
+		WebAudio_Flush();
+		sleepMs(400);
+		CHECK(fabs(tone(0, 440, 200) - 0.244) < 0.02, "plays at the right pitch and level: %f", tone(0, 440, 200));
+		CHECK(waitFor(voiceDone, &v, 1500), "ends");
+		WebAudio_DestroyVoice(v, 0.0f);
+		WebAudio_DestroyBuffer(s.buffer);
+		WebAudio_Flush();
+		sleepMs(100);
+		if (rate != rates[1])
+		{
+			WebAudio_Shutdown();
+			sleepMs(300);
+		}
+	}
+}
+
+// A busy battle: dozens of short sounds a second, all positional sounds moving every frame.
+static void testStress()
+{
+	printf("== many voices (what a battle asks of the main thread)\n");
+	Sound shot = makeTones(300, 900, 0.25, 22050);
+	Sound loopSound = makeTones(200, 0, 1.0, 22050);
+	MAIN_THREAD_EM_ASM({ zhTest.startProfile(); });
+	std::vector<WebAudioVoice> voices;
+	std::vector<double> bornAt;
+	std::vector<int> kind;
+	const double start = nowMs();
+	int frames = 0, created = 0, peakVoices = 0;
+	uint32_t seed = 12345;
+	auto rnd = [&]() { seed = seed * 1664525u + 1013904223u; return (float)((seed >> 8) & 0xFFFF) / 65535.0f; };
+	while (nowMs() - start < 4000)
+	{
+		const double frameStart = nowMs();
+		const double t = frameStart - start;
+		// 3 new sounds per frame while below the limit of 60 (2D and 3D, like the sample pools)
+		for (int k = 0; k < 3 && voices.size() < 60; ++k)
+		{
+			const bool is3D = (k != 0);
+			WebAudioVoice v = WebAudio_CreateVoice(is3D ? WEBAUDIO_VOICE_3D : WEBAUDIO_VOICE_2D);
+			if (!v)
+				continue;
+			WebAudio_VoiceSetGain(v, 0.1f + 0.1f * rnd());
+			WebAudio_VoiceSetPitch(v, 0.9f + 0.2f * rnd());
+			if (is3D)
+			{
+				WebAudio_VoiceSetPosition(v, -400 + 800 * rnd(), -400 + 800 * rnd(), 0);
+				WebAudio_VoiceSetLowPass(v, rnd() > 0.5f ? 3000.0f : 0.0f);
+			}
+			WebAudio_VoiceQueue(v, (k == 2) ? loopSound.buffer : shot.buffer, 0, 0);
+			voices.push_back(v);
+			bornAt.push_back(t);
+			kind.push_back(is3D ? 1 : 0);
+			++created;
+		}
+		// the positional ones move, the camera (listener) scrolls
+		const float lpos[3] = { 200.0f * sinf((float)t * 0.002f), 0, 0 }, fwd[3] = { 0, 1, 0 }, up[3] = { 0, 0, 1 };
+		WebAudio_SetListener(lpos, fwd, up);
+		for (size_t i = 0; i < voices.size(); ++i)
+		{
+			if (kind[i])
+			{
+				WebAudio_VoiceSetPosition(voices[i], -400 + 800 * rnd(), -400 + 800 * rnd(), 0);
+				WebAudio_VoiceSetGain(voices[i], 0.1f + 0.1f * rnd());
+			}
+		}
+		// retire the finished and the old ones
+		for (size_t i = 0; i < voices.size();)
+		{
+			if (WebAudio_VoicePendingSegments(voices[i]) == 0 || t - bornAt[i] > 1500)
+			{
+				WebAudio_DestroyVoice(voices[i], 0.008f);
+				voices.erase(voices.begin() + (ptrdiff_t)i);
+				bornAt.erase(bornAt.begin() + (ptrdiff_t)i);
+				kind.erase(kind.begin() + (ptrdiff_t)i);
+			}
+			else
+				++i;
+		}
+		peakVoices = (int)voices.size() > peakVoices ? (int)voices.size() : peakVoices;
+		WebAudio_Flush();
+		++frames;
+		const double spent = nowMs() - frameStart;
+		if (spent < 16.0)
+			sleepMs(16.0 - spent);
+	}
+	for (WebAudioVoice v : voices)
+		WebAudio_DestroyVoice(v, 0.0f);
+	WebAudio_DestroyBuffer(shot.buffer);
+	WebAudio_DestroyBuffer(loopSound.buffer);
 	WebAudio_Flush();
-	sleepMs(400);
-	CHECK(fabs(tone(0, 440, 200) - 0.244) < 0.02, "plays at the right pitch and level: %f", tone(0, 440, 200));
-	CHECK(waitFor(voiceDone, &v, 1500), "ends");
-	WebAudio_DestroyVoice(v, 0.0f);
-	WebAudio_DestroyBuffer(s.buffer);
-	WebAudio_Flush();
-	sleepMs(100);
+	sleepMs(300);
+	const double execMs = MAIN_THREAD_EM_ASM_DOUBLE({ return zhTest.profileMs(); });
+	const double execMax = MAIN_THREAD_EM_ASM_DOUBLE({ return zhTest.profileMax(); });
+	const double calls = MAIN_THREAD_EM_ASM_DOUBLE({ return zhTest.profileCalls(); });
+	WebAudioStats stats;
+	WebAudio_GetStats(&stats);
+	printf("  %d frames, %d voices created, up to %d at once; main thread: %.1f ms in %.0f batches (worst %.2f ms), %u commands\n",
+		frames, created, peakVoices, execMs, calls, execMax, stats.commandsRun);
+	CHECK(created > 200, "created %d voices", created);
+	CHECK(execMs < 0.25 * 4000, "the main thread spends %f ms of 4000 on the audio commands", execMs);
+	CHECK(execMax < 30.0, "worst batch takes %f ms", execMax);
+	CHECK(stats.errors == 0, "interpreter errors %u", stats.errors);
+	CHECK(MAIN_THREAD_EM_ASM_INT({ return zhTest.liveVoices(); }) <= 1, "voices leaked: %d", MAIN_THREAD_EM_ASM_INT({ return zhTest.liveVoices(); }));
+	resetListener();
 }
 
 // The engine pattern: a frame loop that yields once per frame ---------------------------------
@@ -1078,31 +1194,26 @@ static void testGesture()
 	CHECK(MAIN_THREAD_EM_ASM_INT({ return zhTest.startRecording(); }) == 1, "recording tap");
 	const int initial = WebAudio_GetState();
 	printf("INITIAL_STATE %d\n", initial);
+
+	// the sound that the click itself triggers must not be lost
+	Sound s = makeTones(440, 0, 0.5, 44100);
+	WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
+	WebAudio_VoiceSetGain(v, 1.0f);
+	WebAudio_VoiceQueue(v, s.buffer, 0, 0);
+	WebAudio_Flush();
 	if (initial != WEBAUDIO_STATE_RUNNING)
 	{
-		// the sound that the click itself triggers must not be lost
-		Sound s = makeTones(440, 0, 0.5, 44100);
-		WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
-		WebAudio_VoiceSetGain(v, 1.0f);
 		printf("WAITING_FOR_GESTURE\n");
-		const bool resumed = waitFor([](void *) { return WebAudio_GetState() == WEBAUDIO_STATE_RUNNING; }, nullptr, 30000);
-		CHECK(resumed, "the first user gesture resumes the context");
-		if (resumed)
-		{
-			WebAudio_VoiceQueue(v, s.buffer, 0, 0);
-			WebAudio_Flush();
-			sleepMs(300);
-			CHECK(waitFor([](void *) { return MAIN_THREAD_EM_ASM_INT({ return zhTest.ready; }) == 1; }, nullptr, 3000), "tap");
-			sleepMs(100);
-			CHECK(tone(0, 440, 150) > 0.2, "sound plays after the gesture: %f", tone(0, 440, 150));
-		}
-		WebAudio_DestroyVoice(v, 0.0f);
-		WebAudio_DestroyBuffer(s.buffer);
+		CHECK(waitFor([](void *) { return WebAudio_GetState() == WEBAUDIO_STATE_RUNNING; }, nullptr, 30000), "the first user gesture resumes the context");
+		// (the sound from before the gesture was dropped as stale, queue another)
+		WebAudio_VoiceQueue(v, s.buffer, 0, 0);
+		WebAudio_Flush();
 	}
-	else
-	{
-		printf("  (the browser did not block audio)\n");
-	}
+	CHECK(waitFor([](void *) { return MAIN_THREAD_EM_ASM_INT({ return zhTest.ready; }) == 1; }, nullptr, 3000), "tap");
+	sleepMs(300);
+	CHECK(tone(0, 440, 150) > 0.2, "sound plays: %f", tone(0, 440, 150));
+	WebAudio_DestroyVoice(v, 0.0f);
+	WebAudio_DestroyBuffer(s.buffer);
 	finishTest();
 }
 
@@ -1129,6 +1240,7 @@ int main(int argc, char **argv)
 	testContext();
 	if (WebAudio_GetState() == WEBAUDIO_STATE_RUNNING)
 	{
+		if (wanted(argc, argv, "restart")) testRestart();
 		if (wanted(argc, argv, "decoders")) testDecoders();
 		if (wanted(argc, argv, "decode")) testPcmAndAdpcm();
 		if (wanted(argc, argv, "volume")) testVolumeCategories();
@@ -1139,7 +1251,7 @@ int main(int argc, char **argv)
 		if (wanted(argc, argv, "suspend")) testSuspendedContext();
 		if (wanted(argc, argv, "streams")) testStreams();
 		if (wanted(argc, argv, "heap")) testHeapGrowth();
-		if (wanted(argc, argv, "restart")) testRestart();
+		if (wanted(argc, argv, "stress")) testStress();
 		startFrameLoop();	// finishes the test from the loop
 		return 0;
 	}

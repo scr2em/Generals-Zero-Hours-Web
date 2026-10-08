@@ -1251,6 +1251,7 @@ void WebAudioManager::closeDevice()
 		{
 			freeAllWebHandles();
 			unselectProvider();
+			m_audioCache->releaseAll();	// the buffers belong to the device
 			WebAudio_Shutdown();
 			m_deviceWorks = false;
 		}
@@ -2936,6 +2937,19 @@ void WebAudioFileCache::closeFile( WebCachedAudio *fileToClose )
 void WebAudioFileCache::setMaxSize( UnsignedInt size )
 {
 	m_maxSize = size;
+}
+
+//-------------------------------------------------------------------------------------------------
+void WebAudioFileCache::releaseAll()
+{
+	WebOpenFilesHashIt it;
+	for ( it = m_openFiles.begin(); it != m_openFiles.end(); ++it ) {
+		DEBUG_ASSERTCRASH(it->second.m_openCount == 0, ("Sample '%s' is still open", it->first.str()));
+		it->second.m_openCount = 0;
+		releaseOpenAudioFile(&it->second);
+	}
+	m_openFiles.clear();
+	m_currentlyUsedSize = 0;
 }
 
 //-------------------------------------------------------------------------------------------------

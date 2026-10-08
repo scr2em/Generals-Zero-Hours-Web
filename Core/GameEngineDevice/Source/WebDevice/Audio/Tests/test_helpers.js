@@ -107,6 +107,24 @@ if (typeof document !== 'undefined') {
       return best;
     };
 
+    // Time spent by the main thread in the command interpreter, to see what a busy game costs it.
+    T.profile = { ms: 0, calls: 0, maxMs: 0 };
+    T.startProfile = function () {
+      var A = globalThis.zhWebAudio;
+      if (A.execOriginal) return 1;
+      A.execOriginal = A.exec;
+      A.exec = function (p, n) {
+        var t0 = performance.now();
+        A.execOriginal(p, n);
+        var dt = performance.now() - t0;
+        T.profile.ms += dt; T.profile.calls++; if (dt > T.profile.maxMs) T.profile.maxMs = dt;
+      };
+      return 1;
+    };
+    T.profileMs = function () { return T.profile.ms; };
+    T.profileMax = function () { return T.profile.maxMs; };
+    T.profileCalls = function () { return T.profile.calls; };
+
     T.totalFrames = function () { return T.total; };
     // How many frames the data that reached the page lags behind the rendering (the worklet posts blocks of 1024 frames).
     T.behind = function () { return Math.round(globalThis.zhWebAudio.ctx.currentTime * T.rate) - T.endFrame; };

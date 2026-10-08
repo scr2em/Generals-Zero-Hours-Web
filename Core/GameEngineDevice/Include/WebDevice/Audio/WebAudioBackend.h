@@ -21,17 +21,34 @@
 // The browser sound device of the WebAssembly build: a thin layer over the Web Audio API that
 // the WebAudioManager (and the tests) call from the engine thread.
 //
-// Why not OpenAL or miniaudio: Emscripten's OpenAL and miniaudio's Web Audio backend both create
-// and drive their AudioContext on the thread that calls them, and a Web Audio AudioContext only
-// exists on the main browser thread. The engine runs on a worker (-sPROXY_TO_PTHREAD) that only
-// yields once per frame, so neither can be used from it, and neither offers the gapless chaining,
-// pausing and music streaming this layer provides. Everything here therefore works on commands:
+// Why a thin layer of its own and not OpenAL (-lopenal) or miniaudio:
+//
+//  - A Web Audio AudioContext exists only on the main browser thread, the engine runs on a worker
+//    (-sPROXY_TO_PTHREAD) that yields to the browser once per frame. Emscripten's OpenAL does work
+//    from a worker, but by proxying every single AL call synchronously to the main thread: a
+//    round trip measured at 60 to 120 microseconds in web_audio_test, against 0.14 microseconds
+//    for queueing a command here. A busy frame sets positions, gains and polls states of dozens
+//    of voices, hundreds of calls, which would cost the engine thread tens of milliseconds a
+//    frame. Commands batched into one message per frame cost it nothing.
+//  - Music has to keep playing while the engine thread is busy (loading a map): a decoder thread
+//    of its own feeds the voices, instead of buffers queued from the engine's frame loop.
+//  - The Web Audio graph does the mixing, resampling, panning and HRTF in native code on the audio
+//    thread. miniaudio (whose Emscripten backends deliver to an AudioWorklet or a script
+//    processor) would mix in WebAssembly instead: CPU on the cores of the engine for what the
+//    browser does natively, a worklet next to the pthreads of the engine, and none of the
+//    spatialisation of the browser.
+//  - Gapless sequences (the attack, loop and decay of a sound), pausing and resuming a voice at
+//    the same position and the browser's autoplay rules (sounds that are triggered while the
+//    context is still blocked) are the game's needs, the OpenAL model of sources and queues does
+//    not map onto them any better than the node graph.
+//
+// How it works:
 //
 //  - Calls on the engine thread (or any thread) append commands to a queue. WebAudio_Flush hands
 //    the queued commands to the main browser thread in one asynchronous message, where a small
 //    JavaScript interpreter turns them into Web Audio nodes (EM_JS in WebAudioBackend.cpp, no
 //    extra link flags or JS files needed). Nothing here ever waits for the main thread, except
-//    WebAudio_Init, once.
+//    WebAudio_Init, WebAudio_Shutdown and WebAudio_GetStats.
 //  - State that the engine thread needs to know (has a voice finished, how often did the music
 //    loop, when does a voice end, is the context running) is written by the main thread into a
 //    block of shared memory and read from there without any message.
