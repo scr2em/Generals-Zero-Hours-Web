@@ -383,6 +383,10 @@ static void gameFrame( void * )
 {
 	try {
 
+		static unsigned s_calls = 0;
+		if( ++s_calls == 1 || s_calls == 100 )
+			DEBUG_LOG(("gameFrame call %u", s_calls));
+
 		// requestAnimationFrame runs at the display's rate, which can be above the game's fps limit.
 		if( !TheFramePacer->isFrameDue() )
 			return;
