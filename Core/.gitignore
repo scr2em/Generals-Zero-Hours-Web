@@ -12,3 +12,5 @@ generatedVersion.h
 *.ncb
 *.opt
 *.plg
+# Hand-written for the web build (no IDL compiler there).
+!Libraries/Source/EABrowserDispatch/web/EABrowserDispatch/BrowserDispatch.h
