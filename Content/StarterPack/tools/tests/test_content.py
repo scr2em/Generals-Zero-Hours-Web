@@ -135,6 +135,16 @@ class MapTest(unittest.TestCase):
             around = [r["heights"][(iy + dy) * 160 + ix + dx] for dx in range(-6, 7) for dy in range(-6, 7)]
             self.assertLessEqual(max(around) - min(around), 2)
 
+    def test_map_cache_entry_matches_the_map(self):
+        from gen import maps
+        data = write_map(maps.make_map())
+        ini = maps.map_cache_ini(data)
+        self.assertIn("fileSize = %d" % len(data), ini)
+        self.assertIn("fileCRC = %d" % maps.engine_crc(data), ini)
+        self.assertIn("numPlayers = 2", ini)
+        self.assertIn("MapCache maps_5Cironwood_5Fcrossing_5Cironwood_5Fcrossing_2Emap", ini)
+        self.assertEqual(maps.engine_crc(b"\xff\x01"), ((0xFF << 1) + 1) & 0xFFFFFFFF)   # crc = crc*2 + byte + carry
+
     def test_start_positions_are_clear_of_scenery(self):
         from gen import maps
         m = maps.make_map()

@@ -916,10 +916,8 @@ HGDIOBJ WINAPI GetStockObject(int i)
 		return &stock.brushes[i];
 	if (i >= OEM_FIXED_FONT && i <= DEFAULT_GUI_FONT && i != 15)
 		return &stock.fonts[i - OEM_FIXED_FONT];
-	if (i >= 6 && i <= 9)
-		return &stock.other; // pens
-	if (i == 15)
-		return &stock.other; // DEFAULT_PALETTE
+	if (i >= 0 && i < 32)
+		return &stock.other; // pens, DC_BRUSH, DC_PEN and the default palette: accepted and ignored
 	return nullptr;
 }
 

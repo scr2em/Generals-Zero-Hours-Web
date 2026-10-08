@@ -58,7 +58,7 @@ class PackTest(unittest.TestCase):
     def test_required_files_exist(self):
         for path in ("generalszh.exe", "data/ini/gamedata.ini", "data/ini/object.ini", "data/generals.str",
                      "data/english/language.ini", "window/menus/mainmenu.wnd", "window/controlbar.wnd",
-                     "data/scripts/skirmishscripts.scb", "maps/ironwood_crossing/ironwood_crossing.map",
+                     "data/scripts/skirmishscripts.scb", "maps/ironwood_crossing/ironwood_crossing.map", "maps/mapcache.ini",
                      "data/ini/audiosettings.ini", "data/ini/playertemplate.ini", "data/ini/aidata.ini"):
             self.assertIn(path, self.files)
 

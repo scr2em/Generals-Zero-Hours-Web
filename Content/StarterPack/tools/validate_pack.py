@@ -436,6 +436,27 @@ def check_map(pack):
                     r.error(where, "%s does not define %s" % (strfile, name_key))
         if not pack.has(rel[:-4] + ".tga"):
             r.warn(where, "no preview picture (%s.tga)" % rel[:-4])
+    # a release engine lists the standard maps from Maps\\MapCache.ini (it scans the folder only with -buildmapcache)
+    if maps:
+        if not pack.has("maps/mapcache.ini"):
+            r.error("maps/mapcache.ini", "missing: no map would reach the skirmish setup screen")
+        else:
+            cache = pack.read("maps/mapcache.ini").decode("latin-1")
+            for rel in maps:
+                key = rel.replace("/", "\\")
+                qp = "".join(c if c.isalnum() else "_%02X" % ord(c) for c in key)
+                m = re.search(r"MapCache %s\s(.*?)\bEND\b" % re.escape(qp), cache, re.S | re.I)
+                if not m:
+                    r.error("maps/mapcache.ini", "no entry for %s" % key)
+                    continue
+                body = pack.read(rel)
+                crc = 0
+                for b in body:
+                    crc = ((crc << 1) + b + (1 if crc & 0x80000000 else 0)) & 0xFFFFFFFF
+                size = re.search(r"fileSize\s*=\s*(\d+)", m.group(1))
+                got = re.search(r"fileCRC\s*=\s*(\d+)", m.group(1))
+                if not size or int(size.group(1)) != len(body) or not got or int(got.group(1)) != crc:
+                    r.error("maps/mapcache.ini", "size or CRC of %s does not match the file" % key)
     if skirmish_scripts is not None:
         script_names = set()
         for sl in skirmish_scripts.get("lists", []):
