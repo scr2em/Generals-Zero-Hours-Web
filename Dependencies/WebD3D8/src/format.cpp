@@ -50,10 +50,11 @@ const FormatInfo kFormats[] = {
     {D3DFMT_A8R3G3B2,  "A8R3G3B2",  16, 0, true,  false, false, false, false, UploadConv::None,     0, 0, 0, 0},
     {D3DFMT_P8,        "P8",         8, 0, false, false, false, false, false, UploadConv::None,     0, 0, 0, 0},
     {D3DFMT_A8P8,      "A8P8",      16, 0, true,  false, false, false, false, UploadConv::None,     0, 0, 0, 0},
-    {D3DFMT_V8U8,      "V8U8",      16, 0, false, false, false, false, false, UploadConv::None,     0, 0, 0, 0},
+    // Signed bump map formats (sampled as SNORM; used by texbem).
+    {D3DFMT_V8U8,      "V8U8",      16, 0, false, true,  false, false, false, UploadConv::None,     GL_RG8_SNORM,   GL_RG,   GL_BYTE, 2},
+    {D3DFMT_Q8W8V8U8,  "Q8W8V8U8",  32, 0, true,  true,  false, false, false, UploadConv::None,     GL_RGBA8_SNORM, GL_RGBA, GL_BYTE, 4},
     {D3DFMT_L6V5U5,    "L6V5U5",    16, 0, false, false, false, false, false, UploadConv::None,     0, 0, 0, 0},
     {D3DFMT_X8L8V8U8,  "X8L8V8U8",  32, 0, false, false, false, false, false, UploadConv::None,     0, 0, 0, 0},
-    {D3DFMT_Q8W8V8U8,  "Q8W8V8U8",  32, 0, true,  false, false, false, false, UploadConv::None,     0, 0, 0, 0},
     {D3DFMT_V16U16,    "V16U16",    32, 0, false, false, false, false, false, UploadConv::None,     0, 0, 0, 0},
     {D3DFMT_W11V11U10, "W11V11U10", 32, 0, false, false, false, false, false, UploadConv::None,     0, 0, 0, 0},
     {D3DFMT_UYVY,      "UYVY",      16, 0, false, false, false, false, false, UploadConv::None,     0, 0, 0, 0},

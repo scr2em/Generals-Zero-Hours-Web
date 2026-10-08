@@ -402,6 +402,7 @@ public:
 
     DWORD m_texLodSet[MAX_STAGES] = {};
     uint32_t m_samplerDirtyMask = 0xFF;
+    GLuint m_stageSampler[MAX_STAGES] = {};
     bool m_drawingPoints = false;
     bool m_curProgramPoints = false;
     GLuint m_attachedColorTex = 0;

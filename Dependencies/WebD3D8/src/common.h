@@ -54,6 +54,7 @@ struct Config
     bool debug = false;
     bool releaseTextureShadows = false;
     bool disableS3TC = false;
+    int contextProxy = 0;
 };
 Config &GetConfig();
 

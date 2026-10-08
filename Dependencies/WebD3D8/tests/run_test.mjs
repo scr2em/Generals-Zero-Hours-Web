@@ -4,6 +4,13 @@
 //
 // e.g. node run_test.mjs build/em-d3d8/Dependencies/WebD3D8 /tmp/shot.png --no-s3tc
 //
+// Test arguments: --no-s3tc (decode DXT on the CPU), --implicit (no explicit
+// swap control), --shaders (vs.1.1/ps.1.x scenes), --scene2 / --scene3 (texgen,
+// projection, lights, stencil, formats...), --debug (GL error checks),
+// --frames=N (long run; two screenshots are compared while it renders, which
+// shows whether frames are presented from a thread that never yields),
+// --yield (emscripten_sleep(0) per frame through the OnFramePresented hook).
+//
 // Needs the `playwright` npm package (global install is fine) and Chromium
 // (PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers). WebGL2 is provided by SwiftShader.
 import { createRequire } from 'node:module';
@@ -36,6 +43,17 @@ page.on('pageerror', (e) => lines.push('PAGEERROR ' + e.message));
 const query = testArgs.length ? '?args=' + encodeURIComponent(testArgs.join(',')) : '';
 await page.goto(`http://127.0.0.1:${port}/web_d3d8_test.html${query}`);
 const t0 = Date.now();
+// With a running (long) test, grab two screenshots while it still renders to
+// verify that frames are presented from a thread that never yields.
+const mid = [];
+if (testArgs.some((a) => a.startsWith('--frames='))) {
+  for (let i = 0; i < 2; ++i) {
+    await new Promise((r) => setTimeout(r, 2500));
+    mid.push(await page.locator('#canvas').screenshot());
+  }
+  console.log(done ? 'MIDRUN: test already finished' :
+    `MIDRUN: screenshots during rendering ${mid[0].equals(mid[1]) ? 'IDENTICAL (frozen?)' : 'differ (animating, presenting works)'}`);
+}
 while (!done && Date.now() - t0 < 90000) await new Promise((r) => setTimeout(r, 200));
 await new Promise((r) => setTimeout(r, 500));
 await page.locator('#canvas').screenshot({ path: shot });

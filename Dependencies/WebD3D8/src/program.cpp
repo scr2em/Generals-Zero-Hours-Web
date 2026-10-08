@@ -25,7 +25,7 @@ static const char *const kUniformNames[U_COUNT] = {
     "u_wvp", "u_wv", "u_world", "u_nm", "u_tm[0]", "u_pix", "u_vp", "u_clip[0]", "u_point", "u_pointatt",
     "u_matE", "u_matA", "u_matD", "u_matS", "u_matP",
     "u_lpos[0]", "u_ldir[0]", "u_ldiff[0]", "u_lspec[0]", "u_lamb[0]", "u_latt[0]", "u_lspot[0]",
-    "u_ambient", "u_fog", "u_fogColor", "u_tfactor", "u_alphaRef", "u_lod[0]",
+    "u_ambient", "u_fog", "u_fogColor", "u_tfactor", "u_alphaRef", "u_lod[0]", "u_bump[0]", "u_bumpl[0]",
     "c[0]", "pc[0]",
 };
 

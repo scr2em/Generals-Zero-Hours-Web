@@ -369,6 +369,10 @@ HRESULT Device::SetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE type,
         m_keyDirty = true;
         ++m_verMisc;
         break;
+    case D3DTSS_BUMPENVMAT00: case D3DTSS_BUMPENVMAT01: case D3DTSS_BUMPENVMAT10: case D3DTSS_BUMPENVMAT11:
+    case D3DTSS_BUMPENVLSCALE: case D3DTSS_BUMPENVLOFFSET:
+        ++m_verMisc;
+        break;
     default: break;
     }
     m_samplerDirtyMask |= 1u << stage;
@@ -535,6 +539,12 @@ HRESULT Device::SetVertexShader(DWORD handle)
     m_s.vertexShader = handle;
     m_keyDirty = true;
     m_attribSig = 0;
+    if (VertexShaderObject *vs = FindVertexShader(handle))
+    {
+        // `def` and D3DVSD_CONST constants are loaded into the register file when the shader is set.
+        for (int i = 0; i < VS_CONSTANTS; ++i)
+            if (vs->defMask[i]) { memcpy(m_s.vsConst[i], vs->defConstants[i], 16); ++m_verVsConst; }
+    }
     return D3D_OK;
 }
 

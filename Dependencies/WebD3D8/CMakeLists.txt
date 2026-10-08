@@ -38,7 +38,7 @@ target_compile_options(web_d3d8_test PRIVATE -fshort-wchar -fms-extensions -fdec
 target_link_libraries(web_d3d8_test PRIVATE web_d3d8)
 set_target_properties(web_d3d8_test PROPERTIES SUFFIX ".html")
 target_link_options(web_d3d8_test PRIVATE
-    -sPROXY_TO_PTHREAD=1 -sOFFSCREENCANVAS_SUPPORT=1 -sALLOW_MEMORY_GROWTH=1
+    -sPROXY_TO_PTHREAD=1 -sOFFSCREENCANVAS_SUPPORT=1 -sJSPI=1 -sALLOW_MEMORY_GROWTH=1
     -sINITIAL_MEMORY=64MB -sEXIT_RUNTIME=0 -sASSERTIONS=1
     --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/tests/shell.html
 )

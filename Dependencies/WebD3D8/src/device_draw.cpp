@@ -499,6 +499,23 @@ void Device::UploadUniforms()
             for (int i = 0; i < 8; ++i) lod[i] = DwordToFloat(m_s.tss[i][D3DTSS_MIPMAPLODBIAS]);
             glUniform1fv(loc[U_LOD], 8, lod);
         }
+        if (loc[U_BUMP] >= 0)
+        {
+            float bump[8][4];
+            for (int i = 0; i < 8; ++i)
+                for (int k = 0; k < 4; ++k) bump[i][k] = DwordToFloat(m_s.tss[i][D3DTSS_BUMPENVMAT00 + k]);
+            glUniform4fv(loc[U_BUMP], 8, &bump[0][0]);
+        }
+        if (loc[U_BUMPL] >= 0)
+        {
+            float bl[8][2];
+            for (int i = 0; i < 8; ++i)
+            {
+                bl[i][0] = DwordToFloat(m_s.tss[i][D3DTSS_BUMPENVLSCALE]);
+                bl[i][1] = DwordToFloat(m_s.tss[i][D3DTSS_BUMPENVLOFFSET]);
+            }
+            glUniform2fv(loc[U_BUMPL], 8, &bl[0][0]);
+        }
     }
 
     if (loc[U_VSC] >= 0 && p->verVsConst != m_verVsConst)
@@ -565,7 +582,12 @@ void Device::BindTextures()
         if (m_boundTex[s][slot] != id) { glBindTexture(target, id); m_boundTex[s][slot] = id; }
         if (tb && id == tb->m_tex)
         {
-            GLuint sampler = SamplerFor(s, tb);
+            if (m_samplerDirtyMask & (1u << s))
+            {
+                m_stageSampler[s] = SamplerFor(s, tb);
+                m_samplerDirtyMask &= ~(1u << s);
+            }
+            const GLuint sampler = m_stageSampler[s];
             if (m_boundSampler[s] != sampler) { glBindSampler(s, sampler); m_boundSampler[s] = sampler; }
             const GLint base = (GLint)Min<DWORD>(m_s.tss[s][D3DTSS_MAXMIPLEVEL], tb->m_levelCount - 1);
             if (tb->m_baseLevel != base)

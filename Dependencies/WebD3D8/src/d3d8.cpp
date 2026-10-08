@@ -308,3 +308,9 @@ extern "C" const char *WebD3D8_GetRendererString(void)
 {
     return webd3d8::RendererString().c_str();
 }
+
+extern "C" void *WebD3D8_LookupProc(const char *name)
+{
+    if (name && strcmp(name, "Direct3DCreate8") == 0) return reinterpret_cast<void *>(&Direct3DCreate8);
+    return nullptr;
+}

@@ -75,6 +75,7 @@ bool Device::CreateContext(const D3DPRESENT_PARAMETERS &pp)
     attr.minorVersion = 0;
     attr.enableExtensionsByDefault = true;
     attr.explicitSwapControl = cfg.presentMode == WEBD3D8_PRESENT_EXPLICIT;
+    if (cfg.contextProxy) attr.proxyContextToMainThread = EMSCRIPTEN_WEBGL_CONTEXT_PROXY_ALWAYS;
 
     // The drawing buffer has the size of the back buffer.
     if (pp.BackBufferWidth && pp.BackBufferHeight)
@@ -410,6 +411,7 @@ void Device::PresentToCanvas()
 
     if (m_explicitSwap)
         emscripten_webgl_commit_frame();
+    if (GetConfig().hooks.OnFramePresented) GetConfig().hooks.OnFramePresented();
 }
 
 HRESULT Device::Present(const RECT *, const RECT *, HWND, const WebD3D8_RGNDATA *)

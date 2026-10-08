@@ -312,13 +312,66 @@ std::string OpExpr(uint8_t op, const char *a0, const char *a1, const char *a2)
 
 } // namespace
 
+std::string FragmentTail(const ProgramKey &key)
+{
+    std::string s;
+    if (key.fogEnable)
+    {
+        if (key.fogTableMode)
+        {
+            switch (key.fogTableMode)
+            {
+            case D3DFOG_LINEAR: s += "    float ff = clamp((u_fog.y - v_fz) * u_fog.w, 0.0, 1.0);\n"; break;
+            case D3DFOG_EXP: s += "    float ff = clamp(exp(-u_fog.z * v_fz), 0.0, 1.0);\n"; break;
+            default: s += "    float ff = clamp(exp(-(u_fog.z * v_fz) * (u_fog.z * v_fz)), 0.0, 1.0);\n"; break;
+            }
+        }
+        else
+            s += "    float ff = clamp(v_fog, 0.0, 1.0);\n";
+        s += "    col.rgb = mix(u_fogColor, col.rgb, ff);\n";
+    }
+
+    if (key.alphaTest)
+    {
+        s += "    float a8 = floor(col.a * 255.0 + 0.5);\n";
+        const char *cond = nullptr;
+        switch (key.alphaFunc)
+        {
+        case D3DCMP_NEVER: cond = "false"; break;
+        case D3DCMP_LESS: cond = "a8 < u_alphaRef"; break;
+        case D3DCMP_EQUAL: cond = "a8 == u_alphaRef"; break;
+        case D3DCMP_LESSEQUAL: cond = "a8 <= u_alphaRef"; break;
+        case D3DCMP_GREATER: cond = "a8 > u_alphaRef"; break;
+        case D3DCMP_NOTEQUAL: cond = "a8 != u_alphaRef"; break;
+        case D3DCMP_GREATEREQUAL: cond = "a8 >= u_alphaRef"; break;
+        default: cond = nullptr; break; // ALWAYS
+        }
+        if (cond) Add(s, "    if (!(%s)) discard;\n", cond);
+    }
+    s += "    fragColor = col;\n}\n";
+    return s;
+}
+
+std::string FragmentCommonUniforms()
+{
+    return "uniform vec4 u_tfactor;\nuniform float u_alphaRef;\nuniform vec4 u_fog;\nuniform vec3 u_fogColor;\nuniform float u_lod[8];\n";
+}
+
+std::string TexCoordExpr(const ProgramKey &key, int stage)
+{
+    if (key.pointSprite) return "vec4(gl_PointCoord.x, 1.0 - gl_PointCoord.y, 0.0, 1.0)";
+    char b[16];
+    snprintf(b, sizeof b, "v_t%d", key.vsHandle ? key.stage[stage].coordIndex : stage);
+    return b;
+}
+
 std::string GenerateFixedFunctionFragmentShader(const ProgramKey &key)
 {
     std::string s;
     s += "#version 300 es\nprecision highp float;\nprecision highp int;\n";
     s += "precision highp sampler2D;\nprecision highp samplerCube;\nprecision highp sampler3D;\n";
     s += VaryingDeclarations(key, false, false);
-    s += "uniform vec4 u_tfactor;\nuniform float u_alphaRef;\nuniform vec4 u_fog;\nuniform vec3 u_fogColor;\nuniform float u_lod[8];\n";
+    s += FragmentCommonUniforms();
     for (int i = 0; i < key.stageCount; ++i)
     {
         const StageKey &st = key.stage[i];
@@ -337,15 +390,7 @@ std::string GenerateFixedFunctionFragmentShader(const ProgramKey &key)
         const StageKey &st = key.stage[i];
         s += "    {\n";
         // Texture sample.
-        std::string tc;
-        if (key.pointSprite)
-            tc = "vec4(gl_PointCoord.x, 1.0 - gl_PointCoord.y, 0.0, 1.0)";
-        else
-        {
-            char b[16];
-            snprintf(b, sizeof b, "v_t%d", (key.vsHandle ? st.coordIndex : i));
-            tc = b;
-        }
+        const std::string tc = TexCoordExpr(key, i);
         if (st.texType)
         {
             std::string coord, bias;
@@ -394,41 +439,7 @@ std::string GenerateFixedFunctionFragmentShader(const ProgramKey &key)
     s += "    vec4 col = cur;\n";
     if (key.specularEnable) s += "    col.rgb = clamp(col.rgb + spec.rgb, 0.0, 1.0);\n";
 
-    if (key.fogEnable)
-    {
-        if (key.fogTableMode)
-        {
-            switch (key.fogTableMode)
-            {
-            case D3DFOG_LINEAR: s += "    float ff = clamp((u_fog.y - v_fz) * u_fog.w, 0.0, 1.0);\n"; break;
-            case D3DFOG_EXP: s += "    float ff = clamp(exp(-u_fog.z * v_fz), 0.0, 1.0);\n"; break;
-            default: s += "    float ff = clamp(exp(-(u_fog.z * v_fz) * (u_fog.z * v_fz)), 0.0, 1.0);\n"; break;
-            }
-        }
-        else
-            s += "    float ff = clamp(v_fog, 0.0, 1.0);\n";
-        s += "    col.rgb = mix(u_fogColor, col.rgb, ff);\n";
-    }
-
-    if (key.alphaTest)
-    {
-        s += "    float a8 = floor(col.a * 255.0 + 0.5);\n";
-        const char *cond = nullptr;
-        switch (key.alphaFunc)
-        {
-        case D3DCMP_NEVER: cond = "false"; break;
-        case D3DCMP_LESS: cond = "a8 < u_alphaRef"; break;
-        case D3DCMP_EQUAL: cond = "a8 == u_alphaRef"; break;
-        case D3DCMP_LESSEQUAL: cond = "a8 <= u_alphaRef"; break;
-        case D3DCMP_GREATER: cond = "a8 > u_alphaRef"; break;
-        case D3DCMP_NOTEQUAL: cond = "a8 != u_alphaRef"; break;
-        case D3DCMP_GREATEREQUAL: cond = "a8 >= u_alphaRef"; break;
-        default: cond = nullptr; break; // ALWAYS
-        }
-        if (cond) Add(s, "    if (!(%s)) discard;\n", cond);
-    }
-    s += "    fragColor = col;\n}\n";
+    s += FragmentTail(key);
     return s;
 }
-
 } // namespace webd3d8

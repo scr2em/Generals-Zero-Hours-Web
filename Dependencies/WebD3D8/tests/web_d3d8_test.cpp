@@ -34,6 +34,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <vector>
 
 template <class T> static T Max(T a, T b) { return a > b ? a : b; }
@@ -180,6 +181,596 @@ static IDirect3DTexture8 *MakeDXT1()
     return tex;
 }
 
+
+static bool g_shaders = false;
+static DWORD g_vs = 0, g_psMul = 0, g_psBem = 0, g_ps14 = 0;
+static IDirect3DTexture8 *g_bump = nullptr;
+static DWORD g_gameShaders[4] = {};
+
+static DWORD AssemblePS(const char *src)
+{
+    ID3DXBuffer *code = nullptr, *errs = nullptr;
+    HRESULT hr = D3DXAssembleShader(src, (UINT)strlen(src), 0, nullptr, &code, &errs);
+    if (FAILED(hr))
+    {
+        printf("assemble failed: %s\n", errs ? (const char *)errs->GetBufferPointer() : "?");
+        return 0;
+    }
+    DWORD h = 0;
+    hr = g_dev->CreatePixelShader((const DWORD *)code->GetBufferPointer(), &h);
+    if (FAILED(hr)) printf("CreatePixelShader failed 0x%x\n", (unsigned)hr);
+    code->Release();
+    return h;
+}
+
+static void CreateShaders()
+{
+    ID3DXBuffer *code = nullptr, *errs = nullptr;
+    const char *vsSrc =
+        "vs.1.1\n"
+        "dp4 oPos.x, v0, c0\n"
+        "dp4 oPos.y, v0, c1\n"
+        "dp4 oPos.z, v0, c2\n"
+        "dp4 oPos.w, v0, c3\n"
+        "mul oD0, v5, c4\n"
+        "mov oT0, v7\n"
+        "mov oT1, v7\n";
+    HRESULT hr = D3DXAssembleShader(vsSrc, (UINT)strlen(vsSrc), 0, nullptr, &code, &errs);
+    if (FAILED(hr)) { printf("vs assemble failed: %s\n", errs ? (const char *)errs->GetBufferPointer() : "?"); return; }
+    DWORD decl[] = {D3DVSD_STREAM(0), D3DVSD_REG(0, D3DVSDT_FLOAT3), D3DVSD_REG(5, D3DVSDT_D3DCOLOR),
+                    D3DVSD_REG(7, D3DVSDT_FLOAT2), D3DVSD_END()};
+    hr = g_dev->CreateVertexShader(decl, (const DWORD *)code->GetBufferPointer(), &g_vs, 0);
+    printf("CreateVertexShader -> 0x%x handle %u\n", (unsigned)hr, (unsigned)g_vs);
+    code->Release();
+
+    g_psMul = AssemblePS("ps.1.1\ntex t0\ntex t1\nmul r0, v0, t0\nmad r0.rgb, t1, c0, r0\n");
+    g_psBem = AssemblePS("ps.1.1\ntex t0\ntexbem t1, t0\nmov r0, t1\n");
+    g_ps14 = AssemblePS("ps.1.4\ntexld r0, t0\nmul r0, r0, v0\n");
+    printf("pixel shaders: %u %u %u\n", (unsigned)g_psMul, (unsigned)g_psBem, (unsigned)g_ps14);
+
+    // The inline pixel shaders of the game (W3DWater.cpp, W3DProfilerFrameCapture.cpp), verbatim.
+    {
+        const char *river =
+            "ps.1.1\n \
+            tex t0 \n\
+            tex t1	\n\
+            tex t2	\n\
+            tex t3\n\
+            mul r0.rgb, v0, t0 ; blend vertex color into t0. \n\
+            mov r0.a, t0 ; keep vertex alpha from fading the base water. \n\
+            mul r1, t1, t2 ; mul\n\
+            add r1.rgb, r1, t3\n\
+            mul r1.rgb, r1, v0.a\n\
+            +mul r0.a, r0, t3\n\
+            add r0.rgb, r0, r1\n";
+        const char *water =
+            "ps.1.1\n \
+            tex t0 \n\
+            tex t1	\n\
+            texbem t2, t1 ; use t1 as env map adjustment on t2.\n\
+            mul r0,v0,t0 ; blend vertex color into t0. \n\
+            mul r1.rgb,t2,c0 ; reduce t2 (environment mapped reflection) by constant\n\
+            add r0.rgb, r0, r1";
+        const char *trapezoid =
+            "ps.1.1\n \
+            tex t0 ;get water texture\n\
+            tex t1 ;get white highlights on black background\n\
+            tex t2 ;get white highlights with more tiling\n\
+            tex t3	; get black shroud \n\
+            mul r0,v0,t0 ; blend vertex color and alpha into base texture. \n\
+            mad r0.rgb, t1, t2, r0	; blend sparkles and noise \n\
+            mul r0.rgb, r0, t3 ; blend in black shroud \n\
+            ;\n";
+        const char *swizzle =
+            "ps.1.4\n"
+            "texld r0, t0\n"
+            "mov r1.a, r0.r\n"
+            "mov r2.a, r0.g\n"
+            "mov r3.a, r0.b\n"
+            "mul r0.rgb, r3.a, c0\n"
+            "mad r0.rgb, r2.a, c1, r0\n"
+            "mad r0.rgb, r1.a, c2, r0\n";
+        g_gameShaders[0] = AssemblePS(river);
+        g_gameShaders[1] = AssemblePS(water);
+        g_gameShaders[2] = AssemblePS(trapezoid);
+        g_gameShaders[3] = AssemblePS(swizzle);
+        printf("game shader river: %u water: %u trapezoid: %u swizzle(ps1.4): %u\n", (unsigned)g_gameShaders[0],
+               (unsigned)g_gameShaders[1], (unsigned)g_gameShaders[2], (unsigned)g_gameShaders[3]);
+    }
+
+    // Signed bump map: du/dv pattern.
+    g_dev->CreateTexture(16, 16, 1, 0, D3DFMT_V8U8, D3DPOOL_MANAGED, &g_bump);
+    if (g_bump)
+    {
+        D3DLOCKED_RECT lr;
+        g_bump->LockRect(0, &lr, nullptr, 0);
+        for (int y = 0; y < 16; ++y)
+            for (int x = 0; x < 16; ++x)
+            {
+                signed char *p = (signed char *)((BYTE *)lr.pBits + y * lr.Pitch) + x * 2;
+                p[0] = (signed char)((x < 8) ? 100 : -100); // U
+                p[1] = 0;                                      // V
+            }
+        g_bump->UnlockRect(0);
+    }
+}
+
+static void RenderShaderScene(IDirect3DTexture8 *checker, IDirect3DTexture8 *gradient)
+{
+    struct SV { float x, y, z; DWORD color; float u, v; };
+    SV q[4] = {{-0.9f, -0.9f, 0.5f, 0xFFFFFF80, 0, 1}, {-0.9f, 0.9f, 0.5f, 0xFF80FFFF, 0, 0},
+               {0.9f, 0.9f, 0.5f, 0xFFFF80FF, 1, 0}, {0.9f, -0.9f, 0.5f, 0xFFFFFFFF, 1, 1}};
+    WORD qi[6] = {0, 1, 2, 0, 2, 3};
+    D3DXMATRIX id;
+    D3DXMatrixIdentity(&id);
+
+    // 1) Vertex shader (vs.1.1) with fixed-function texturing.
+    SetCommonStates();
+    g_dev->SetTransform(D3DTS_WORLD, &id);
+    g_dev->SetTransform(D3DTS_VIEW, &id);
+    g_dev->SetTransform(D3DTS_PROJECTION, &id);
+    g_dev->SetTextureStageState(1, D3DTSS_TEXCOORDINDEX, 0);
+    SetViewport(0, 0, 100, 100);
+    g_dev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
+    g_dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+    g_dev->SetTexture(0, checker);
+    float c0[4][4];
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j) c0[i][j] = (i == j) ? 1.0f : 0.0f;
+    g_dev->SetVertexShaderConstant(0, c0, 4);
+    float tint[4] = {1.0f, 0.6f, 0.6f, 1.0f};
+    g_dev->SetVertexShaderConstant(4, tint, 1);
+    DWORD decl;
+    (void)decl;
+    g_dev->SetVertexShader(g_vs);
+    CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, 4, 2, qi, D3DFMT_INDEX16, q, sizeof(SV)));
+    g_dev->SetVertexShader(TEX_FVF);
+
+    // 2) ps.1.1 with two textures and a constant.
+    SetViewport(100, 0, 100, 100);
+    g_dev->SetTexture(0, checker);
+    g_dev->SetTexture(1, gradient);
+    float k[4] = {0.0f, 0.5f, 0.0f, 0.0f};
+    g_dev->SetPixelShaderConstant(0, k, 1);
+    g_dev->SetPixelShader(g_psMul);
+    CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, 4, 2, qi, D3DFMT_INDEX16, q, sizeof(SV)));
+
+    // 3) texbem: the checker is displaced horizontally by the signed bump map.
+    SetViewport(200, 0, 100, 100);
+    g_dev->SetTexture(0, g_bump);
+    g_dev->SetTexture(1, checker);
+    g_dev->SetTextureStageState(1, D3DTSS_BUMPENVMAT00, FloatToDword(0.25f));
+    g_dev->SetTextureStageState(1, D3DTSS_BUMPENVMAT01, FloatToDword(0.0f));
+    g_dev->SetTextureStageState(1, D3DTSS_BUMPENVMAT10, FloatToDword(0.0f));
+    g_dev->SetTextureStageState(1, D3DTSS_BUMPENVMAT11, FloatToDword(0.25f));
+    g_dev->SetPixelShader(g_psBem);
+    CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, 4, 2, qi, D3DFMT_INDEX16, q, sizeof(SV)));
+
+    // 4) ps.1.4 texld.
+    SetViewport(300, 0, 20, 100);
+    g_dev->SetTexture(0, gradient);
+    g_dev->SetPixelShader(g_ps14);
+    CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, 4, 2, qi, D3DFMT_INDEX16, q, sizeof(SV)));
+
+    // 5) The game's own inline shaders, drawn tiny (compiles and links them).
+    SetViewport(330, 100, 8, 8);
+    for (int s = 0; s < 4; ++s)
+    {
+        g_dev->SetTexture(0, checker);
+        g_dev->SetTexture(1, s == 1 ? g_bump : checker);
+        g_dev->SetTexture(2, checker);
+        g_dev->SetTexture(3, checker);
+        for (int st = 0; st < 4; ++st) g_dev->SetTextureStageState(st, D3DTSS_TEXCOORDINDEX, 0);
+        g_dev->SetPixelShader(g_gameShaders[s]);
+        CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, 4, 2, qi, D3DFMT_INDEX16, q, sizeof(SV)));
+    }
+    for (int st = 1; st < 4; ++st) g_dev->SetTexture(st, nullptr);
+
+    g_dev->SetPixelShader(0);
+    g_dev->SetTexture(1, nullptr);
+    SetViewport(0, 0, 640, 480);
+}
+
+
+//------------------------------------------------------------------------------
+// Scene set 2: texture generation, projection, cube/volume maps, point sprites,
+// lights, stencil, wireframe and clip planes (--scene2).
+//------------------------------------------------------------------------------
+static bool g_scene2 = false;
+
+struct SphereVertex { float x, y, z, nx, ny, nz; };
+#define SPHERE_FVF (D3DFVF_XYZ | D3DFVF_NORMAL)
+
+static void BuildSphere(std::vector<SphereVertex> &v, std::vector<WORD> &idx, int n)
+{
+    for (int i = 0; i <= n; ++i)
+        for (int j = 0; j <= n; ++j)
+        {
+            float th = 3.14159265f * i / n, ph = 2.0f * 3.14159265f * j / n;
+            SphereVertex s;
+            s.x = std::sin(th) * std::cos(ph); s.y = std::cos(th); s.z = std::sin(th) * std::sin(ph);
+            s.nx = s.x; s.ny = s.y; s.nz = s.z;
+            v.push_back(s);
+        }
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+        {
+            WORD a = (WORD)(i * (n + 1) + j), b = (WORD)(a + 1), c = (WORD)(a + n + 1), d = (WORD)(c + 1);
+            idx.push_back(a); idx.push_back(b); idx.push_back(c);
+            idx.push_back(b); idx.push_back(d); idx.push_back(c);
+        }
+}
+
+static void Cell(int i)
+{
+    SetViewport((i % 4) * 160, (i / 4) * 160, 160, 160);
+}
+
+static void CameraTransforms(float dist = 3.0f)
+{
+    D3DXMATRIX world, view, proj;
+    D3DXMatrixIdentity(&world);
+    D3DXVECTOR3 eye(0, 0, -dist), at(0, 0, 0), up(0, 1, 0);
+    D3DXMatrixLookAtLH(&view, &eye, &at, &up);
+    D3DXMatrixPerspectiveFovLH(&proj, 0.8f, 1.0f, 0.5f, 30.0f);
+    g_dev->SetTransform(D3DTS_WORLD, &world);
+    g_dev->SetTransform(D3DTS_VIEW, &view);
+    g_dev->SetTransform(D3DTS_PROJECTION, &proj);
+}
+
+static void RenderScene2(IDirect3DTexture8 *checker)
+{
+    static std::vector<SphereVertex> sv;
+    static std::vector<WORD> si;
+    if (sv.empty()) BuildSphere(sv, si, 24);
+    const UINT ns = (UINT)sv.size(), nt = (UINT)si.size() / 3;
+
+    static IDirect3DCubeTexture8 *cube = nullptr;
+    static IDirect3DVolumeTexture8 *vol = nullptr;
+    if (!cube)
+    {
+        CHECK(g_dev->CreateCubeTexture(32, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &cube));
+        static const DWORD faceColor[6] = {0xFFFF2020, 0xFF802020, 0xFF20FF20, 0xFF208020, 0xFF2020FF, 0xFF202080};
+        for (int f = 0; f < 6; ++f)
+        {
+            D3DLOCKED_RECT lr;
+            CHECK(cube->LockRect((D3DCUBEMAP_FACES)f, 0, &lr, nullptr, 0));
+            for (int y = 0; y < 32; ++y)
+                for (int x = 0; x < 32; ++x)
+                    ((DWORD *)((BYTE *)lr.pBits + y * lr.Pitch))[x] = ((x / 8 + y / 8) & 1) ? faceColor[f] : (faceColor[f] | 0x00606060);
+            CHECK(cube->UnlockRect((D3DCUBEMAP_FACES)f, 0));
+        }
+        CHECK(g_dev->CreateVolumeTexture(8, 8, 8, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &vol));
+        D3DLOCKED_BOX lb;
+        CHECK(vol->LockBox(0, &lb, nullptr, 0));
+        for (int z = 0; z < 8; ++z)
+            for (int y = 0; y < 8; ++y)
+                for (int x = 0; x < 8; ++x)
+                    ((DWORD *)((BYTE *)lb.pBits + z * lb.SlicePitch + y * lb.RowPitch))[x] = 0xFF000000 | ((x * 36) << 16) | ((y * 36) << 8) | (z * 36);
+        CHECK(vol->UnlockBox(0));
+    }
+
+    // Cell 0: environment mapped sphere (camera space reflection vector -> cube map).
+    {
+        SetCommonStates();
+        Cell(0);
+        CameraTransforms();
+        g_dev->SetTexture(0, cube);
+        g_dev->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR);
+        g_dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
+        D3DXMATRIX invView, view;
+        g_dev->GetTransform(D3DTS_VIEW, &view);
+        D3DXMatrixInverse(&invView, nullptr, &view);
+        g_dev->SetTransform(D3DTS_TEXTURE0, &invView);
+        g_dev->SetRenderState(D3DRS_NORMALIZENORMALS, TRUE);
+        g_dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
+        g_dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+        g_dev->SetVertexShader(SPHERE_FVF);
+        CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, ns, nt, si.data(), D3DFMT_INDEX16, sv.data(), sizeof(SphereVertex)));
+    }
+
+    // Cell 1: projected texture on a ground plane (camera space position + projective transform).
+    {
+        SetCommonStates();
+        Cell(1);
+        D3DXMATRIX world, view, proj;
+        D3DXMatrixIdentity(&world);
+        D3DXVECTOR3 eye(0, 2.2f, -3.0f), at(0, -1, 1), up(0, 1, 0);
+        D3DXMatrixLookAtLH(&view, &eye, &at, &up);
+        D3DXMatrixPerspectiveFovLH(&proj, 0.9f, 1.0f, 0.5f, 30.0f);
+        g_dev->SetTransform(D3DTS_WORLD, &world);
+        g_dev->SetTransform(D3DTS_VIEW, &view);
+        g_dev->SetTransform(D3DTS_PROJECTION, &proj);
+        // Projector: looks straight down from above (0,3,1), orthographic 2x2 world units.
+        D3DXMATRIX pView, pProj, bias, invView, m;
+        D3DXVECTOR3 pe(0, 3, 1), pa(0, -1, 1), pu(0, 0, 1);
+        D3DXMatrixLookAtLH(&pView, &pe, &pa, &pu);
+        D3DXMatrixOrthoLH(&pProj, 2.0f, 2.0f, 0.1f, 10.0f);
+        D3DXMatrixIdentity(&bias);
+        bias._11 = 0.5f; bias._22 = -0.5f; bias._33 = 1.0f; bias._41 = 0.5f; bias._42 = 0.5f;
+        D3DXMatrixInverse(&invView, nullptr, &view);
+        D3DXMatrixMultiply(&m, &invView, &pView);
+        D3DXMatrixMultiply(&m, &m, &pProj);
+        D3DXMatrixMultiply(&m, &m, &bias);
+        g_dev->SetTransform(D3DTS_TEXTURE0, &m);
+        g_dev->SetTexture(0, checker);
+        g_dev->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, D3DTSS_TCI_CAMERASPACEPOSITION);
+        g_dev->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3 | D3DTTFF_PROJECTED);
+        g_dev->SetTextureStageState(0, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
+        g_dev->SetTextureStageState(0, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+        g_dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        ColVertex gv[4] = {{-3, -1, -1, 0xFF804020}, {-3, -1, 4, 0xFF804020}, {3, -1, 4, 0xFF804020}, {3, -1, -1, 0xFF804020}};
+        WORD gi[6] = {0, 1, 2, 0, 2, 3};
+        g_dev->SetVertexShader(COL_FVF);
+        CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, 4, 2, gi, D3DFMT_INDEX16, gv, sizeof(ColVertex)));
+    }
+
+    // Cell 2: point sprites (textured, distance scaled).
+    {
+        SetCommonStates();
+        Cell(2);
+        CameraTransforms(4.0f);
+        g_dev->SetTexture(0, checker);
+        g_dev->SetRenderState(D3DRS_POINTSPRITEENABLE, TRUE);
+        g_dev->SetRenderState(D3DRS_POINTSCALEENABLE, TRUE);
+        g_dev->SetRenderState(D3DRS_POINTSIZE, FloatToDword(0.35f));
+        g_dev->SetRenderState(D3DRS_POINTSIZE_MIN, FloatToDword(1.0f));
+        g_dev->SetRenderState(D3DRS_POINTSCALE_A, FloatToDword(0.0f));
+        g_dev->SetRenderState(D3DRS_POINTSCALE_B, FloatToDword(0.0f));
+        g_dev->SetRenderState(D3DRS_POINTSCALE_C, FloatToDword(0.05f));
+        ColVertex pts[4] = {{-1, -1, 0, 0xFFFF8080}, {1, -1, 1, 0xFF80FF80}, {-1, 1, 2, 0xFF8080FF}, {1, 1, 3, 0xFFFFFF80}};
+        g_dev->SetVertexShader(COL_FVF);
+        g_dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
+        CHECK(g_dev->DrawPrimitiveUP(D3DPT_POINTLIST, 4, pts, sizeof(ColVertex)));
+        g_dev->SetRenderState(D3DRS_POINTSPRITEENABLE, FALSE);
+        g_dev->SetRenderState(D3DRS_POINTSCALEENABLE, FALSE);
+    }
+
+    // Cell 3: volume texture.
+    {
+        SetCommonStates();
+        Cell(3);
+        CameraTransforms();
+        g_dev->SetTexture(0, vol);
+        g_dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        struct VV { float x, y, z; DWORD c; float u, v, w; } vq[4] = {
+            {-1, -1, 0, 0xFFFFFFFF, 0, 1, 0.1f}, {-1, 1, 0, 0xFFFFFFFF, 0, 0, 0.5f}, {1, 1, 0, 0xFFFFFFFF, 1, 0, 0.9f}, {1, -1, 0, 0xFFFFFFFF, 1, 1, 0.5f}};
+        WORD vi[6] = {0, 1, 2, 0, 2, 3};
+        g_dev->SetVertexShader(D3DFVF_XYZ | D3DFVF_DIFFUSE | D3DFVF_TEX1 | D3DFVF_TEXCOORDSIZE3(0));
+        g_dev->SetTextureStageState(0, D3DTSS_MINFILTER, D3DTEXF_POINT);
+        g_dev->SetTextureStageState(0, D3DTSS_MAGFILTER, D3DTEXF_POINT);
+        CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, 4, 2, vi, D3DFMT_INDEX16, vq, sizeof(VV)));
+    }
+
+    // Cell 4: point + spot lights with specular on a sphere.
+    {
+        SetCommonStates();
+        Cell(4);
+        CameraTransforms();
+        D3DMATERIAL8 mat;
+        memset(&mat, 0, sizeof mat);
+        mat.Diffuse.r = mat.Diffuse.g = mat.Diffuse.b = mat.Diffuse.a = 0.8f;
+        mat.Ambient = mat.Diffuse;
+        mat.Specular.r = mat.Specular.g = mat.Specular.b = 1.0f;
+        mat.Power = 25.0f;
+        g_dev->SetMaterial(&mat);
+        D3DLIGHT8 l0, l1;
+        memset(&l0, 0, sizeof l0);
+        l0.Type = D3DLIGHT_POINT;
+        l0.Diffuse.r = 1.0f; l0.Diffuse.g = 0.3f; l0.Diffuse.b = 0.3f;
+        l0.Specular.r = l0.Specular.g = l0.Specular.b = 1.0f;
+        l0.Position.x = 2.0f; l0.Position.y = 1.0f; l0.Position.z = -2.0f;
+        l0.Range = 20.0f; l0.Attenuation1 = 0.15f;
+        memset(&l1, 0, sizeof l1);
+        l1.Type = D3DLIGHT_SPOT;
+        l1.Diffuse.r = 0.2f; l1.Diffuse.g = 0.4f; l1.Diffuse.b = 1.0f;
+        l1.Position.x = -2.5f; l1.Position.y = 0.5f; l1.Position.z = -2.5f;
+        l1.Direction.x = 2.5f; l1.Direction.y = -0.5f; l1.Direction.z = 2.0f;
+        l1.Range = 20.0f; l1.Attenuation0 = 1.0f; l1.Theta = 0.5f; l1.Phi = 1.0f; l1.Falloff = 1.0f;
+        g_dev->SetLight(0, &l0);
+        g_dev->SetLight(1, &l1);
+        g_dev->LightEnable(0, TRUE);
+        g_dev->LightEnable(1, TRUE);
+        g_dev->SetRenderState(D3DRS_LIGHTING, TRUE);
+        g_dev->SetRenderState(D3DRS_SPECULARENABLE, TRUE);
+        g_dev->SetRenderState(D3DRS_COLORVERTEX, FALSE);
+        g_dev->SetRenderState(D3DRS_AMBIENT, 0xFF202020);
+        g_dev->SetRenderState(D3DRS_NORMALIZENORMALS, TRUE);
+        g_dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
+        g_dev->SetVertexShader(SPHERE_FVF);
+        CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, ns, nt, si.data(), D3DFMT_INDEX16, sv.data(), sizeof(SphereVertex)));
+    }
+
+    // Cell 5: stencil (diamond mask) then a colored quad drawn only inside it.
+    {
+        SetCommonStates();
+        Cell(5);
+        CameraTransforms();
+        g_dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        g_dev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
+        g_dev->SetRenderState(D3DRS_STENCILENABLE, TRUE);
+        g_dev->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS);
+        g_dev->SetRenderState(D3DRS_STENCILREF, 1);
+        g_dev->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE);
+        g_dev->SetRenderState(D3DRS_COLORWRITEENABLE, 0);
+        ColVertex diamond[4] = {{0, -1, 0, 0xFFFFFFFF}, {-1, 0, 0, 0xFFFFFFFF}, {0, 1, 0, 0xFFFFFFFF}, {1, 0, 0, 0xFFFFFFFF}};
+        g_dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
+        g_dev->SetVertexShader(COL_FVF);
+        CHECK(g_dev->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, diamond, sizeof(ColVertex)));
+        g_dev->SetRenderState(D3DRS_COLORWRITEENABLE, 0xF);
+        g_dev->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_EQUAL);
+        g_dev->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_KEEP);
+        ColVertex big[4] = {{-1.4f, -1.4f, 0, 0xFFFF4040}, {-1.4f, 1.4f, 0, 0xFF40FF40}, {1.4f, 1.4f, 0, 0xFF4040FF}, {1.4f, -1.4f, 0, 0xFFFFFF40}};
+        CHECK(g_dev->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, big, sizeof(ColVertex)));
+        g_dev->SetRenderState(D3DRS_STENCILENABLE, FALSE);
+    }
+
+    // Cell 6: wireframe sphere.
+    {
+        SetCommonStates();
+        Cell(6);
+        CameraTransforms();
+        g_dev->SetRenderState(D3DRS_FILLMODE, D3DFILL_WIREFRAME);
+        g_dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
+        g_dev->SetRenderState(D3DRS_LIGHTING, FALSE);
+        g_dev->SetVertexShader(SPHERE_FVF);
+        CHECK(g_dev->DrawIndexedPrimitiveUP(D3DPT_TRIANGLELIST, 0, ns, nt, si.data(), D3DFMT_INDEX16, sv.data(), sizeof(SphereVertex)));
+        g_dev->SetRenderState(D3DRS_FILLMODE, D3DFILL_SOLID);
+    }
+
+    // Cell 7: user clip plane (keeps x < 0.2) over a gradient quad, with alpha-blended + additive passes.
+    {
+        SetCommonStates();
+        Cell(7);
+        CameraTransforms();
+        g_dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        float plane[4] = {-1.0f, 0.0f, 0.0f, 0.2f};
+        g_dev->SetClipPlane(0, plane);
+        g_dev->SetRenderState(D3DRS_CLIPPLANEENABLE, 1);
+        g_dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
+        ColVertex cq[4] = {{-1.4f, -1.4f, 0, 0xFFFF2020}, {-1.4f, 1.4f, 0, 0xFFFFFF20}, {1.4f, 1.4f, 0, 0xFF20FF20}, {1.4f, -1.4f, 0, 0xFF2020FF}};
+        g_dev->SetVertexShader(COL_FVF);
+        CHECK(g_dev->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, cq, sizeof(ColVertex)));
+        g_dev->SetRenderState(D3DRS_CLIPPLANEENABLE, 0);
+        // Additive overlay.
+        g_dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        g_dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+        g_dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+        ColVertex ov[4] = {{-0.5f, -0.5f, 0, 0xFF404040}, {-0.5f, 0.5f, 0, 0xFF404040}, {0.5f, 0.5f, 0, 0xFF404040}, {0.5f, -0.5f, 0, 0xFF404040}};
+        CHECK(g_dev->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, ov, sizeof(ColVertex)));
+    }
+}
+
+
+//------------------------------------------------------------------------------
+// Scene set 3: texture formats, UpdateTexture, CopyRects and D3DX (--scene3).
+// Every cell fills a texture with a known color and probes the rendered result.
+//------------------------------------------------------------------------------
+static bool g_scene3 = false;
+
+struct FmtCase { D3DFORMAT fmt; const char *name; DWORD argb; DWORD expect; };
+
+static void RenderScene3()
+{
+    static const FmtCase cases[] = {
+        {D3DFMT_A8R8G8B8, "A8R8G8B8", 0xFF3070C0, 0x3070C0},
+        {D3DFMT_X8R8G8B8, "X8R8G8B8", 0x003070C0, 0x3070C0},
+        {D3DFMT_R5G6B5, "R5G6B5", 0xFF3070C0, 0x316DC6},
+        {D3DFMT_A1R5G5B5, "A1R5G5B5", 0xFF3070C0, 0x316BC6},
+        {D3DFMT_A4R4G4B4, "A4R4G4B4", 0xFF3070C0, 0x3377CC},
+        {D3DFMT_L8, "L8", 0xFF808080, 0x808080},
+        {D3DFMT_A8, "A8 (rgb 0)", 0x80FFFFFF, 0x000000},
+        {D3DFMT_A8L8, "A8L8", 0xFF404040, 0x404040},
+        {D3DFMT_DXT1, "DXT1", 0, 0x00FF00},
+    };
+    D3DXMATRIX id;
+    D3DXMatrixIdentity(&id);
+    struct QV { float x, y, z, rhw; DWORD c; float u, v; };
+    int cell = 0;
+    for (const FmtCase &fc : cases)
+    {
+        SetCommonStates();
+        const int cx = (cell % 4) * 160, cy = (cell / 4) * 160;
+        ++cell;
+        SetViewport(cx, cy, 160, 160);
+        g_dev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
+        g_dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+        IDirect3DTexture8 *sys = nullptr, *tex = nullptr;
+        HRESULT hr = g_dev->CreateTexture(16, 16, 1, 0, fc.fmt, D3DPOOL_SYSTEMMEM, &sys);
+        if (FAILED(hr)) { printf("CASE %s: create failed 0x%x\n", fc.name, (unsigned)hr); continue; }
+        D3DLOCKED_RECT lr;
+        sys->LockRect(0, &lr, nullptr, 0);
+        if (fc.fmt == D3DFMT_DXT1)
+        {
+            for (int by = 0; by < 4; ++by)
+                for (int bx = 0; bx < 4; ++bx)
+                {
+                    BYTE *blk = (BYTE *)lr.pBits + by * lr.Pitch + bx * 8;
+                    WORD c0 = 0x07E0, c1 = 0x07E0;
+                    memcpy(blk, &c0, 2); memcpy(blk + 2, &c1, 2);
+                    memset(blk + 4, 0, 4);
+                }
+        }
+        else
+        {
+            for (int y = 0; y < 16; ++y)
+                for (int x = 0; x < 16; ++x)
+                {
+                    BYTE *p = (BYTE *)lr.pBits + y * lr.Pitch;
+                    DWORD a = fc.argb >> 24, r = (fc.argb >> 16) & 255, g = (fc.argb >> 8) & 255, b = fc.argb & 255;
+                    switch (fc.fmt)
+                    {
+                    case D3DFMT_A8R8G8B8: case D3DFMT_X8R8G8B8: ((DWORD *)p)[x] = fc.argb; break;
+                    case D3DFMT_R5G6B5: ((WORD *)p)[x] = (WORD)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)); break;
+                    case D3DFMT_A1R5G5B5: ((WORD *)p)[x] = (WORD)((a ? 0x8000 : 0) | ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)); break;
+                    case D3DFMT_A4R4G4B4: ((WORD *)p)[x] = (WORD)(((a >> 4) << 12) | ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4)); break;
+                    case D3DFMT_L8: p[x] = (BYTE)r; break;
+                    case D3DFMT_A8: p[x] = (BYTE)a; break;
+                    case D3DFMT_A8L8: ((WORD *)p)[x] = (WORD)((a << 8) | r); break;
+                    default: break;
+                    }
+                }
+        }
+        sys->UnlockRect(0);
+        hr = g_dev->CreateTexture(16, 16, 1, 0, fc.fmt, D3DPOOL_DEFAULT, &tex);
+        if (FAILED(hr)) { printf("CASE %s: default create failed 0x%x\n", fc.name, (unsigned)hr); sys->Release(); continue; }
+        CHECK(g_dev->UpdateTexture(sys, tex));
+        sys->Release();
+        g_dev->SetTexture(0, tex);
+        g_dev->SetTextureStageState(0, D3DTSS_MINFILTER, D3DTEXF_POINT);
+        g_dev->SetTextureStageState(0, D3DTSS_MAGFILTER, D3DTEXF_POINT);
+        g_dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG1);
+        g_dev->SetVertexShader(RHW_FVF);
+        QV q[4] = {{(float)cx + 10, (float)cy + 10, 0.5f, 1, 0xFFFFFFFF, 0, 0}, {(float)cx + 150, (float)cy + 10, 0.5f, 1, 0xFFFFFFFF, 1, 0},
+                   {(float)cx + 10, (float)cy + 150, 0.5f, 1, 0xFFFFFFFF, 0, 1}, {(float)cx + 150, (float)cy + 150, 0.5f, 1, 0xFFFFFFFF, 1, 1}};
+        CHECK(g_dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, q, sizeof(QV)));
+        tex->Release();
+    }
+    // Lighting checks: a quad facing the camera, lit head-on by a directional light.
+    // Cell 9: identity world. Cell 10: rotated world (the normal matrix must follow).
+    // Both must come out as diffuse * 1.0 = (127, 64, 191).
+    for (int k = 0; k < 2; ++k)
+    {
+        SetCommonStates();
+        const int c = 9 + k;
+        SetViewport((c % 4) * 160, (c / 4) * 160, 160, 160);
+        g_dev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
+        g_dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+        D3DXMATRIX world, view, proj, rot;
+        D3DXVECTOR3 eye(0, 0, -3), at(0, 0, 0), up(0, 1, 0);
+        D3DXMatrixLookAtLH(&view, &eye, &at, &up);
+        D3DXMatrixPerspectiveFovLH(&proj, 0.8f, 1.0f, 0.5f, 30.0f);
+        // Rotating the world about Y by 0.5 rad turns the quad normal (0,0,-1) to (-sin, 0, -cos).
+        D3DXMatrixRotationY(&world, k ? 0.5f : 0.0f);
+        g_dev->SetTransform(D3DTS_WORLD, &world);
+        g_dev->SetTransform(D3DTS_VIEW, &view);
+        g_dev->SetTransform(D3DTS_PROJECTION, &proj);
+        D3DMATERIAL8 mat;
+        memset(&mat, 0, sizeof mat);
+        mat.Diffuse.r = 0.5f; mat.Diffuse.g = 0.25f; mat.Diffuse.b = 0.75f; mat.Diffuse.a = 1.0f;
+        g_dev->SetMaterial(&mat);
+        D3DLIGHT8 l;
+        memset(&l, 0, sizeof l);
+        l.Type = D3DLIGHT_DIRECTIONAL;
+        l.Diffuse.r = l.Diffuse.g = l.Diffuse.b = 1.0f;
+        // Light travels along +normal-opposite: direction = -(rotated normal) in WORLD space.
+        const float a = k ? 0.5f : 0.0f;
+        l.Direction.x = std::sin(a); l.Direction.y = 0.0f; l.Direction.z = std::cos(a);
+        g_dev->SetLight(0, &l);
+        g_dev->LightEnable(0, TRUE);
+        g_dev->SetRenderState(D3DRS_LIGHTING, TRUE);
+        g_dev->SetRenderState(D3DRS_COLORVERTEX, FALSE);
+        g_dev->SetRenderState(D3DRS_AMBIENT, 0);
+        g_dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_SELECTARG2);
+        struct LV { float x, y, z, nx, ny, nz; } lq[4] = {{-1, -1, 0, 0, 0, -1}, {-1, 1, 0, 0, 0, -1}, {1, 1, 0, 0, 0, -1}, {1, -1, 0, 0, 0, -1}};
+        g_dev->SetVertexShader(D3DFVF_XYZ | D3DFVF_NORMAL);
+        CHECK(g_dev->DrawPrimitiveUP(D3DPT_TRIANGLEFAN, 2, lq, sizeof(LV)));
+    }
+    // World light direction for cell 10 above is (sin a, 0, cos a) = the light travelling toward +z/+x,
+    // i.e. hitting a surface whose normal is (-sin a, 0, -cos a): exactly the rotated quad normal.
+    SetViewport(0, 0, 640, 480);
+}
+
 static void RenderFrame(float t, IDirect3DTexture8 *checker, IDirect3DTexture8 *gradient, IDirect3DTexture8 *dxt,
                         IDirect3DTexture8 *rtTex, IDirect3DSurface8 *rtDepth, IDirect3DSurface8 *bbSurface,
                         IDirect3DSurface8 *bbDepth, bool doRT)
@@ -212,6 +803,22 @@ static void RenderFrame(float t, IDirect3DTexture8 *checker, IDirect3DTexture8 *
     SetViewport(0, 0, 640, 480);
     CHECK(g_dev->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER | D3DCLEAR_STENCIL, 0xFF203040, 1.0f, 0));
     CHECK(g_dev->BeginScene());
+    if (g_scene3)
+    {
+        RenderScene3();
+        CHECK(g_dev->EndScene());
+        SetViewport(0, 0, 640, 480);
+        CHECK(g_dev->Present(nullptr, nullptr, nullptr, nullptr));
+        return;
+    }
+    if (g_scene2)
+    {
+        RenderScene2(checker);
+        CHECK(g_dev->EndScene());
+        SetViewport(0, 0, 640, 480);
+        CHECK(g_dev->Present(nullptr, nullptr, nullptr, nullptr));
+        return;
+    }
 
     //-------------------------------------------------------------------
     // Scene A (top-left): lit, textured, rotating cube (indexed, static VB/IB).
@@ -402,6 +1009,8 @@ static void RenderFrame(float t, IDirect3DTexture8 *checker, IDirect3DTexture8 *
         CHECK(g_dev->DrawPrimitiveUP(D3DPT_POINTLIST, 3, pts, sizeof(PV)));
     }
 
+    if (g_shaders) RenderShaderScene(checker, gradient);
+
     CHECK(g_dev->EndScene());
     SetViewport(0, 0, 640, 480);
     CHECK(g_dev->Present(nullptr, nullptr, nullptr, nullptr));
@@ -434,10 +1043,19 @@ int main(int argc, char **argv)
     {
         if (!strcmp(argv[i], "--implicit")) WebD3D8_SetPresentMode(WEBD3D8_PRESENT_IMPLICIT);
         if (!strcmp(argv[i], "--no-s3tc")) WebD3D8_SetDisableS3TC(1);
-        if (!strcmp(argv[i], "--shaders")) WebD3D8_SetShaderModel(0x0101, 0x0104);
+        if (!strcmp(argv[i], "--shaders")) { WebD3D8_SetShaderModel(0x0101, 0x0104); g_shaders = true; }
         if (!strcmp(argv[i], "--debug")) WebD3D8_SetDebug(1);
+        if (!strcmp(argv[i], "--scene2")) g_scene2 = true;
+        if (!strcmp(argv[i], "--scene3")) g_scene3 = true;
     }
     (void)blocking;
+    WebD3D8_PlatformHooks hooks = {};
+    for (int i = 1; i < argc; ++i)
+    {
+        if (!strcmp(argv[i], "--yield")) hooks.OnFramePresented = [] { emscripten_sleep(0); };
+        if (!strcmp(argv[i], "--proxy")) WebD3D8_SetContextProxy(1);
+    }
+    WebD3D8_SetPlatformHooks(&hooks);
     printf("web_d3d8_test starting\n");
 
     g_d3d = Direct3DCreate8(D3D_SDK_VERSION);
@@ -478,6 +1096,7 @@ int main(int argc, char **argv)
         gradient->UnlockRect(0);
     }
     IDirect3DTexture8 *dxt = MakeDXT1();
+    if (g_shaders) CreateShaders();
 
     IDirect3DTexture8 *rtTex = nullptr;
     CHECK(g_dev->CreateTexture(128, 128, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &rtTex));
@@ -487,16 +1106,30 @@ int main(int argc, char **argv)
     CHECK(g_dev->GetRenderTarget(&bb));
     CHECK(g_dev->GetDepthStencilSurface(&bbDepth));
 
-    const int kFrames = 90;
+    bool doReset = false;
+    for (int i = 1; i < argc; ++i) if (!strcmp(argv[i], "--reset")) doReset = true;
+    int kFrames = 90;
+    for (int i = 1; i < argc; ++i)
+        if (!strncmp(argv[i], "--frames=", 9)) kFrames = atoi(argv[i] + 9);
     for (int f = 0; f < kFrames; ++f)
     {
+        if (doReset && f == 40)
+        {
+            // Back buffer references must be dropped before Reset(), as with real D3D8.
+            bb->Release(); bbDepth->Release();
+            pp.BackBufferWidth = 640; pp.BackBufferHeight = 480;
+            HRESULT rhr = g_dev->Reset(&pp);
+            printf("Reset -> 0x%x\n", (unsigned)rhr);
+            g_dev->GetRenderTarget(&bb);
+            g_dev->GetDepthStencilSurface(&bbDepth);
+        }
         RenderFrame(f * 0.02f, checker, gradient, dxt, rtTex, rtDepth, bb, bbDepth, true);
         if (f == 0 || f == kFrames - 1)
         {
             ReadBack();
             printf("frame %d read back\n", f);
         }
-        usleep(8000);
+        usleep(16000);
     }
 
     // Probes (frame kFrames-1 contents).
@@ -513,6 +1146,16 @@ int main(int argc, char **argv)
     Probe("scene-D-alphatest-kept", 560, 270);
     Probe("scene-D-alphatest-cut", 600, 270);
     Probe("scene-D-point", 470, 450);
+    if (g_scene3)
+        for (int i = 0; i < 11; ++i) Probe("scene3-cell", (i % 4) * 160 + 80, (i / 4) * 160 + 80);
+    if (g_shaders)
+    {
+        Probe("vs-quad", 50, 50);
+        Probe("ps11-quad", 150, 50);
+        Probe("texbem-left", 215, 50);
+        Probe("texbem-right", 285, 50);
+        Probe("ps14-quad", 310, 50);
+    }
     {
         // Checksum for regression comparisons.
         unsigned long long h = 1469598103934665603ull;

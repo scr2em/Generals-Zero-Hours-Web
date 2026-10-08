@@ -73,7 +73,7 @@ enum UniformId
     U_WVP, U_WV, U_WORLD, U_NM, U_TM, U_PIX, U_VP, U_CLIP, U_POINT, U_POINTATT,
     U_MAT_E, U_MAT_A, U_MAT_D, U_MAT_S, U_MAT_P,
     U_LPOS, U_LDIR, U_LDIFF, U_LSPEC, U_LAMB, U_LATT, U_LSPOT,
-    U_AMBIENT, U_FOG, U_FOGCOLOR, U_TFACTOR, U_ALPHAREF, U_LOD,
+    U_AMBIENT, U_FOG, U_FOGCOLOR, U_TFACTOR, U_ALPHAREF, U_LOD, U_BUMP, U_BUMPL,
     U_VSC, U_PSC,
     U_COUNT
 };
@@ -102,5 +102,12 @@ std::string VaryingDeclarations(const ProgramKey &key, bool vertexStage, bool fo
 /// Epilogue common to every vertex stage: writes the varyings and gl_Position
 /// from the D3D-convention outputs (oPos etc.).
 const char *VertexEpilogue();
+
+/// Fragment stage helpers shared with the translated pixel shaders.
+std::string FragmentCommonUniforms();
+/// Expression of the texture coordinates of stage `stage` (a vec4).
+std::string TexCoordExpr(const ProgramKey &key, int stage);
+/// Fog, alpha test and the write of `col` to fragColor; closes main().
+std::string FragmentTail(const ProgramKey &key);
 
 } // namespace webd3d8

@@ -95,7 +95,7 @@ bool Mat4::Inverse(Mat4 &out) const
             if (std::fabs(a[r][c]) > std::fabs(a[piv][c])) piv = r;
         if (std::fabs(a[piv][c]) < 1e-30) return false;
         if (piv != c)
-            for (int j = 0; j < 8; ++j) std::swap(a[c][j], a[piv][j]);
+            for (int j = 0; j < 8; ++j) { double tmp_ = a[c][j]; a[c][j] = a[piv][j]; a[piv][j] = tmp_; }
         double d = 1.0 / a[c][c];
         for (int j = 0; j < 8; ++j) a[c][j] *= d;
         for (int r = 0; r < 4; ++r)
@@ -165,6 +165,7 @@ void WebD3D8_SetPlatformHooks(const WebD3D8_PlatformHooks *hooks)
 }
 void WebD3D8_SetPresentMode(int mode) { webd3d8::GetConfig().presentMode = mode; }
 void WebD3D8_SetDisableS3TC(int disable) { webd3d8::GetConfig().disableS3TC = disable != 0; }
+void WebD3D8_SetContextProxy(int mode) { webd3d8::GetConfig().contextProxy = mode; }
 void WebD3D8_SetDebug(int enable) { webd3d8::GetConfig().debug = enable != 0; }
 void WebD3D8_SetReleaseTextureShadows(int enable) { webd3d8::GetConfig().releaseTextureShadows = enable != 0; }
 

@@ -339,7 +339,7 @@ D3DXMATRIX *WINAPI D3DXMatrixInverse(D3DXMATRIX *o, float *pDet, const D3DXMATRI
         }
         if (piv != c)
         {
-            for (int j = 0; j < 8; ++j) std::swap(a[c][j], a[piv][j]);
+            for (int j = 0; j < 8; ++j) { double tmp_ = a[c][j]; a[c][j] = a[piv][j]; a[piv][j] = tmp_; }
             det = -det;
         }
         det *= a[c][c];

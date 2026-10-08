@@ -68,8 +68,24 @@ typedef struct WebD3D8_PlatformHooks {
     /// Called after CreateDevice() and Reset(), once the canvas drawing buffer
     /// has been resized to the back buffer size.
     void (*OnClientSize)(unsigned width, unsigned height);
+    /// Called at the end of every Present().
+    ///
+    /// Finding (tests/run_test.mjs --frames=N): a pthread that renders to an
+    /// OffscreenCanvas from a loop that never returns to its event loop does
+    /// not get its frames shown by Chromium, with or without explicitSwapControl
+    /// (emscripten_webgl_commit_frame() is a no-op in current browsers; the
+    /// canvas only updates when the thread yields). Yielding once per frame from
+    /// this hook fixes it: link the game with -sJSPI (or -sASYNCIFY) and call
+    /// emscripten_sleep(0) here.
+    void (*OnFramePresented)(void);
 } WebD3D8_PlatformHooks;
 void WebD3D8_SetPlatformHooks(const WebD3D8_PlatformHooks *hooks);
+
+/// Where the WebGL calls are executed when the device is used from a pthread:
+/// 0 (default) = on the calling thread (needs the canvas transferred as an
+/// OffscreenCanvas), 1 = proxied to the main thread (-sOFFSCREEN_FRAMEBUFFER;
+/// every GL call is forwarded, slow but works with a thread that never yields).
+void WebD3D8_SetContextProxy(int mode);
 
 /// Enables extra GL error checking and a log of unsupported D3D features.
 void WebD3D8_SetDebug(int enable);
@@ -82,6 +98,11 @@ void WebD3D8_SetReleaseTextureShadows(int enable);
 /// Makes the device ignore WEBGL_compressed_texture_s3tc so DXT textures are
 /// decoded on the CPU (for testing that path).
 void WebD3D8_SetDisableS3TC(int disable);
+
+/// Resolves the entry points the game looks up with GetProcAddress() on
+/// "D3D8.DLL" ("Direct3DCreate8"). Returns null for unknown names. The
+/// Win32 compatibility layer's LoadLibrary("D3D8.DLL") can be backed by this.
+void *WebD3D8_LookupProc(const char *name);
 
 /// Info about the GL implementation that backs the device (valid after
 /// CreateDevice()). Strings are owned by the library.
