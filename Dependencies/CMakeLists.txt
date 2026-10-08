@@ -24,6 +24,8 @@ elseif (IS_WEB_BUILD)
     # the loader. It is never there on the web, so the loader does nothing.
     add_subdirectory(DbgHelp)
     add_library(deps_usp10 INTERFACE)
+    # MP3 decoder of the Web Audio device
+    add_subdirectory(minimp3)
 else()
     add_library(deps_dbghelp INTERFACE)
     add_library(deps_usp10 INTERFACE)

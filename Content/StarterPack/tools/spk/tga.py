@@ -1,8 +1,8 @@
-"""TGA reader/writer (uncompressed 24/32 bit true colour).
+"""TGA reader/writer (24/32 bit true colour, uncompressed or run length encoded).
 
 The engine's texture loader (``Targa::Load``) and the terrain tile reader
 (``WorldHeightMap::readTiles``) accept image type 2 (and RLE type 10) with 24
-or 32 bits per pixel. The writer emits uncompressed images.
+or 32 bits per pixel. The writer emits uncompressed images unless ``rle`` is requested.
 
 ``origin="top"`` sets the descriptor's top-left bit; ``Targa::Load`` flips
 such files into its canonical bottom-left layout. Terrain tile sheets are read
@@ -14,8 +14,11 @@ art pipeline produced.
 import struct
 
 
-def write_tga(width, height, rgba, alpha=True, origin="top"):
-    """Serialise ``rgba`` (bytes-like, width*height*4, top row first) as a TGA."""
+def write_tga(width, height, rgba, alpha=True, origin="top", rle=False):
+    """Serialise ``rgba`` (bytes-like, width*height*4, top row first) as a TGA.
+
+    ``rle=True`` writes image type 10 (run length encoded per scan line), which ``Targa::Load`` decodes.
+    """
     if len(rgba) != width * height * 4:
         raise ValueError("pixel buffer has the wrong size")
     if origin not in ("top", "bottom"):
@@ -30,7 +33,7 @@ def write_tga(width, height, rgba, alpha=True, origin="top"):
     # id length, colour map type, image type (2 = true colour), colour map spec
     # (first entry, length, entry size), x origin, y origin, width, height,
     # bits per pixel, descriptor.
-    header = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, width, height, depth, descriptor)
+    header = struct.pack("<BBBHHBHHHHBB", 0, 0, 10 if rle else 2, 0, 0, 0, 0, 0, width, height, depth, descriptor)
     assert len(header) == 18
     if alpha:
         body = bytearray(len(rgba))
@@ -43,7 +46,38 @@ def write_tga(width, height, rgba, alpha=True, origin="top"):
         body[0::3] = rgba[2::4]
         body[1::3] = rgba[1::4]
         body[2::3] = rgba[0::4]
+    if rle:
+        return header + _rle_encode(bytes(body), width, height, 4 if alpha else 3)
     return header + bytes(body)
+
+
+def _rle_encode(body, width, height, bpp):
+    """Per scan line TGA run length packets (runs of identical pixels, else raw pixels)."""
+    out = bytearray()
+    stride = width * bpp
+    for y in range(height):
+        row = body[y * stride:(y + 1) * stride]
+        pixels = [row[i:i + bpp] for i in range(0, stride, bpp)]
+        i = 0
+        n = len(pixels)
+        while i < n:
+            j = i + 1
+            while j < n and j - i < 128 and pixels[j] == pixels[i]:
+                j += 1
+            if j - i >= 2:
+                out.append(0x80 | (j - i - 1))
+                out += pixels[i]
+                i = j
+                continue
+            # raw packet until the next run of two or more equal pixels
+            j = i + 1
+            while j < n and j - i < 128 and not (j + 1 < n and pixels[j] == pixels[j + 1]):
+                j += 1
+            out.append(j - i - 1)
+            for k in range(i, j):
+                out += pixels[k]
+            i = j
+    return bytes(out)
 
 
 def read_tga(data):

@@ -116,7 +116,9 @@ if(EMSCRIPTEN)
             -sINITIAL_MEMORY=512MB
             -sMAXIMUM_MEMORY=4GB
             -sSTACK_SIZE=8MB
-            -sPTHREAD_POOL_SIZE=4
+            # Threads: the engine, the OPFS proxy worker of WasmFS, the audio stream decoder, and
+            # spares for GameSpy / DNS / screenshot threads (each pool worker loads the module).
+            -sPTHREAD_POOL_SIZE=6
             -sENVIRONMENT=web,worker
             -sEXIT_RUNTIME=0
             # The OPFS backend of WasmFS lists directories with stringToUTF8OnStack but does not

@@ -361,6 +361,10 @@ static void finishGame()
 //=============================================================================
 static void reportFatal( const char *message )
 {
+	// ReleaseCrashLocalized() has no text to look up this early and passes the string's key on.
+	if( message && strcmp( message, "ERROR:D3DFailureMessage" ) == 0 )
+		message = "The renderer could not start. This browser or graphics driver does not provide the WebGL 2 features the game needs.";
+
 	// Debug builds route failed asserts here too; they carry on, release crashes end the game.
 	const bool assertion = message && strncmp( message, "ASSERTION FAILURE", 17 ) == 0;
 	fprintf( stderr, "%s: %s\n", assertion ? "Assertion failed" : "Fatal error", message ? message : "(no message)" );
@@ -386,6 +390,8 @@ static void gameFrame( void * )
 		TheGameEngine->executeFrame();
 
 		++s_frameCount;
+		if( s_frameCount == 1 )
+			DEBUG_LOG(("First frame done"));
 		if( s_frameCount % 30 == 0 )
 		{
 			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; }, s_frameCount );
@@ -423,6 +429,7 @@ static Bool runGame( Int &exitcode )
 	TheFramePacer->enableFramesPerSecondLimit(TRUE);
 	TheGameEngine = CreateGameEngine();
 	TheGameEngine->init();
+	DEBUG_LOG(("Game engine initialized, starting the frame loop"));
 
 	if (!TheGlobalData->m_simulateReplays.empty())
 	{

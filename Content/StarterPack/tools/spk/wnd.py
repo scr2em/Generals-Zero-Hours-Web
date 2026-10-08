@@ -84,12 +84,13 @@ class TextStyle:
 class Window:
     """One window or gadget and its children."""
 
-    def __init__(self, kind, name, rect, status=("ENABLED",), text=None, font=("Starter Sans", 12, 0),
+    def __init__(self, kind, name, rect, status=("ENABLED",), text=None, font=("DejaVu Sans", 12, 0),
                  system=None, input=None, tooltip=None, draw=None, look=None, text_style=None,
-                 tooltip_text=None, data=None, hidden=False, image=False):
+                 tooltip_text=None, data=None, hidden=False, image=False, track=True):
         if kind not in KINDS:
             raise ValueError("unknown window type %r" % kind)
         self.kind = kind
+        self.track = track
         self.name = name
         self.rect = tuple(rect)
         self.status = list(status)
@@ -111,6 +112,15 @@ class Window:
     def add(self, *children):
         self.children.extend(children)
         return self
+
+    # Gadgets that react to the mouse hovering over them (highlight, tooltips) are mouse tracking.
+    MOUSE_TRACKING = {"PUSHBUTTON", "RADIOBUTTON", "CHECKBOX", "VERTSLIDER", "HORZSLIDER", "SCROLLLISTBOX",
+                      "ENTRYFIELD", "COMBOBOX"}
+
+    def style_string(self):
+        if self.kind in self.MOUSE_TRACKING and self.track:
+            return self.kind + "+MOUSETRACK"
+        return self.kind
 
     def walk(self):
         yield self
@@ -172,7 +182,7 @@ def _window_lines(win, resolution, layout_name, indent=0):
                  x0, y0, x1, y1, rx, ry),
              '  NAME = "%s";\n' % (win.name if ":" in win.name else "%s:%s" % (layout_name, win.name)),
              "  STATUS = %s;\n" % ("+".join(win.status) if win.status else "NULL"),
-             "  STYLE = %s;\n" % win.kind,
+             "  STYLE = %s;\n" % win.style_string(),
              '  SYSTEMCALLBACK = "%s";\n' % (win.system or "[None]"),
              '  INPUTCALLBACK = "%s";\n' % (win.input or "[None]"),
              '  TOOLTIPCALLBACK = "%s";\n' % (win.tooltip or "[None]"),

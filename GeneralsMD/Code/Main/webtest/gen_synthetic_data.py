@@ -65,9 +65,32 @@ GameData
 End
 """
 
+WEATHER = """\
+; Synthetic test data. Not EA content. Zero would divide by zero in SnowManager::updateIniSettings.
+Weather
+  SnowTexture = snow.tga
+  SnowFrequencyScaleX = 0.05
+  SnowFrequencyScaleY = 0.05
+  SnowAmplitude = 5.0
+  SnowPointSize = 1.0
+  SnowMaxPointSize = 64.0
+  SnowMinPointSize = 0.0
+  SnowQuadSize = 0.5
+  SnowBoxDimensions = 200.0
+  SnowBoxDensity = 1.0
+  SnowVelocity = 4.0
+  SnowPointSprites = Yes
+  SnowEnabled = No
+End
+"""
+
 STAGES = {
     1: {
         'inizh': [('Data\\INI\\GameData.ini', GAME_DATA)] + [(p, '; empty\n') for p in EMPTY_INI],
+        'ini': [],
+    },
+    2: {
+        'inizh': [('Data\\INI\\Weather.ini', WEATHER)],
         'ini': [],
     },
 }

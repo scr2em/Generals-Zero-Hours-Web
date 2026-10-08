@@ -20,6 +20,8 @@
 */
 #include "webcompat_internal.h"
 
+#include <strings.h>
+
 #include <errno.h>
 #include <malloc.h>
 #include <objbase.h>
@@ -309,9 +311,32 @@ void WINAPI FatalAppExitA(UINT, LPCSTR lpMessageText)
 ** Modules and resources
 ** ------------------------------------------------------------------------- */
 
-HMODULE WINAPI LoadLibraryA(LPCSTR)
+// The renderer's Direct3D 8 implementation (Dependencies/WebD3D8) is the only "library" there is:
+// the game loads it with LoadLibrary("D3D8.DLL") and GetProcAddress("Direct3DCreate8"). It is
+// weak so that programs that do not contain it (the tests) still link.
+extern "C" void *WebD3D8_LookupProc(const char *name) __attribute__((weak));
+
+namespace
 {
-	// There are no dynamic libraries in the browser: everything the game
+HMODULE const D3D8_MODULE = reinterpret_cast<HMODULE>(0x00D38000);
+}
+
+HMODULE WINAPI LoadLibraryA(LPCSTR lpLibFileName)
+{
+	if (lpLibFileName && WebD3D8_LookupProc)
+	{
+		// "D3D8.DLL", "d3d8", with or without a path, in any case.
+		const char *name = lpLibFileName;
+		for (const char *p = lpLibFileName; *p; ++p)
+		{
+			if (*p == '\\' || *p == '/')
+				name = p + 1;
+		}
+		if (strcasecmp(name, "d3d8.dll") == 0 || strcasecmp(name, "d3d8") == 0)
+			return D3D8_MODULE;
+	}
+
+	// There are no other dynamic libraries in the browser: everything else the game
 	// looks up this way is optional and has a fallback.
 	SetLastError(126); // ERROR_MOD_NOT_FOUND
 	return nullptr;
@@ -375,8 +400,13 @@ DWORD WINAPI GetModuleFileNameA(HMODULE, LPSTR lpFilename, DWORD nSize)
 	return length;
 }
 
-FARPROC WINAPI GetProcAddress(HMODULE, LPCSTR)
+FARPROC WINAPI GetProcAddress(HMODULE hModule, LPCSTR lpProcName)
 {
+	if (hModule == D3D8_MODULE && WebD3D8_LookupProc && !IS_INTRESOURCE(lpProcName))
+	{
+		if (void *proc = WebD3D8_LookupProc(lpProcName))
+			return reinterpret_cast<FARPROC>(proc);
+	}
 	SetLastError(127); // ERROR_PROC_NOT_FOUND
 	return nullptr;
 }

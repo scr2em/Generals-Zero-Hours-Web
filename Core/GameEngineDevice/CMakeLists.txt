@@ -221,9 +221,16 @@ if(EMSCRIPTEN)
 
     list(APPEND GAMEENGINEDEVICE_SRC
         Include/WebDevice/Common/WebGameEngine.h
+        Include/WebDevice/Audio/WebAudioBackend.h
+        Include/WebDevice/Audio/WebAudioDecoder.h
+        Include/WebDevice/Audio/WebAudioManager.h
+        Include/WebDevice/Audio/WebAudioMix.h
         Include/WebDevice/Common/WebNullAudioManager.h
         Include/WebDevice/GameClient/WebKeyboard.h
         Include/WebDevice/Platform/WebPlatform.h
+        Source/WebDevice/Audio/WebAudioBackend.cpp
+        Source/WebDevice/Audio/WebAudioDecoder.cpp
+        Source/WebDevice/Audio/WebAudioManager.cpp
         Source/WebDevice/Common/WebGameEngine.cpp
         Source/WebDevice/Common/WebNullAudioManager.cpp
         Source/WebDevice/GameClient/WebKeyboard.cpp
@@ -248,6 +255,13 @@ target_link_libraries(corei_gameenginedevice_private INTERFACE
     corei_main
     stb
 )
+
+if(EMSCRIPTEN)
+    # MP3 decoder of the Web Audio device
+    target_link_libraries(corei_gameenginedevice_private INTERFACE deps_minimp3)
+    # The audio device's own tests (web_audio_test and friends), not part of the game build.
+    add_subdirectory(Source/WebDevice/Audio EXCLUDE_FROM_ALL)
+endif()
 
 target_link_libraries(corei_gameenginedevice_public INTERFACE
     corei_gameengine_public

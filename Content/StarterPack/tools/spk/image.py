@@ -215,8 +215,8 @@ class Canvas:
             self.rect(x, y, x + size, y + size, color, blend=True)
 
     # ---- output -------------------------------------------------------------
-    def to_tga(self, alpha=True, origin="top"):
-        return write_tga(self.width, self.height, bytes(self.data), alpha=alpha, origin=origin)
+    def to_tga(self, alpha=True, origin="top", rle=False):
+        return write_tga(self.width, self.height, bytes(self.data), alpha=alpha, origin=origin, rle=rle)
 
 
 def _tileable_fbm(u, v, cells, octaves, seed):

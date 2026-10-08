@@ -61,7 +61,8 @@ def collect(generate=True):
             emit(rel, raw)
     if generate:
         for module in generators():
-            module.generate(emit)
+            if hasattr(module, "generate"):
+                module.generate(emit)
     return files
 
 

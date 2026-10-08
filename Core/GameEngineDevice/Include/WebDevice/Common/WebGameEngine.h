@@ -21,8 +21,7 @@
 // The game engine of the WebAssembly build. It is the Win32 game engine with
 // the Win32 device specific parts replaced: the portable (std::filesystem) file
 // systems on top of the WasmFS tree, the browser keyboard (W3DGameClient picks
-// WebKeyboard and NullVideoPlayer when built for the web), a silent audio
-// manager and no video playback. Rendering is unchanged (W3D on Direct3D 8,
+// WebKeyboard and NullVideoPlayer when built for the web), the Web Audio manager and no video playback. Rendering is unchanged (W3D on Direct3D 8,
 // which the web build implements on WebGL2).
 //
 ///////////////////////////////////////////////////////////////////////////////
@@ -40,7 +39,7 @@
 #include "W3DDevice/Common/W3DFunctionLexicon.h"
 #include "W3DDevice/Common/W3DRadar.h"
 #include "W3DDevice/Common/W3DThingFactory.h"
-#include "WebDevice/Common/WebNullAudioManager.h"
+#include "WebDevice/Audio/WebAudioManager.h"
 #include "W3DDevice/GameClient/W3DGameClient.h"
 
 class WebGameEngine : public GameEngine
@@ -98,6 +97,6 @@ inline Radar *WebGameEngine::createRadar(Bool dummy)
 
 inline AudioManager *WebGameEngine::createAudioManager(Bool dummy)
 {
-	// The silent manager serves headless mode as well.
-	return NEW WebNullAudioManager;
+	// The dummy serves headless mode: it decodes and plays nothing.
+	return dummy ? (AudioManager *)NEW WebAudioManagerDummy : (AudioManager *)NEW WebAudioManager;
 }
