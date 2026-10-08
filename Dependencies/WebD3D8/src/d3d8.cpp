@@ -155,8 +155,11 @@ public:
         memset(id, 0, sizeof *id);
         strncpy(id->Driver, "webgl2.dll", sizeof id->Driver - 1);
         strncpy(id->Description, RendererString().c_str(), sizeof id->Description - 1);
-        id->DriverVersion.HighPart = (6 << 16) | 14;
-        id->DriverVersion.LowPart = (10 << 16) | 4000;
+        // DriverVersion is a LARGE_INTEGER with _WIN32 and two DWORDs otherwise
+        // (same layout: low part first); it directly precedes VendorId.
+        DWORD *driverVersion = &id->VendorId - 2;
+        driverVersion[0] = (10 << 16) | 4000; // LowPart
+        driverVersion[1] = (6 << 16) | 14;    // HighPart
         id->VendorId = 0;
         id->DeviceId = 0;
         id->SubSysId = 0;

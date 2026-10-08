@@ -26,6 +26,10 @@
 
 #include "WebDevice/Platform/WebPlatform.h"
 
+#include <GLES3/gl3.h>
+#include <emscripten/html5.h>
+#include <emscripten/html5_webgl.h>
+
 #include <dirent.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -63,11 +67,17 @@ static const char *messageName(uint32_t m)
 }
 
 static int s_quit = 0;
+static int s_mouseX = 0, s_mouseY = 0;
+static int s_clientW = 640, s_clientH = 480;
+static int s_buttons = 0;
 
 static intptr_t windowProc(uintptr_t hwnd, uint32_t message, uintptr_t wParam, intptr_t lParam)
 {
 	if (message == WEBWM_MOUSEMOVE || (message >= WEBWM_LBUTTONDOWN && message <= WEBWM_MBUTTONDBLCLK))
 	{
+		s_mouseX = (int)(int16_t)(lParam & 0xFFFF);
+		s_mouseY = (int)(int16_t)((lParam >> 16) & 0xFFFF);
+		s_buttons = (int)(wParam & 0x13);
 		printf("TEST: MSG %s x=%d y=%d wp=0x%x\n", messageName(message), (int)(lParam & 0xFFFF), (int)((lParam >> 16) & 0xFFFF), (unsigned)wParam);
 	}
 	else if (message == WEBWM_MOUSEWHEEL)
@@ -169,7 +179,19 @@ int main(int argc, char **argv)
 	int w, h;
 	WebPlatform_GetClientSize(&w, &h);
 	printf("TEST: client %dx%d\n", w, h);
-	WebPlatform_SetClientSize(640, 480);
+	// WebGL2 from this thread on the canvas the page transferred to us.
+	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE gl = 0;
+	{
+		EmscriptenWebGLContextAttributes attributes;
+		emscripten_webgl_init_context_attributes(&attributes);
+		attributes.majorVersion = 2;
+		attributes.explicitSwapControl = true;
+		attributes.alpha = false;
+		emscripten_set_canvas_element_size(WebPlatform_GetCanvasSelector(), s_clientW, s_clientH);
+		gl = emscripten_webgl_create_context(WebPlatform_GetCanvasSelector(), &attributes);
+		const EMSCRIPTEN_RESULT made = gl ? emscripten_webgl_make_context_current(gl) : -1;
+		printf("TEST: webgl context=%d current=%d version=%s\n", (int)gl, (int)made, gl ? (const char *)glGetString(GL_VERSION) : "none");
+	}
 	printf("TEST: active=%d window=%u\n", WebPlatform_IsActive(), (unsigned)WebPlatform_GetWindow());
 
 	// Blocking GetMessage woken by another thread.
@@ -183,6 +205,9 @@ int main(int argc, char **argv)
 		WebPlatform_GetMessage(&msg);
 	printf("TEST: GetMessage woke: message=0x%x wp=%u lp=%d\n", msg.message, (unsigned)msg.wParam, (int)msg.lParam);
 	pthread_join(thread, nullptr);
+
+	// the game picks its resolution after start-up; this posts a WM_SIZE
+	WebPlatform_SetClientSize(s_clientW, s_clientH);
 
 	printf("TEST: ready\n");
 
@@ -204,6 +229,15 @@ int main(int argc, char **argv)
 			lastKeyReport = key.time;
 		}
 		(void)lastKeyReport;
+
+		if (gl)
+		{
+			// the colour follows the mouse; a button turns it brighter
+			glViewport(0, 0, s_clientW, s_clientH);
+			glClearColor(s_mouseX / (float)s_clientW, s_mouseY / (float)s_clientH, s_buttons ? 1.0f : 0.35f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT);
+			emscripten_webgl_commit_frame();
+		}
 
 		usleep(16 * 1000);
 	}

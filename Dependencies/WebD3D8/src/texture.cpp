@@ -241,7 +241,7 @@ HRESULT TextureBase::LockLevel(UINT face, UINT level, D3DLOCKED_RECT *lr, D3DLOC
     AllocateShadow(lv);
     if (!lv.shadowValid)
     {
-        if (lv.glValid && !(flags & D3DLOCK_DISCARD)) ReadbackLevelAt(face, level);
+        if (lv.glValid && !(flags & D3DLOCK_DISCARD)) ReadbackLevel(face, level);
         lv.shadowValid = true;
     }
 
@@ -365,7 +365,7 @@ bool TextureBase::WriteRect(UINT face, UINT level, const RECT &rc, const void *s
     AllocateShadow(lv);
     if (!lv.shadowValid)
     {
-        if (lv.glValid && !full) ReadbackLevelAt(face, level);
+        if (lv.glValid && !full) ReadbackLevel(face, level);
         lv.shadowValid = true;
     }
     RECT r = rc;
@@ -406,7 +406,7 @@ bool TextureBase::ReadRect(UINT face, UINT level, const RECT &rc, void *dst, UIN
     AllocateShadow(lv);
     if (!lv.shadowValid)
     {
-        if (lv.glValid) ReadbackLevelAt(face, level);
+        if (lv.glValid) ReadbackLevel(face, level);
         lv.shadowValid = true;
     }
     uint32_t bpp = m_info->blockBytes ? m_info->blockBytes : m_info->bits / 8;
@@ -480,7 +480,7 @@ HRESULT Texture2D::LockRect(UINT Level, D3DLOCKED_RECT *lr, const RECT *rect, DW
     return LockLevel(0, Level, lr, nullptr, rect, nullptr, flags);
 }
 
-HRESULT Texture2D::UnlockRect(UINT Level) { return UnlockLevelAt(0, Level); }
+HRESULT Texture2D::UnlockRect(UINT Level) { return UnlockLevel(0, Level); }
 
 //------------------------------------------------------------------------------
 // CubeTexture
@@ -580,7 +580,7 @@ HRESULT VolumeTexture::LockBox(UINT Level, D3DLOCKED_BOX *lb, const D3DBOX *box,
     return LockLevel(0, Level, nullptr, lb, nullptr, box, flags);
 }
 
-HRESULT VolumeTexture::UnlockBox(UINT Level) { return UnlockLevelAt(0, Level); }
+HRESULT VolumeTexture::UnlockBox(UINT Level) { return UnlockLevel(0, Level); }
 
 Volume::Volume(VolumeTexture *parent, UINT level) : m_parent(parent), m_level(level) { m_refs = 0; }
 

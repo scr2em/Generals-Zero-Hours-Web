@@ -55,9 +55,6 @@ EM_JS(int, web_platform_get_canvas_rect, (const char *selector, double *out), {
 	return 1;
 });
 
-EM_JS(int, web_platform_document_has_focus, (), {
-	return (document.hasFocus() && document.visibilityState === 'visible') ? 1 : 0;
-});
 
 // Win32 GetTickCount from Dependencies/WebCompat, if it is part of the program.
 extern "C" uint32_t GetTickCount(void) __attribute__((weak));
@@ -669,7 +666,7 @@ extern "C" int WebPlatform_Init(const char *canvasSelector)
 		}
 	};
 
-	s.pageFocused = web_platform_document_has_focus() != 0;
+	s.pageFocused = MAIN_THREAD_EM_ASM_INT({ return (document.hasFocus() && document.visibilityState === 'visible') ? 1 : 0; }) != 0;
 	s.pageVisible = true;
 	s.active.store(s.pageFocused ? 1 : 0);
 

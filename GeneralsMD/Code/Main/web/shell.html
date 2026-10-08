@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zero Hour for the Web</title>
+<link rel="icon" href="data:,">
 <meta name="color-scheme" content="dark light">
 <style>
 	:root {
@@ -377,36 +378,36 @@ async function pickSource() {
 async function pickAndImport(key) {
 	if (busy) return;
 	const target = importer.TARGETS[key];
+	let problem = null;
 	busy = true;
 	updateButtons();
 	try {
 		const source = await pickSource();
 		if (!source) return;
-		setState(key, 'Reading folder…');
+		setState(key, 'Reading folder\u2026');
 		const plan = importer.planImport(source, key, { includeVideos: false });
 		if (!plan.looksRight) {
-			setState(key, 'That does not look like the ' + target.label + ' folder (' + target.signature[0].toUpperCase() + ' not found).', 'err');
+			problem = 'That does not look like the ' + target.label + ' folder (' + target.signature[0].toUpperCase() + ' not found).';
 			return;
 		}
 		const { quota, usage } = await importer.storageEstimate();
 		if (quota && quota - usage < plan.bytes) {
-			setState(key, 'Not enough browser storage: need ' + importer.formatBytes(plan.bytes) + ', ' + importer.formatBytes(quota - usage) + ' available.', 'err');
+			problem = 'Not enough browser storage: need ' + importer.formatBytes(plan.bytes) + ', ' + importer.formatBytes(quota - usage) + ' available.';
 			return;
 		}
 		await importer.requestPersistence();
-		setState(key, 'Copying ' + plan.files.length.toLocaleString() + ' files…');
+		setState(key, 'Copying ' + plan.files.length.toLocaleString() + ' files\u2026');
 		await importer.runImport(plan, { onProgress: showProgress, forceWorker: params.get('writer') === 'worker' });
 	} catch (e) {
-		if (e && e.name === 'AbortError') {
-			await refreshStatus();
-			return;
+		if (!(e && e.name === 'AbortError')) {
+			problem = 'Import failed: ' + (e && e.message || e);
+			pushLog('Import failed: ' + (e && e.stack || e), false);
 		}
-		setState(key, 'Import failed: ' + (e && e.message || e), 'err');
-		pushLog('Import failed: ' + (e && e.stack || e), false);
 	} finally {
 		busy = false;
 		$('progress').hidden = true;
 		await refreshStatus();
+		if (problem) setState(key, problem, 'err');
 	}
 }
 

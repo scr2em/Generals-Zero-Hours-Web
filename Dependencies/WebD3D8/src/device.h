@@ -295,25 +295,23 @@ private:
     void CreatePresentProgram();
 
     // state application (device_draw.cpp)
-    bool PrepareDraw(bool indexed, UINT baseVertex);
+    bool PrepareDraw(GLenum mode);
     void ApplyRenderTargets();
     void ApplyPipeline();
     void BindTextures();
-    bool BindAttributes(UINT baseVertex);
+    bool BindAttributes(UINT baseVertex, GLuint userBuffer, size_t userOffset, UINT userStride);
     bool SelectProgram();
     void UploadUniforms();
-    void BeginUserPointerDraw();
     uint32_t UploadStream(const void *data, size_t size, bool index);
     PipelineState DerivePipeline() const;
     void FlushBuffers();
-    GLenum SamplerFor(int stage, TextureBase *tex);
+    GLuint SamplerFor(int stage, TextureBase *tex);
     void BuildProgramKey(struct ProgramKey &key);
-    bool DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UINT start, UINT baseVertex, const void *indexData, UINT indexSize);
-    bool SetupWireframeIndices(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UINT start, const uint8_t *idx, UINT indexSize, std::vector<uint16_t> &out, GLenum &mode);
+    bool DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UINT start, UINT baseVertex,
+                    const void *userVerts, UINT userStride, const void *userIndices, D3DFORMAT userIndexFmt, UINT userVertCount);
 
     // transforms/lights/derived data
     void UpdateDerivedMatrices();
-    void UpdateLightUniformData();
 
     friend class Surface;
     friend class TextureBase;
@@ -398,6 +396,11 @@ public:
     BOOL m_cursorVisible = FALSE;
 
     DWORD m_texLodSet[MAX_STAGES] = {};
+    uint32_t m_samplerDirtyMask = 0xFF;
+    bool m_drawingPoints = false;
+    bool m_curProgramPoints = false;
+    GLuint m_attachedColorTex = 0;
+    GLuint m_whiteSampler = 0;
 };
 
 } // namespace webd3d8

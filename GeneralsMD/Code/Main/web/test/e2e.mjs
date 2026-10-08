@@ -74,7 +74,7 @@ async function session(label, query) {
 
 	const gameState = await importFolder(page, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
 	check('zero hour imported', /Ready/.test(gameState), gameState);
-	check('videos/exe skipped (4 files expected)', /4 files/.test(gameState), gameState);
+	check('videos/exe skipped (3 files expected)', /3 files/.test(gameState), gameState);
 	check('play still disabled with only one folder', await page.isDisabled('#play'));
 	const generalsState = await importFolder(page, '#pick-generals', 'state-generals', path.join(fake, 'Generals'));
 	check('generals imported', /Ready/.test(generalsState), generalsState);
@@ -94,7 +94,7 @@ async function session(label, query) {
 		return result.sort();
 	});
 	console.log('OPFS: ' + tree.join(' '));
-	check('names lower-cased in OPFS', tree.includes('game/data/ini/gamedata.ini:27') && tree.includes('game/inizh.big:3000000'), tree.join(','));
+	check('names lower-cased in OPFS', tree.includes('game/data/ini/gamedata.ini:26') && tree.includes('game/inizh.big:3000000'), tree.join(','));
 	check('exe/bik not copied', !tree.some((t) => /\.exe|\.bik/.test(t)));
 
 	await page.click('#play');
@@ -105,6 +105,7 @@ async function session(label, query) {
 	check('engine thread runs main (ready)', /TEST: ready/.test(log()), log().slice(-400));
 	check('arguments reach main', /TEST: arg 1=-xres/.test(log()) && /arg 2=1024/.test(log()) && /arg 4=768/.test(log()), '');
 	check('8 MB stack usable', /TEST: stack ok 3/.test(log()));
+	check('webgl2 context on the offscreen canvas', /TEST: webgl context=[1-9]\d* current=0 version=.*WebGL 2/.test(log()), log().split('\n').filter((l) => /webgl/.test(l)).join('|'));
 	check('platform init', /TEST: init=1 selector=#canvas/.test(log()));
 	check('OPFS mounted', /TEST: mount=0/.test(log()));
 	check('file read via other case', /TEST: read \d+ bytes: ; Hello from GameData.ini/.test(log()), log().split('\n').filter((l) => /read|cannot/.test(l)).join('|'));
