@@ -179,6 +179,7 @@ void ControlBar::doTransportInventoryUI( Object *transport, const CommandSet *co
 
 		// get command button
 		commandButton = commandSet->getCommandButton(i);
+		DEBUG_LOG(("SPDBG populate %s slot %d button %s", commandSet->getName().str(), i, commandButton ? commandButton->getName().str() : "-")); // TEMP-DEBUG
 
 		// is this an inventory exit command
 		if( commandButton && commandButton->getCommandType() == GUI_COMMAND_EXIT_CONTAINER )
