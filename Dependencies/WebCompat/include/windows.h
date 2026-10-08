@@ -1379,6 +1379,13 @@ DWORD   WINAPI WaitForMultipleObjects(DWORD nCount, const HANDLE *lpHandles, BOO
 BOOL    WINAPI CloseHandle(HANDLE hObject);
 BOOL    WINAPI DuplicateHandle(HANDLE hSourceProcessHandle, HANDLE hSourceHandle, HANDLE hTargetProcessHandle, LPHANDLE lpTargetHandle, DWORD dwDesiredAccess, BOOL bInheritHandle, DWORD dwOptions);
 
+/* Power management: the page decides whether the screen stays on. */
+typedef DWORD EXECUTION_STATE;
+#define ES_SYSTEM_REQUIRED  ((EXECUTION_STATE)0x00000001)
+#define ES_DISPLAY_REQUIRED ((EXECUTION_STATE)0x00000002)
+#define ES_CONTINUOUS       ((EXECUTION_STATE)0x80000000)
+EXECUTION_STATE WINAPI SetThreadExecutionState(EXECUTION_STATE esFlags);
+
 /* Threads and processes */
 HANDLE  WINAPI CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize, LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId);
 HANDLE  WINAPI GetCurrentThread(void);
@@ -1848,6 +1855,27 @@ BOOL    WINAPI EnumWindows(WNDENUMPROC lpEnumFunc, LPARAM lParam);
 #define SetDlgItemText SetDlgItemTextA
 
 /* Shell */
+typedef struct _ITEMIDLIST { BYTE id[4]; } ITEMIDLIST, *LPITEMIDLIST;
+typedef const ITEMIDLIST *LPCITEMIDLIST;
+#define CSIDL_DESKTOP            0x0000
+#define CSIDL_PERSONAL           0x0005
+#define CSIDL_DESKTOPDIRECTORY   0x0010
+#define CSIDL_APPDATA            0x001A
+#define CSIDL_LOCAL_APPDATA      0x001C
+#define CSIDL_COMMON_APPDATA     0x0023
+#define CSIDL_FLAG_CREATE        0x8000
+#define KF_FLAG_DEFAULT          0x00000000
+#define KF_FLAG_CREATE           0x00008000
+/* The known folders all live below /userdata (created on demand). */
+BOOL    WINAPI SHGetSpecialFolderPathA(HWND hwnd, LPSTR pszPath, int csidl, BOOL fCreate);
+HRESULT WINAPI SHGetFolderPathA(HWND hwnd, int csidl, HANDLE hToken, DWORD dwFlags, LPSTR pszPath);
+HRESULT WINAPI SHGetSpecialFolderLocation(HWND hwnd, int csidl, LPITEMIDLIST *ppidl);
+BOOL    WINAPI SHGetPathFromIDListA(LPCITEMIDLIST pidl, LPSTR pszPath);
+#define SHGetSpecialFolderPath SHGetSpecialFolderPathA
+#define SHGetFolderPath SHGetFolderPathA
+#define SHGetPathFromIDList SHGetPathFromIDListA
+extern const GUID FOLDERID_Documents;
+
 HINSTANCE WINAPI ShellExecuteA(HWND hwnd, LPCSTR lpOperation, LPCSTR lpFile, LPCSTR lpParameters, LPCSTR lpDirectory, INT nShowCmd);
 #define ShellExecute ShellExecuteA
 
@@ -1864,6 +1892,10 @@ BOOL    WINAPI IsClipboardFormatAvailable(UINT format);
 /* ---------------------------------------------------------------------------
 ** Hooks for the platform layer (Dependencies/WebCompat/src)
 ** ------------------------------------------------------------------------- */
+
+/* The command line of the program: the platform's main() sets them. */
+extern int __argc;
+extern char **__argv;
 
 /* Answers MessageBox calls (e.g. with a dialog in the page). The default logs
 ** the message and picks the answer that lets the program continue. */

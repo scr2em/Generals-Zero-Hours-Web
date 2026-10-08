@@ -106,6 +106,16 @@ static GLenum MapAddress(DWORD a)
     }
 }
 
+/// Debug aid: reports the first GL error after a stage of the draw setup.
+#define GL_STAGE_CHECK(stage)                                                              \
+    do {                                                                                   \
+        if (GetConfig().debug) {                                                           \
+            GLenum e_ = glGetError();                                                      \
+            for (GLenum x_ = e_; x_ != GL_NO_ERROR; x_ = glGetError()) Log("  (drain 0x%x)", x_); \
+            if (e_ != GL_NO_ERROR) Log("GL error 0x%x after %s (draw #%u, fvf 0x%x, rt %ux%u)", e_, stage, m_drawCounter, (unsigned)m_s.vertexShader, m_rtWidth, m_rtHeight);               \
+        }                                                                                  \
+    } while (0)
+
 static inline void ColorToVec4(DWORD c, float *out)
 {
     out[0] = ((c >> 16) & 255) / 255.0f;
@@ -672,9 +682,13 @@ static bool PrimitiveInfo(D3DPRIMITIVETYPE type, UINT primCount, GLenum &mode, U
 bool Device::PrepareDraw(GLenum mode)
 {
     m_drawingPoints = mode == GL_POINTS;
+    ++m_drawCounter;
     if (m_contextLost) return false;
+    GL_STAGE_CHECK("entry");
     if (!SelectProgram()) return false;
+    GL_STAGE_CHECK("select program");
     ApplyRenderTargets();
+    GL_STAGE_CHECK("render targets");
     m_attachedColorTex = 0;
     if (Surface *rt = static_cast<Surface *>(m_curRT.get()))
     {
@@ -682,13 +696,17 @@ bool Device::PrepareDraw(GLenum mode)
         else if (rt->GetKind() == Surface::Level) m_attachedColorTex = rt->Texture()->m_tex;
     }
     ApplyPipeline();
+    GL_STAGE_CHECK("apply pipeline");
     if (m_boundProgram != m_curProgram->id)
     {
         glUseProgram(m_curProgram->id);
         m_boundProgram = m_curProgram->id;
     }
+    GL_STAGE_CHECK("pipeline/program");
     UploadUniforms();
+    GL_STAGE_CHECK("uniforms");
     BindTextures();
+    GL_STAGE_CHECK("textures");
     return true;
 }
 
@@ -735,6 +753,7 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
     else
         FlushBuffers();
     if (!BindAttributes(userData ? 0 : baseVertex, ub, uoff, userStride)) return false;
+    GL_STAGE_CHECK("attributes");
 
     // Index data.
     GLenum indexType = GL_UNSIGNED_SHORT;
@@ -749,6 +768,7 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
             indexType = wide ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT;
             const size_t bytes = (size_t)count * (wide ? 4 : 2);
             indexOffset = UploadStream(userIndices, bytes, true);
+            GL_STAGE_CHECK("index upload");
             ibuf = m_streamIB;
             wireSrc = userIndices;
         }
@@ -759,6 +779,7 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
             const bool wide = ib->Format() == D3DFMT_INDEX32;
             indexType = wide ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT;
             ibuf = ib->Flush();
+            GL_STAGE_CHECK("index buffer flush");
             indexOffset = (size_t)start * (wide ? 4 : 2);
             wireSrc = ib->m_storage.Data() + indexOffset;
         }
@@ -767,6 +788,7 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibuf);
             m_boundElementBuffer = ibuf;
         }
+        GL_STAGE_CHECK("element buffer bind");
     }
 
     const DWORD fill = m_s.rs[D3DRS_FILLMODE];
@@ -802,14 +824,17 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
     }
 
     if (indexed)
+    {
         glDrawElements(mode, count, indexType, reinterpret_cast<const void *>(indexOffset));
+        GL_STAGE_CHECK("glDrawElements");
+    }
     else
         glDrawArrays(mode, userData ? 0 : start, count);
 
     if (GetConfig().debug)
     {
         GLenum err = glGetError();
-        if (err != GL_NO_ERROR) Log("GL error 0x%x after draw", err);
+        if (err != GL_NO_ERROR) Log("GL error 0x%x after draw #%u (fvf 0x%x, indexed %d)", err, m_drawCounter, (unsigned)m_s.vertexShader, (int)indexed);
     }
     return true;
 }

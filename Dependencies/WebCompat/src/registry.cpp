@@ -147,14 +147,16 @@ struct Registry
 
 	void Seed()
 	{
-		static const char *const gameKeys[] = {
-			"SOFTWARE\\Electronic Arts\\EA Games\\Command and Conquer Generals Zero Hour",
-			"SOFTWARE\\Electronic Arts\\EA Games\\Generals",
+		// Zero Hour is installed in /game, the original game, whose data Zero
+		// Hour also reads, in /generals.
+		static const struct { const char *key; const char *installPath; } games[] = {
+			{ "SOFTWARE\\Electronic Arts\\EA Games\\Command and Conquer Generals Zero Hour", "/game/" },
+			{ "SOFTWARE\\Electronic Arts\\EA Games\\Generals", "/generals/" },
 		};
-		for (size_t i = 0; i < sizeof(gameKeys) / sizeof(gameKeys[0]); ++i)
+		for (size_t i = 0; i < sizeof(games) / sizeof(games[0]); ++i)
 		{
-			Key *key = Open(&localMachine, gameKeys[i], true);
-			SetString(key, "InstallPath", "/game/");
+			Key *key = Open(&localMachine, games[i].key, true);
+			SetString(key, "InstallPath", games[i].installPath);
 			SetString(key, "Language", "english");
 			SetDword(key, "Version", 0x00010004);
 			SetDword(key, "MapPackVersion", 0x00010000);

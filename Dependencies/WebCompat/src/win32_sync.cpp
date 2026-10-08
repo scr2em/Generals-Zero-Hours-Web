@@ -819,8 +819,21 @@ BOOL WINAPI CreateProcessA(LPCSTR, LPSTR, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTR
 
 LPSTR WINAPI GetCommandLineA(void)
 {
-	static char s_commandLine[] = "generalszh.exe";
-	return s_commandLine;
+	// The program name and arguments, quoted as Windows does.
+	static std::string s_commandLine;
+	s_commandLine.clear();
+	if (__argc <= 0 || !__argv)
+		return const_cast<char *>("generalszh.exe");
+	for (int i = 0; i < __argc; ++i)
+	{
+		if (i)
+			s_commandLine += ' ';
+		const bool quote = strchr(__argv[i], ' ') != nullptr;
+		s_commandLine += quote ? "\"" : "";
+		s_commandLine += __argv[i];
+		s_commandLine += quote ? "\"" : "";
+	}
+	return const_cast<char *>(s_commandLine.c_str());
 }
 
 DWORD WINAPI GetEnvironmentVariableA(LPCSTR lpName, LPSTR lpBuffer, DWORD nSize)

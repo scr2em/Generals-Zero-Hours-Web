@@ -15,13 +15,15 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 /*
-** WebAssembly port: windows, messages, input state, GDI and the clipboard.
+** WebAssembly port: windows, input state, GDI and the clipboard.
 **
 ** The game has one window, the canvas of the page. A window is a small object
-** that remembers its window procedure, style and size; messages go through a
-** queue that the platform layer fills with PostMessage. Input state (keys,
-** cursor position) is set by the platform layer through the webcompat_*
-** functions. GDI drawing does nothing: there is no device context to draw on.
+** that remembers its window procedure, style and size. The message queue,
+** the window geometry and the keyboard and cursor state are not here: the
+** platform layer (Core/GameEngineDevice/Source/WebDevice/Platform) defines
+** PeekMessage, GetMessage, PostMessage, SendMessage, GetClientRect, GetKeyState
+** and the like itself. GDI drawing does nothing: there is no device context
+** to draw on.
 */
 #include "webcompat_internal.h"
 
@@ -31,7 +33,6 @@
 #include <string.h>
 #include <time.h>
 
-#include <deque>
 #include <map>
 #include <set>
 #include <string>
@@ -63,7 +64,6 @@ struct WindowObject
 };
 
 pthread_mutex_t s_windowLock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t s_messageCondition = PTHREAD_COND_INITIALIZER;
 
 struct WindowState
 {
@@ -75,7 +75,6 @@ struct WindowState
 	}
 
 	std::set<WindowObject *> windows;
-	std::deque<MSG> messages;
 	std::map<std::string, WNDPROC> classProcedures;
 	std::map<std::string, UINT> registeredMessages;
 	WindowObject desktop;
@@ -635,37 +634,6 @@ HMONITOR WINAPI MonitorFromWindow(HWND, DWORD)
 ** Messages
 ** ------------------------------------------------------------------------- */
 
-static MSG MakeMessage(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-{
-	MSG message;
-	memset(&message, 0, sizeof(message));
-	message.hwnd = hWnd;
-	message.message = Msg;
-	message.wParam = wParam;
-	message.lParam = lParam;
-	message.time = GetTickCount();
-	message.pt = State().cursorPosition;
-	return message;
-}
-
-// Takes the first message that passes the filter. Returns false if none.
-static bool TakeMessage(LPMSG lpMsg, HWND hWnd, UINT filterMin, UINT filterMax, bool remove)
-{
-	std::deque<MSG> &messages = State().messages;
-	for (std::deque<MSG>::iterator it = messages.begin(); it != messages.end(); ++it)
-	{
-		if (hWnd && it->hwnd != hWnd)
-			continue;
-		if ((filterMin || filterMax) && (it->message < filterMin || it->message > filterMax))
-			continue;
-		*lpMsg = *it;
-		if (remove)
-			messages.erase(it);
-		return true;
-	}
-	return false;
-}
-
 UINT WINAPI RegisterWindowMessageA(LPCSTR lpString)
 {
 	WindowLock lock;
@@ -753,7 +721,7 @@ int WINAPI ShowCursor(BOOL bShow)
 
 HCURSOR WINAPI GetCursor(void)
 {
-	return SetCursor(nullptr);
+	return nullptr; // the page draws the cursor
 }
 
 HCURSOR WINAPI LoadCursorA(HINSTANCE, LPCSTR)

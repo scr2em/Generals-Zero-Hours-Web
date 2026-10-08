@@ -401,6 +401,7 @@ public:
     bool m_curProgramPoints = false;
     GLuint m_attachedColorTex = 0;
     GLuint m_whiteSampler = 0;
+    unsigned m_drawCounter = 0;
 };
 
 } // namespace webd3d8

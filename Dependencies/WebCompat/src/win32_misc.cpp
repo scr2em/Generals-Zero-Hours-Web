@@ -614,6 +614,78 @@ int WINAPI MulDiv(int nNumber, int nNumerator, int nDenominator)
 }
 
 /* ---------------------------------------------------------------------------
+** Shell folders: all of them are below /userdata.
+** ------------------------------------------------------------------------- */
+
+static const char *FolderPath(int csidl)
+{
+	switch (csidl & 0xFF)
+	{
+	case CSIDL_DESKTOP:
+	case CSIDL_DESKTOPDIRECTORY: return "/userdata/Desktop";
+	case CSIDL_PERSONAL: return "/userdata";
+	case CSIDL_APPDATA:
+	case CSIDL_LOCAL_APPDATA:
+	case CSIDL_COMMON_APPDATA: return "/userdata/AppData";
+	default: return nullptr;
+	}
+}
+
+static BOOL CopyFolderPath(int csidl, bool create, LPSTR pszPath)
+{
+	const char *path = FolderPath(csidl);
+	if (!path || !pszPath)
+		return FALSE;
+	strcpy(pszPath, path);
+	if (create || (csidl & CSIDL_FLAG_CREATE))
+	{
+		// Make sure the folder exists, parents first.
+		CreateDirectoryA("/userdata", nullptr);
+		CreateDirectoryA(path, nullptr);
+	}
+	return TRUE;
+}
+
+BOOL WINAPI SHGetSpecialFolderPathA(HWND, LPSTR pszPath, int csidl, BOOL fCreate)
+{
+	return CopyFolderPath(csidl, fCreate != FALSE, pszPath);
+}
+
+HRESULT WINAPI SHGetFolderPathA(HWND, int csidl, HANDLE, DWORD, LPSTR pszPath)
+{
+	return CopyFolderPath(csidl, false, pszPath) ? S_OK : E_INVALIDARG;
+}
+
+// An "item id list" only carries the folder number here.
+HRESULT WINAPI SHGetSpecialFolderLocation(HWND, int csidl, LPITEMIDLIST *ppidl)
+{
+	if (!ppidl || !FolderPath(csidl))
+		return E_INVALIDARG;
+	LPITEMIDLIST list = static_cast<LPITEMIDLIST>(CoTaskMemAlloc(sizeof(ITEMIDLIST)));
+	if (!list)
+		return E_OUTOFMEMORY;
+	memset(list, 0, sizeof(*list));
+	list->id[0] = (BYTE)csidl;
+	*ppidl = list;
+	return S_OK;
+}
+
+BOOL WINAPI SHGetPathFromIDListA(LPCITEMIDLIST pidl, LPSTR pszPath)
+{
+	return pidl && CopyFolderPath(pidl->id[0], false, pszPath);
+}
+
+const GUID FOLDERID_Documents = { 0xFDD39AD0, 0x238F, 0x46AF, { 0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7 } };
+
+EXECUTION_STATE WINAPI SetThreadExecutionState(EXECUTION_STATE)
+{
+	return ES_CONTINUOUS;
+}
+
+int __argc = 0;
+char **__argv = nullptr;
+
+/* ---------------------------------------------------------------------------
 ** Memory
 ** ------------------------------------------------------------------------- */
 

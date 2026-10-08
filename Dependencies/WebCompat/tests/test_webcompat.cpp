@@ -480,15 +480,10 @@ static void TestMisc()
 	CHECK(RegisterClassA(&wc) != 0);
 	HWND window = CreateWindowExA(0, "TestClass", "Title", WS_POPUP | WS_VISIBLE, 0, 0, 640, 480, nullptr, nullptr, nullptr, nullptr);
 	CHECK(window && IsWindow(window) && IsWindowVisible(window));
-	RECT rect;
-	CHECK(GetClientRect(window, &rect) && rect.right == 640 && rect.bottom == 480);
-	CHECK(SendMessageA(window, WM_USER, 41, 0) == 42);
-	PostMessageA(window, WM_KEYDOWN, VK_RETURN, 0);
-	MSG msg;
-	CHECK(PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE) && msg.message == WM_KEYDOWN && msg.wParam == VK_RETURN);
-	CHECK(!PeekMessageA(&msg, nullptr, 0, 0, PM_REMOVE));
-	webcompat_set_key_state(VK_SHIFT, 1);
-	CHECK(GetAsyncKeyState(VK_SHIFT) & 0x8000);
+	CHECK(GetWindowLongA(window, GWL_STYLE) == (LONG)(WS_POPUP | WS_VISIBLE));
+	CHECK(((WNDPROC)GetWindowLongA(window, GWL_WNDPROC))(window, WM_USER, 41, 0) == 42);
+	char title[16];
+	CHECK(GetWindowTextA(window, title, sizeof(title)) == 5 && strcmp(title, "Title") == 0);
 	DestroyWindow(window);
 	CHECK(!IsWindow(window));
 
@@ -499,6 +494,14 @@ static void TestMisc()
 	WaitForSingleObject((HANDLE)thread, 5000);
 	CHECK(value == 99);
 	CloseHandle((HANDLE)thread);
+
+	CHECK(__argc == 0);
+	char folder[MAX_PATH];
+	CHECK(SHGetSpecialFolderPathA(nullptr, folder, CSIDL_PERSONAL, TRUE) && strcmp(folder, "/userdata") == 0);
+	CHECK(GetFileAttributesA("/userdata") & FILE_ATTRIBUTE_DIRECTORY);
+	CHECK(GetModuleHandleA("shell32.dll") == nullptr);
+	char module[MAX_PATH];
+	CHECK(GetModuleFileNameA(nullptr, module, sizeof(module)) > 0 && strcmp(module, "/game/generalszh.exe") == 0);
 
 	// Sockets
 	WSADATA wsa;

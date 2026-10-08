@@ -31,6 +31,7 @@ const page = await browser.newPage({ viewport: { width: 700, height: 760 } });
 let done = false;
 const lines = [];
 page.on('console', (m) => { lines.push(m.text()); if (m.text().includes('TEST_DONE')) done = true; });
+page.on('worker', (w) => w.on('console', (m) => lines.push('[worker] ' + m.text())));
 page.on('pageerror', (e) => lines.push('PAGEERROR ' + e.message));
 const query = testArgs.length ? '?args=' + encodeURIComponent(testArgs.join(',')) : '';
 await page.goto(`http://127.0.0.1:${port}/web_d3d8_test.html${query}`);
