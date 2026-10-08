@@ -514,7 +514,7 @@ try {
 } catch (e) { /* ignore */ }
 
 // For tests and automation.
-window.__zh = { importer, startGame, logLines, refreshStatus };
+window.__zh = { importer, startGame, logLines, refreshStatus, fail: (text) => pushLog(text, true) };
 
 refreshStatus().catch((e) => pushLog('Status: ' + e, false));
 </script>

@@ -139,13 +139,14 @@ if(EMSCRIPTEN)
     # A tiny program that proves the plumbing in a browser without the game:
     # the engine thread, OPFS through WasmFS and the input message queue.
     #   cmake --build <dir> --target web_platform_test
-    #   node web/test/e2e.mjs --site <dir>/GeneralsMD/Code/Main --fake <folder with ZeroHour and Generals>
+    #   node web/test/e2e.mjs --site <dir>/GeneralsMD --fake <folder with ZeroHour and Generals>
     add_executable(web_platform_test EXCLUDE_FROM_ALL
         web/test/platform_test.cpp
         ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/WebDevice/Platform/WebKeyTable.cpp
         ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/WebDevice/Platform/WebPlatform.cpp
         ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/WebDevice/Platform/WebStorage.cpp
     )
+    target_compile_features(web_platform_test PRIVATE cxx_std_20)
     target_include_directories(web_platform_test PRIVATE ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Include)
     set_target_properties(web_platform_test PROPERTIES SUFFIX ".html")
     zh_web_link_options(web_platform_test)

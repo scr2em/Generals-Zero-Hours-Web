@@ -57,7 +57,8 @@ EM_JS(int, web_platform_get_canvas_rect, (const char *selector, double *out), {
 
 
 // Win32 GetTickCount from Dependencies/WebCompat, if it is part of the program.
-extern "C" uint32_t GetTickCount(void) __attribute__((weak));
+// (Declared under another name because windows.h may declare GetTickCount with its own types.)
+extern "C" uint32_t web_platform_GetTickCount(void) __asm__("GetTickCount") __attribute__((weak));
 
 namespace
 {
@@ -890,7 +891,7 @@ extern "C" uint32_t WebPlatform_GetTimeMs(void)
 {
 	// The game compares input times with timeGetTime(), so use the same clock when
 	// Dependencies/WebCompat is linked in.
-	if (&GetTickCount != nullptr)
-		return GetTickCount();
+	if (&web_platform_GetTickCount != nullptr)
+		return web_platform_GetTickCount();
 	return (uint32_t)(uint64_t)emscripten_get_now();
 }

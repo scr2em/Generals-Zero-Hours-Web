@@ -36,6 +36,7 @@ const server = spawn('python3', [path.join(here, '..', 'serve.py'), '--port', St
 	env: { ...process.env, SERVE_QUIET: '1' },
 	stdio: ['ignore', 'inherit', 'inherit'],
 });
+process.on('exit', () => server.kill());
 await new Promise((r) => setTimeout(r, 800));
 
 const browser = await chromium.launch({
@@ -217,6 +218,21 @@ async function session(label, query) {
 		const line = await page.evaluate(() => window.__zh.logLines.find((l) => l.includes('TEST: userdata runs=')));
 		check(`run ${run}: user data persisted`, line.includes('runs=' + run), line);
 	}
+	await context.close();
+}
+
+// ---- 4. the error panel, in dark mode -------------------------------------------------------------
+{
+	const context = await browser.newContext({ viewport: { width: 1100, height: 800 }, colorScheme: 'dark' });
+	const page = await context.newPage();
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+	await page.evaluate(() => {
+		window.__zh.logLines.push('Aborted(RuntimeError: memory access out of bounds)');
+		window.__zh.fail('wasm trap in WebGameEngine::update');
+	});
+	check('error panel shows on stderr abort', await page.isVisible('#errors') && /memory access/.test(await page.textContent('#errors-log')));
+	await page.screenshot({ path: path.join(out, '5-error-dark.png') });
 	await context.close();
 }
 

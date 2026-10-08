@@ -23,6 +23,12 @@ string(APPEND CMAKE_C_FLAGS " -pthread")
 string(APPEND CMAKE_CXX_FLAGS " -pthread")
 string(APPEND CMAKE_EXE_LINKER_FLAGS " -pthread")
 
+# The engine relies on C++ exceptions (INI parsing, error recovery in the main
+# loop). Emscripten disables catching by default; use native Wasm exceptions.
+string(APPEND CMAKE_C_FLAGS " -fwasm-exceptions")
+string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions")
+string(APPEND CMAKE_EXE_LINKER_FLAGS " -fwasm-exceptions")
+
 add_subdirectory(Dependencies/WebCompat)
 
 # Flags for every game target.
