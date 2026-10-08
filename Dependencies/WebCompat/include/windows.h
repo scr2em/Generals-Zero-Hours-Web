@@ -128,10 +128,11 @@ typedef int                 LONG32;
 typedef unsigned int        ULONG32;
 typedef unsigned int        DWORD32;
 
-typedef intptr_t            INT_PTR;
-typedef uintptr_t           UINT_PTR;
-typedef intptr_t            LONG_PTR;
-typedef uintptr_t           ULONG_PTR;
+/* The types of 32-bit Windows, which are not those of <stdint.h> on wasm32. */
+typedef int                 INT_PTR;
+typedef unsigned int        UINT_PTR;
+typedef long                LONG_PTR;
+typedef unsigned long       ULONG_PTR;
 typedef ULONG_PTR           DWORD_PTR;
 typedef ULONG_PTR           SIZE_T;
 typedef LONG_PTR            SSIZE_T;
@@ -444,6 +445,54 @@ typedef struct _GLYPHMETRICSFLOAT {
 	FLOAT      gmfCellIncX;
 	FLOAT      gmfCellIncY;
 } GLYPHMETRICSFLOAT, *PGLYPHMETRICSFLOAT, *LPGLYPHMETRICSFLOAT;
+
+typedef struct _COORD { SHORT X; SHORT Y; } COORD, *PCOORD;
+typedef struct _SMALL_RECT { SHORT Left; SHORT Top; SHORT Right; SHORT Bottom; } SMALL_RECT, *PSMALL_RECT;
+typedef struct _CONSOLE_SCREEN_BUFFER_INFO {
+	COORD      dwSize;
+	COORD      dwCursorPosition;
+	WORD       wAttributes;
+	SMALL_RECT srWindow;
+	COORD      dwMaximumWindowSize;
+} CONSOLE_SCREEN_BUFFER_INFO, *PCONSOLE_SCREEN_BUFFER_INFO;
+typedef struct _CONSOLE_CURSOR_INFO { DWORD dwSize; BOOL bVisible; } CONSOLE_CURSOR_INFO, *PCONSOLE_CURSOR_INFO;
+typedef struct _CHAR_INFO {
+	union { WCHAR UnicodeChar; CHAR AsciiChar; } Char;
+	WORD Attributes;
+} CHAR_INFO, *PCHAR_INFO;
+typedef struct _KEY_EVENT_RECORD {
+	BOOL  bKeyDown;
+	WORD  wRepeatCount;
+	WORD  wVirtualKeyCode;
+	WORD  wVirtualScanCode;
+	union { WCHAR UnicodeChar; CHAR AsciiChar; } uChar;
+	DWORD dwControlKeyState;
+} KEY_EVENT_RECORD, *PKEY_EVENT_RECORD;
+typedef struct _MOUSE_EVENT_RECORD {
+	COORD dwMousePosition;
+	DWORD dwButtonState;
+	DWORD dwControlKeyState;
+	DWORD dwEventFlags;
+} MOUSE_EVENT_RECORD, *PMOUSE_EVENT_RECORD;
+typedef struct _INPUT_RECORD {
+	WORD EventType;
+	union {
+		KEY_EVENT_RECORD   KeyEvent;
+		MOUSE_EVENT_RECORD MouseEvent;
+	} Event;
+} INPUT_RECORD, *PINPUT_RECORD;
+
+typedef struct {
+	DWORD style;
+	DWORD dwExtendedStyle;
+	WORD  cdit;
+	short x;
+	short y;
+	short cx;
+	short cy;
+} DLGTEMPLATE, *LPDLGTEMPLATE;
+typedef const DLGTEMPLATE *LPCDLGTEMPLATE;
+typedef BOOL (CALLBACK *WNDENUMPROC)(HWND, LPARAM);
 
 typedef struct tagBITMAPINFO {
 	BITMAPINFOHEADER bmiHeader;
@@ -1096,6 +1145,35 @@ typedef LONG (WINAPI *LPTOP_LEVEL_EXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *
 #define DLL_PROCESS_DETACH 0
 #define SEM_FAILCRITICALERRORS 0x0001
 
+
+/* Console */
+#define STD_INPUT_HANDLE  ((DWORD)-10)
+#define STD_OUTPUT_HANDLE ((DWORD)-11)
+#define STD_ERROR_HANDLE  ((DWORD)-12)
+#define FOREGROUND_BLUE      0x0001
+#define FOREGROUND_GREEN     0x0002
+#define FOREGROUND_RED       0x0004
+#define FOREGROUND_INTENSITY 0x0008
+#define BACKGROUND_BLUE      0x0010
+#define BACKGROUND_GREEN     0x0020
+#define BACKGROUND_RED       0x0040
+#define BACKGROUND_INTENSITY 0x0080
+#define KEY_EVENT   0x0001
+#define MOUSE_EVENT 0x0002
+#define PIPE_WAIT             0x00000000
+#define PIPE_NOWAIT           0x00000001
+#define PIPE_READMODE_BYTE    0x00000000
+#define PIPE_READMODE_MESSAGE 0x00000002
+
+/* Dialogs and common controls */
+#define LB_ADDSTRING   0x0180
+#define WM_SETFONT     0x0030
+#define WM_GETFONT     0x0031
+#define FIXED_PITCH    1
+#define FF_MODERN      48
+#define CONTEXT_FLOATING_POINT 0x10008
+#define SIZE_OF_80387_REGISTERS 80
+
 /* Virtual keys */
 #define VK_LBUTTON    0x01
 #define VK_RBUTTON    0x02
@@ -1728,6 +1806,46 @@ BOOL    WINAPI UnionRect(LPRECT lprcDst, const RECT *lprcSrc1, const RECT *lprcS
 BOOL    WINAPI OffsetRect(LPRECT lprc, int dx, int dy);
 BOOL    WINAPI PtInRect(const RECT *lprc, POINT pt);
 BOOL    WINAPI IsRectEmpty(const RECT *lprc);
+
+
+/* Console. The page has none: AllocConsole fails, GetStdHandle gives the
+** standard streams of the program. */
+BOOL    WINAPI AllocConsole(void);
+BOOL    WINAPI FreeConsole(void);
+HANDLE  WINAPI GetStdHandle(DWORD nStdHandle);
+BOOL    WINAPI GetConsoleMode(HANDLE hConsoleHandle, LPDWORD lpMode);
+BOOL    WINAPI SetConsoleMode(HANDLE hConsoleHandle, DWORD dwMode);
+BOOL    WINAPI GetConsoleScreenBufferInfo(HANDLE hConsoleOutput, PCONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo);
+BOOL    WINAPI SetConsoleScreenBufferSize(HANDLE hConsoleOutput, COORD dwSize);
+BOOL    WINAPI SetConsoleWindowInfo(HANDLE hConsoleOutput, BOOL bAbsolute, const SMALL_RECT *lpConsoleWindow);
+BOOL    WINAPI SetConsoleCursorInfo(HANDLE hConsoleOutput, const CONSOLE_CURSOR_INFO *lpConsoleCursorInfo);
+BOOL    WINAPI SetConsoleCursorPosition(HANDLE hConsoleOutput, COORD dwCursorPosition);
+BOOL    WINAPI SetConsoleTextAttribute(HANDLE hConsoleOutput, WORD wAttributes);
+BOOL    WINAPI SetConsoleTitleA(LPCSTR lpConsoleTitle);
+BOOL    WINAPI GetNumberOfConsoleInputEvents(HANDLE hConsoleInput, LPDWORD lpNumberOfEvents);
+BOOL    WINAPI ReadConsoleInputA(HANDLE hConsoleInput, PINPUT_RECORD lpBuffer, DWORD nLength, LPDWORD lpNumberOfEventsRead);
+BOOL    WINAPI WriteConsoleOutputA(HANDLE hConsoleOutput, const CHAR_INFO *lpBuffer, COORD dwBufferSize, COORD dwBufferCoord, PSMALL_RECT lpWriteRegion);
+BOOL    WINAPI WriteConsoleA(HANDLE hConsoleOutput, const void *lpBuffer, DWORD nNumberOfCharsToWrite, LPDWORD lpNumberOfCharsWritten, LPVOID lpReserved);
+#define SetConsoleTitle SetConsoleTitleA
+#define ReadConsoleInput ReadConsoleInputA
+#define WriteConsoleOutput WriteConsoleOutputA
+#define WriteConsole WriteConsoleA
+BOOL    WINAPI SetNamedPipeHandleState(HANDLE hNamedPipe, LPDWORD lpMode, LPDWORD lpMaxCollectionCount, LPDWORD lpCollectDataTimeout);
+
+/* Dialogs and window enumeration. Nothing shows dialogs in the page. */
+INT_PTR WINAPI DialogBoxIndirectParamA(HINSTANCE hInstance, LPCDLGTEMPLATE hDialogTemplate, HWND hWndParent, DLGPROC lpDialogFunc, LPARAM dwInitParam);
+INT_PTR WINAPI DialogBoxParamA(HINSTANCE hInstance, LPCSTR lpTemplateName, HWND hWndParent, DLGPROC lpDialogFunc, LPARAM dwInitParam);
+BOOL    WINAPI EndDialog(HWND hDlg, INT_PTR nResult);
+LRESULT WINAPI SendDlgItemMessageA(HWND hDlg, int nIDDlgItem, UINT Msg, WPARAM wParam, LPARAM lParam);
+BOOL    WINAPI SetDlgItemTextA(HWND hDlg, int nIDDlgItem, LPCSTR lpString);
+BOOL    WINAPI EnumThreadWindows(DWORD dwThreadId, WNDENUMPROC lpfn, LPARAM lParam);
+BOOL    WINAPI EnumWindows(WNDENUMPROC lpEnumFunc, LPARAM lParam);
+#define DialogBoxIndirectParam DialogBoxIndirectParamA
+#define DialogBoxIndirect(hInstance, lpTemplate, hWndParent, lpDialogFunc) DialogBoxIndirectParamA(hInstance, lpTemplate, hWndParent, lpDialogFunc, 0L)
+#define DialogBoxParam DialogBoxParamA
+#define DialogBox(hInstance, lpTemplate, hWndParent, lpDialogFunc) DialogBoxParamA(hInstance, lpTemplate, hWndParent, lpDialogFunc, 0L)
+#define SendDlgItemMessage SendDlgItemMessageA
+#define SetDlgItemText SetDlgItemTextA
 
 /* Shell */
 HINSTANCE WINAPI ShellExecuteA(HWND hwnd, LPCSTR lpOperation, LPCSTR lpFile, LPCSTR lpParameters, LPCSTR lpDirectory, INT nShowCmd);

@@ -52,6 +52,7 @@ struct Config
     int presentMode = WEBD3D8_PRESENT_IMPLICIT;
     bool debug = false;
     bool releaseTextureShadows = false;
+    bool disableS3TC = false;
 };
 Config &GetConfig();
 

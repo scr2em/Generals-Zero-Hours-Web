@@ -71,7 +71,7 @@ static inline __int64 _rdtsc()
 
 #include <cstdint>
 
-#if !defined(_lrotl) && !defined(_WIN32)
+#if !defined(_lrotl) && !defined(_WIN32) && !defined(__EMSCRIPTEN__) // clang provides _lrotl with -fms-extensions
 static inline uint32_t _lrotl(uint32_t value, int shift)
 {
 #if defined(__has_builtin) && __has_builtin(__builtin_rotateleft32)

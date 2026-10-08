@@ -30,3 +30,9 @@
 #endif
 
 #include "windows.h"
+
+// The rest of the C runtime extensions, which on Windows come with the
+// compiler's own headers.
+#include "direct.h"
+#include "io.h"
+#include "process.h"

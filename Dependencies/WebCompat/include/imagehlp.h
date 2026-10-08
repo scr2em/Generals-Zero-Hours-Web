@@ -14,6 +14,7 @@
 **	You should have received a copy of the GNU General Public License
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-/* WebAssembly port: everything this header provides lives in windows.h. */
+/* WebAssembly port: the old name of the debug help library. */
 #pragma once
-#include "windows.h"
+
+#include "dbghelp.h"

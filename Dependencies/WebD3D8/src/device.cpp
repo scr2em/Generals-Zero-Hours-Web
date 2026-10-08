@@ -113,6 +113,7 @@ void Device::QueryGLCaps()
 
     // Extensions are queried through the Emscripten helper (works on workers too).
     m_glcaps.s3tc = emscripten_webgl_enable_extension(m_glContext, "WEBGL_compressed_texture_s3tc") != 0;
+    if (GetConfig().disableS3TC) m_glcaps.s3tc = false;
     m_glcaps.anisotropic = emscripten_webgl_enable_extension(m_glContext, "EXT_texture_filter_anisotropic") != 0;
     if (m_glcaps.anisotropic)
     {

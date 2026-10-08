@@ -30,6 +30,7 @@ target_link_options(web_d3d8 INTERFACE
 # and see tests/README.md for running it in headless Chromium.
 add_executable(web_d3d8_test EXCLUDE_FROM_ALL tests/web_d3d8_test.cpp)
 target_include_directories(web_d3d8_test PRIVATE ${dx8_SOURCE_DIR})
+target_compile_features(web_d3d8_test PRIVATE cxx_std_20)
 target_compile_definitions(web_d3d8_test PRIVATE BUILD_WITH_D3D8)
 target_compile_options(web_d3d8_test PRIVATE -fshort-wchar -fms-extensions -fdeclspec
     -Wno-microsoft -Wno-c++11-narrowing -Wno-register -Wno-deprecated-declarations

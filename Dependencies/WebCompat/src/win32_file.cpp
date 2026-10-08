@@ -45,18 +45,20 @@ namespace
 
 struct FileObject : HandleObject
 {
-	FileObject(int descriptor, bool deleteWhenClosed, const char *name)
-		: HandleObject(HANDLE_FILE), fd(descriptor), deleteOnClose(deleteWhenClosed), path(name)
+	FileObject(int descriptor, bool deleteWhenClosed, const char *name, bool ownsDescriptor = true)
+		: HandleObject(HANDLE_FILE), fd(descriptor), owned(ownsDescriptor), deleteOnClose(deleteWhenClosed), path(name)
 	{
 	}
 	~FileObject() override
 	{
-		close(fd);
+		if (owned)
+			close(fd);
 		if (deleteOnClose)
 			unlink(path.c_str());
 	}
 
 	int fd;
+	bool owned;
 	bool deleteOnClose;
 	std::string path;
 };
@@ -828,6 +830,31 @@ BOOL WINAPI FindClose(HANDLE hFindFile)
 	}
 	ReleaseObject(find);
 	return TRUE;
+}
+
+HANDLE WINAPI GetStdHandle(DWORD nStdHandle)
+{
+	// The standard streams are shared objects that outlive any CloseHandle.
+	static FileObject *s_streams[3];
+	static pthread_once_t s_once = PTHREAD_ONCE_INIT;
+	pthread_once(&s_once, []()
+	{
+		static const char *const names[3] = { "<stdin>", "<stdout>", "<stderr>" };
+		for (int i = 0; i < 3; ++i)
+		{
+			s_streams[i] = new FileObject(i, false, names[i], false);
+			AddRefObject(s_streams[i]);
+		}
+	});
+	switch (nStdHandle)
+	{
+	case STD_INPUT_HANDLE: return ToHandle(s_streams[0]);
+	case STD_OUTPUT_HANDLE: return ToHandle(s_streams[1]);
+	case STD_ERROR_HANDLE: return ToHandle(s_streams[2]);
+	default:
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return INVALID_HANDLE_VALUE;
+	}
 }
 
 /* ---------------------------------------------------------------------------

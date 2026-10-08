@@ -160,6 +160,7 @@ void WebD3D8_SetShaderModel(unsigned vs, unsigned ps)
 }
 
 void WebD3D8_SetPresentMode(int mode) { webd3d8::GetConfig().presentMode = mode; }
+void WebD3D8_SetDisableS3TC(int disable) { webd3d8::GetConfig().disableS3TC = disable != 0; }
 void WebD3D8_SetDebug(int enable) { webd3d8::GetConfig().debug = enable != 0; }
 void WebD3D8_SetReleaseTextureShadows(int enable) { webd3d8::GetConfig().releaseTextureShadows = enable != 0; }
 

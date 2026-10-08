@@ -67,6 +67,10 @@ void WebD3D8_SetDebug(int enable);
 /// the price of a GPU read-back when such a level is locked again.
 void WebD3D8_SetReleaseTextureShadows(int enable);
 
+/// Makes the device ignore WEBGL_compressed_texture_s3tc so DXT textures are
+/// decoded on the CPU (for testing that path).
+void WebD3D8_SetDisableS3TC(int disable);
+
 /// Info about the GL implementation that backs the device (valid after
 /// CreateDevice()). Strings are owned by the library.
 const char *WebD3D8_GetRendererString(void);

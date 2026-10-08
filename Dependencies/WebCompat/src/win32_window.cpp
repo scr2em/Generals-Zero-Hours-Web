@@ -314,11 +314,6 @@ BOOL WINAPI IsWindowVisible(HWND hWnd)
 	return window && window->visible;
 }
 
-BOOL WINAPI IsIconic(HWND)
-{
-	return FALSE;
-}
-
 BOOL WINAPI IsZoomed(HWND)
 {
 	return FALSE;
@@ -440,29 +435,6 @@ BOOL WINAPI MoveWindow(HWND hWnd, int X, int Y, int nWidth, int nHeight, BOOL)
 	return SetWindowPos(hWnd, nullptr, X, Y, nWidth, nHeight, 0);
 }
 
-BOOL WINAPI GetWindowRect(HWND hWnd, LPRECT lpRect)
-{
-	WindowLock lock;
-	WindowObject *window = Lookup(hWnd);
-	if (!window || !lpRect)
-		return FALSE;
-	*lpRect = window->rect;
-	return TRUE;
-}
-
-BOOL WINAPI GetClientRect(HWND hWnd, LPRECT lpRect)
-{
-	WindowLock lock;
-	WindowObject *window = Lookup(hWnd);
-	if (!window || !lpRect)
-		return FALSE;
-	lpRect->left = 0;
-	lpRect->top = 0;
-	lpRect->right = window->rect.right - window->rect.left;
-	lpRect->bottom = window->rect.bottom - window->rect.top;
-	return TRUE;
-}
-
 BOOL WINAPI AdjustWindowRect(LPRECT, DWORD, BOOL)
 {
 	// The canvas has no frame: the client area is the window.
@@ -471,28 +443,6 @@ BOOL WINAPI AdjustWindowRect(LPRECT, DWORD, BOOL)
 
 BOOL WINAPI AdjustWindowRectEx(LPRECT, DWORD, BOOL, DWORD)
 {
-	return TRUE;
-}
-
-BOOL WINAPI ClientToScreen(HWND hWnd, LPPOINT lpPoint)
-{
-	WindowLock lock;
-	WindowObject *window = Lookup(hWnd);
-	if (!window || !lpPoint)
-		return FALSE;
-	lpPoint->x += window->rect.left;
-	lpPoint->y += window->rect.top;
-	return TRUE;
-}
-
-BOOL WINAPI ScreenToClient(HWND hWnd, LPPOINT lpPoint)
-{
-	WindowLock lock;
-	WindowObject *window = Lookup(hWnd);
-	if (!window || !lpPoint)
-		return FALSE;
-	lpPoint->x -= window->rect.left;
-	lpPoint->y -= window->rect.top;
 	return TRUE;
 }
 
@@ -557,16 +507,6 @@ LONG WINAPI SetWindowLongA(HWND hWnd, int nIndex, LONG dwNewLong)
 	return previous;
 }
 
-BOOL WINAPI SetWindowTextA(HWND hWnd, LPCSTR lpString)
-{
-	WindowLock lock;
-	WindowObject *window = Lookup(hWnd);
-	if (!window)
-		return FALSE;
-	window->title = lpString ? lpString : "";
-	return TRUE;
-}
-
 int WINAPI GetWindowTextA(HWND hWnd, LPSTR lpString, int nMaxCount)
 {
 	WindowLock lock;
@@ -621,6 +561,59 @@ HWND WINAPI GetDlgItem(HWND, int)
 	return nullptr;
 }
 
+INT_PTR WINAPI DialogBoxIndirectParamA(HINSTANCE, LPCDLGTEMPLATE, HWND, DLGPROC, LPARAM)
+{
+	// Nothing can show a modal dialog in the page.
+	SetLastError(ERROR_ACCESS_DENIED);
+	return -1;
+}
+
+INT_PTR WINAPI DialogBoxParamA(HINSTANCE, LPCSTR, HWND, DLGPROC, LPARAM)
+{
+	SetLastError(ERROR_ACCESS_DENIED);
+	return -1;
+}
+
+BOOL WINAPI EndDialog(HWND, INT_PTR)
+{
+	return TRUE;
+}
+
+LRESULT WINAPI SendDlgItemMessageA(HWND, int, UINT, WPARAM, LPARAM)
+{
+	return 0;
+}
+
+BOOL WINAPI SetDlgItemTextA(HWND, int, LPCSTR)
+{
+	return FALSE;
+}
+
+BOOL WINAPI EnumThreadWindows(DWORD, WNDENUMPROC lpfn, LPARAM lParam)
+{
+	// Top level windows only; the callback may create or destroy windows.
+	std::set<WindowObject *> windows;
+	{
+		WindowLock lock;
+		windows = State().windows;
+	}
+	for (std::set<WindowObject *>::iterator it = windows.begin(); it != windows.end(); ++it)
+	{
+		if (!(*it)->parent && !lpfn(reinterpret_cast<HWND>(*it), lParam))
+			return FALSE;
+	}
+	return TRUE;
+}
+
+BOOL WINAPI EnumWindows(WNDENUMPROC lpEnumFunc, LPARAM lParam)
+{
+	return EnumThreadWindows(0, lpEnumFunc, lParam);
+}
+
+void WINAPI InitCommonControls(void)
+{
+}
+
 UINT_PTR WINAPI SetTimer(HWND, UINT_PTR nIDEvent, UINT, TIMERPROC)
 {
 	// WM_TIMER is not generated: the game uses its own timing.
@@ -655,21 +648,6 @@ static MSG MakeMessage(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
 	return message;
 }
 
-BOOL WINAPI PostMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-{
-	WindowLock lock;
-	State().messages.push_back(MakeMessage(hWnd, Msg, wParam, lParam));
-	pthread_cond_broadcast(&s_messageCondition);
-	return TRUE;
-}
-
-void WINAPI PostQuitMessage(int nExitCode)
-{
-	WindowLock lock;
-	State().messages.push_back(MakeMessage(nullptr, WM_QUIT, (WPARAM)nExitCode, 0));
-	pthread_cond_broadcast(&s_messageCondition);
-}
-
 // Takes the first message that passes the filter. Returns false if none.
 static bool TakeMessage(LPMSG lpMsg, HWND hWnd, UINT filterMin, UINT filterMax, bool remove)
 {
@@ -688,53 +666,6 @@ static bool TakeMessage(LPMSG lpMsg, HWND hWnd, UINT filterMin, UINT filterMax, 
 	return false;
 }
 
-BOOL WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg)
-{
-	WindowLock lock;
-	return TakeMessage(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, (wRemoveMsg & PM_REMOVE) != 0);
-}
-
-BOOL WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax)
-{
-	WindowLock lock;
-	while (!TakeMessage(lpMsg, hWnd, wMsgFilterMin, wMsgFilterMax, true))
-		pthread_cond_wait(&s_messageCondition, &s_windowLock);
-	return lpMsg->message != WM_QUIT;
-}
-
-BOOL WINAPI WaitMessage(void)
-{
-	WindowLock lock;
-	while (State().messages.empty())
-		pthread_cond_wait(&s_messageCondition, &s_windowLock);
-	return TRUE;
-}
-
-BOOL WINAPI TranslateMessage(const MSG *)
-{
-	return FALSE;
-}
-
-LRESULT WINAPI SendMessageA(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam)
-{
-	WNDPROC procedure;
-	{
-		WindowLock lock;
-		WindowObject *window = Lookup(hWnd);
-		if (!window)
-			return 0;
-		procedure = window->procedure;
-	}
-	return procedure ? procedure(hWnd, Msg, wParam, lParam) : DefWindowProcA(hWnd, Msg, wParam, lParam);
-}
-
-LRESULT WINAPI DispatchMessageA(const MSG *lpMsg)
-{
-	if (!lpMsg || !lpMsg->hwnd)
-		return 0;
-	return SendMessageA(lpMsg->hwnd, lpMsg->message, lpMsg->wParam, lpMsg->lParam);
-}
-
 UINT WINAPI RegisterWindowMessageA(LPCSTR lpString)
 {
 	WindowLock lock;
@@ -750,17 +681,6 @@ UINT WINAPI RegisterWindowMessageA(LPCSTR lpString)
 /* ---------------------------------------------------------------------------
 ** Input state
 ** ------------------------------------------------------------------------- */
-
-SHORT WINAPI GetAsyncKeyState(int vKey)
-{
-	WindowLock lock;
-	return (vKey >= 0 && vKey < 256 && State().keyDown[vKey]) ? (SHORT)0x8000 : 0;
-}
-
-SHORT WINAPI GetKeyState(int nVirtKey)
-{
-	return GetAsyncKeyState(nVirtKey);
-}
 
 BOOL WINAPI GetKeyboardState(PBYTE lpKeyState)
 {
@@ -831,14 +751,6 @@ int WINAPI ShowCursor(BOOL bShow)
 	return State().cursorVisible;
 }
 
-HCURSOR WINAPI SetCursor(HCURSOR hCursor)
-{
-	static HCURSOR s_current = nullptr;
-	HCURSOR previous = s_current;
-	s_current = hCursor;
-	return previous;
-}
-
 HCURSOR WINAPI GetCursor(void)
 {
 	return SetCursor(nullptr);
@@ -855,11 +767,6 @@ HCURSOR WINAPI LoadCursorFromFileA(LPCSTR)
 }
 
 BOOL WINAPI DestroyCursor(HCURSOR)
-{
-	return TRUE;
-}
-
-BOOL WINAPI ClipCursor(const RECT *)
 {
 	return TRUE;
 }
