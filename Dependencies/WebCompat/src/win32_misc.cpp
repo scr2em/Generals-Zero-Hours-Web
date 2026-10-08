@@ -358,7 +358,9 @@ DWORD WINAPI GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize)
 
 DWORD WINAPI GetModuleFileNameA(HMODULE, LPSTR lpFilename, DWORD nSize)
 {
-	static const char s_path[] = "/game/generalszh.exe";
+	// The game cuts the executable's directory off at the last backslash (log files, MemoryPools.ini,
+// working directory), so the file name is separated like on Windows. The path functions accept both.
+	static const char s_path[] = "/game\\generalszh.exe";
 	if (!lpFilename || nSize == 0)
 		return 0;
 	const DWORD length = (DWORD)(sizeof(s_path) - 1);

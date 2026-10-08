@@ -112,7 +112,8 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 		hrtf: false,
 		unlockEvents: ['pointerdown', 'pointerup', 'mousedown', 'touchstart', 'touchend', 'keydown', 'click'],
 		stats: { commandsRun: 0, buffersCreated: 0, sourcesStarted: 0, sourcesEnded: 0, voicesCreated: 0, streamChunks: 0, segmentsDropped: 0, errors: 0 },
-		timer: 0
+		timer: 0,
+		heldTimer: 0
 	};
 	for (var vi = 0; vi < MAX_VOICES; ++vi) A.voices[vi] = null;
 
@@ -181,7 +182,13 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 	}
 	ctx.onstatechange = function () {
 		publishState();
-		if (ctx.state === 'running') removeUnlock();
+		if (ctx.state === 'running') {
+			removeUnlock();
+			for (var k = 0; k < MAX_VOICES; ++k) {
+				var v = A.voices[k];
+				if (v && hasHeld(v)) releaseHeld(v);
+			}
+		}
 	};
 	A.resume = function () {
 		var p = ctx.resume();
@@ -322,28 +329,76 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 		A.stats.sourcesStarted++;
 	}
 
+	// Starts a segment behind the ones queued before it (gapless), or a little after now if the voice is idle
+	// (streams get a little lead so that the next chunk can follow in time).
+	function placeSegment(v, seg, lead) {
+		var now = ctx.currentTime;
+		var when = v.endCtx > now ? v.endCtx : now + lead;
+		when += seg.delay;
+		startSource(v, seg, when, 0);
+		v.endCtx = seg.end;
+	}
+
+	// Sound effects that are triggered while the browser still blocks audio (before the first gesture, or during the
+	// short time a resume takes) wait a moment for the context to run, then they are dropped: a stale sound that
+	// plays much later is worse than none, and all of them playing at once on the first click is worst.
+	var HELD_MAX_MS = 300;
+
+	function dropSegment(v, seg) {
+		var k = v.segs.indexOf(seg);
+		if (k >= 0) v.segs.splice(k, 1);
+		A.stats.segmentsDropped++;
+		Atomics.add(HEAP32, vI(v.idx), 1);
+	}
+
+	function releaseHeld(v) {
+		var now = Date.now();
+		var segs = v.segs.slice();
+		for (var i = 0; i < segs.length; ++i) {
+			var s = segs[i];
+			if (!s.held) continue;
+			s.held = false;
+			if (now - s.heldAt > HELD_MAX_MS) dropSegment(v, s);
+			else if (!v.paused) placeSegment(v, s, 0.002);
+		}
+		publishVoice(v);
+	}
+
+	function sweepHeld() {
+		A.heldTimer = 0;
+		var now = Date.now(), any = false;
+		for (var k = 0; k < MAX_VOICES; ++k) {
+			var v = A.voices[k];
+			if (!v) continue;
+			var segs = v.segs.slice();
+			for (var i = 0; i < segs.length; ++i) {
+				if (!segs[i].held) continue;
+				if (now - segs[i].heldAt > HELD_MAX_MS) dropSegment(v, segs[i]);
+				else any = true;
+			}
+		}
+		if (any) A.heldTimer = setTimeout(sweepHeld, 60);
+	}
+
+	function hasHeld(v) {
+		for (var i = 0; i < v.segs.length; ++i) if (v.segs[i].held) return true;
+		return false;
+	}
+
 	function queueSegment(v, buf, delay, flags, isStream) {
-		var i = vI(v.idx);
-		if (!isStream && ctx.state !== 'running') {
-			// Sound effects triggered while the browser still blocks audio would play all at once on the first click.
-			A.stats.segmentsDropped++;
-			Atomics.add(HEAP32, i, 1);
-			return;
-		}
-		var seg = { buf: buf, dur: buf.duration, flags: flags, src: null, startAt: 0, offset: 0, rate: 1, end: 0, delay: delay, begun: false };
+		var seg = { buf: buf, dur: buf.duration, flags: flags, src: null, startAt: 0, offset: 0, rate: 1, end: 0, delay: delay, begun: false, held: false, heldAt: 0 };
 		v.segs.push(seg);
-		if (!v.paused) {
-			var now = ctx.currentTime;
-			var when;
-			if (v.endCtx > now) when = v.endCtx;				// gapless behind the previous segment
-			else when = now + (isStream ? 0.04 : 0.002);		// idle (streams get a little lead so the next chunk can follow in time)
-			when += delay;
-			startSource(v, seg, when, 0);
-			v.endCtx = seg.end;
-		} else {
-			seg.end = 0;
-		}
 		v.started = true;
+		if (v.paused) {
+			// waits for the resume
+		} else if (!isStream && ctx.state !== 'running') {
+			seg.held = true;
+			seg.heldAt = Date.now();
+			if (!A.heldTimer) A.heldTimer = setTimeout(sweepHeld, 60);
+		} else {
+			if (hasHeld(v)) releaseHeld(v);
+			placeSegment(v, seg, isStream ? 0.04 : 0.002);
+		}
 		publishVoice(v);
 	}
 
@@ -373,6 +428,7 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 			var t = now + 0.005;
 			for (var j = 0; j < v.segs.length; ++j) {
 				var sg = v.segs[j];
+				if (sg.held) continue;
 				var when = t + sg.delay;
 				sg.delay = 0;
 				startSource(v, sg, when, sg.offset);
@@ -574,9 +630,13 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 	return 1;
 });
 
-EM_JS(void, wa_js_exec, (int ptr, int nwords), {
+EM_JS(int, wa_js_exec, (int ptr, int nwords), {
 	var A = globalThis.zhWebAudio;
-	if (A && A.ctx) A.exec(ptr, nwords);
+	if (A && A.ctx) {
+		A.exec(ptr, nwords);
+		return 1;
+	}
+	return 0;
 });
 
 EM_JS(void, wa_js_shutdown, (), {
@@ -696,10 +756,26 @@ void freeBlock(void *p)
 	free(p);
 }
 
+/// Frees the PCM blocks that commands carry, for commands that are dropped instead of run.
+void releaseBlocks(const std::vector<int32_t> &commands)
+{
+	static const uint8_t argCount[] = { 0, 5, 1, 2, 2, 4, 6, 2, 2, 2, 4, 2, 2, 1, 9, 1, 1, 0 };	// as ARGS in wa_js_install
+	for (size_t i = 0; i < commands.size();)
+	{
+		const int32_t op = commands[i++];
+		if (op < 0 || (size_t)op >= sizeof(argCount))
+			return;
+		if ((op == OP_CREATE_BUFFER || op == OP_STREAM_CHUNK) && i + 1 < commands.size())
+			free((void *)(intptr_t)commands[i + 1]);
+		i += argCount[op];
+	}
+}
+
 void runBatch(void *arg)
 {
 	std::vector<int32_t> *batch = static_cast<std::vector<int32_t> *>(arg);
-	wa_js_exec((int)(intptr_t)batch->data(), (int)batch->size());
+	if (!wa_js_exec((int)(intptr_t)batch->data(), (int)batch->size()))
+		releaseBlocks(*batch);	// the interpreter is gone (shut down)
 	delete batch;
 }
 
@@ -978,6 +1054,7 @@ void WebAudio_Shutdown(void)
 	g_backend.available.store(false);
 	runOnMainThread([](void *) { wa_js_shutdown(); }, nullptr);
 	std::lock_guard<std::mutex> g(g_backend.lock);
+	releaseBlocks(g_backend.commands);
 	g_backend.commands.clear();
 	for (uint32_t i = 0; i < WEBAUDIO_MAX_VOICES; ++i)
 	{

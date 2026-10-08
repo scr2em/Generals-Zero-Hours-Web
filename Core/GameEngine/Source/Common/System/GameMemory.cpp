@@ -3243,6 +3243,17 @@ void MemoryPoolFactory::debugMemoryReport(Int flags, Int startCheckpoint, Int en
 
 #ifdef DEBUG_CRASHING
 static int theLinkTester = 0;
+// Optimizing compilers other than MSVC remove a new/delete pair whose memory is never used, which
+// would skip our operators and fail the check below. Make the memory observable.
+static inline void linkTesterUse(char* p)
+{
+#if defined(__GNUC__) || defined(__clang__)
+	__asm__ __volatile__("" : : "g"(p) : "memory");
+#else
+	(void)p;
+#endif
+}
+
 void verifyLinkTester()
 {
 	char* linktest;
@@ -3250,12 +3261,15 @@ void verifyLinkTester()
 	theLinkTester = 0;
 
 	linktest = new char;
+	linkTesterUse(linktest);
 	delete linktest;
 
 	linktest = new char[8];
+	linkTesterUse(linktest);
 	delete [] linktest;
 
 	linktest = new char('\0');
+	linkTesterUse(linktest);
 	delete linktest;
 
 #ifdef MEMORYPOOL_OVERRIDE_MALLOC

@@ -512,8 +512,8 @@ uint64_t countMp3Frames(const uint8_t *data, const Mp3Layout &m)
 class Mp3Decoder : public Decoder
 {
 public:
-	Mp3Decoder(const uint8_t *data, size_t size, const Mp3Layout &m)
-		: m_data(data), m_size(size), m_layout(m), m_pos(0), m_pcmFrames(0), m_pcmPos(0), m_skip(0), m_emitted(0), m_limit(0), m_limited(false)
+	Mp3Decoder(const uint8_t *data, size_t /*size*/, const Mp3Layout &m)
+		: m_data(data), m_layout(m), m_pos(0), m_pcmFrames(0), m_pcmPos(0), m_skip(0), m_emitted(0), m_limit(0), m_limited(false)
 	{
 		m_info.codec = Codec::Mp3;
 		m_info.sampleRate = m.sampleRate;
@@ -604,7 +604,6 @@ private:
 	}
 
 	const uint8_t *m_data;
-	size_t m_size;
 	Mp3Layout m_layout;
 	mp3dec_t m_dec;
 	size_t m_pos;

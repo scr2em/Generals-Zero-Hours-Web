@@ -2,13 +2,18 @@
 // headless Chromium (needs Playwright, e.g. NODE_PATH=/opt/node22/lib/node_modules).
 //
 //   node e2e.mjs --site <dir with web_platform_test.html> --fake <dir with ZeroHour/ and Generals/> --out <screenshot dir>
+//                [--starter <dir with the built starter pack: manifest.json + files>]
+//
+// With --starter the "free starter content" path is tested too: the pack is served as
+// <site>/starterpack/ (copied there), downloaded through the launcher into OPFS, checked against
+// its manifest and started. Build the pack with Content/StarterPack/build_pack.py.
 //
 // The page is served by serve.py (cross-origin isolated). The "game" is
 // web_platform_test, which prints TEST: lines for everything it receives.
 
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, cpSync, readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 
 const require = createRequire(import.meta.url);
@@ -23,6 +28,14 @@ const fake = path.resolve(args.fake);
 const out = path.resolve(args.out || '.');
 const page_name = args.page || 'web_platform_test.html';
 const port = Number(args.port || 8099);
+const starter = args.starter ? path.resolve(args.starter) : null;
+if (starter) {
+	if (!existsSync(path.join(starter, 'manifest.json'))) {
+		console.error('--starter must name a directory with manifest.json');
+		process.exit(2);
+	}
+	cpSync(starter, path.join(site, 'starterpack'), { recursive: true });
+}
 mkdirSync(out, { recursive: true });
 
 let failures = 0;
@@ -219,6 +232,131 @@ async function session(label, query) {
 		check(`run ${run}: user data persisted`, line.includes('runs=' + run), line);
 	}
 	await context.close();
+}
+
+
+// ---- 5. free starter content: download into OPFS, check against the manifest, play ------------------
+if (starter) {
+	const manifest = JSON.parse(readFileSync(path.join(starter, 'manifest.json'), 'utf8'));
+	const walkOpfs = (page) => page.evaluate(async () => {
+		const result = {};
+		async function walk(dir, prefix) {
+			for await (const [name, handle] of dir.entries()) {
+				if (handle.kind === 'directory') await walk(handle, prefix + name + '/');
+				else result[prefix + name] = (await handle.getFile()).size;
+			}
+		}
+		await walk(await navigator.storage.getDirectory(), '');
+		return result;
+	});
+	const settled = (id) => (i) => /^(Ready|.*failed|.*[Nn]ot enough|This server|Could not|.*corrupt|.*wrong size)/.test(document.getElementById(i).textContent);
+
+	// 5a. a fresh visit
+	const context = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+	const page = await context.newPage();
+	const logs = [];
+	page.on('console', (m) => logs.push(m.text()));
+	page.on('dialog', (d) => d.accept());
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+	await page.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
+	const pageText = await page.textContent('#choice-starter');
+	check('starter option says it is an original placeholder game', /not\s+Command/i.test(pageText) && /original/i.test(pageText) && /GPL/.test(pageText), pageText.replace(/\s+/g, ' ').slice(0, 160));
+	check('both options are offered', /Use my Zero Hour installation/.test(await page.textContent('#choice-install')) && /Play with free starter content/.test(pageText));
+	check('play disabled before the download', await page.isDisabled('#play'));
+	await page.screenshot({ path: path.join(out, '6-two-options.png') });
+
+	await page.click('#download-starter');
+	await page.waitForFunction(settled('state-starter'), 'state-starter', { timeout: 120000 });
+	const startState = await page.textContent('#state-starter');
+	check('starter content downloaded', /^Ready/.test(startState), startState);
+	check('play enabled for the starter content', !(await page.isDisabled('#play')));
+	check('mode is announced', /free starter content/i.test(await page.textContent('#play-mode')), await page.textContent('#play-mode'));
+	check('own-install rows say the starter content is installed', /starter content is installed/.test(await page.textContent('#state-game')));
+	await page.screenshot({ path: path.join(out, '7-starter-ready.png') });
+
+	const tree = await walkOpfs(page);
+	const missing = manifest.files.filter((f) => tree['game/' + f.path.toLowerCase()] !== f.size);
+	check('every manifest file is in OPFS with the right size', missing.length === 0, missing.slice(0, 3).map((f) => f.path).join(','));
+	check('OPFS names are lower case', Object.keys(tree).every((k) => k === k.toLowerCase()));
+	const opfsManifest = await page.evaluate(async () => {
+		const root = await navigator.storage.getDirectory();
+		return JSON.parse(await (await (await root.getFileHandle('game.manifest.json')).getFile()).text());
+	});
+	check('OPFS manifest marks the starter kind', opfsManifest.kind === 'starter' && opfsManifest.files === manifest.files.length, JSON.stringify(opfsManifest).slice(0, 200));
+	check('nothing in generals/', !Object.keys(tree).some((k) => k.startsWith('generals/')));
+
+	await page.click('#play');
+	await page.waitForFunction(() => document.getElementById('stage').hidden === false);
+	await page.waitForFunction(() => window.__zh.logLines.some((l) => l.includes('TEST: ready')), null, { timeout: 30000 }).catch(() => {});
+	const log = () => logs.filter((l) => l.startsWith('TEST:')).join('\n');
+	check('starter: engine thread runs', /TEST: ready/.test(log()), log().slice(-300));
+	check('starter: mount works', /TEST: mount=0/.test(log()));
+	check('starter: GameData.ini readable through the game file layer', /TEST: read \d+ bytes: /.test(log()) && !/cannot open GameData/.test(log()), log().split('\n').filter((l) => /read|cannot/.test(l)).join('|'));
+	check('starter: data directory visible', /TEST: \/game\/data\b/.test(log()), '');
+	check('starter: badge shown in the game page', await page.evaluate(() => !document.getElementById('mode-badge').hidden));
+	await page.screenshot({ path: path.join(out, '8-starter-running.png') });
+	await context.close();
+
+	// 5b. a corrupted download is refused and leaves nothing half installed as "ready"
+	{
+		const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+		const p = await ctx.newPage();
+		await p.route('**/starterpack/**', async (route) => {
+			const url = route.request().url();
+			if (url.endsWith('manifest.json')) return route.continue();
+			if (url.includes('/data/ini/')) {
+				const response = await route.fetch();
+				const body = Buffer.from(await response.body());
+				body[0] = body[0] ^ 0x55; // same size, wrong content
+				return route.fulfill({ response, body });
+			}
+			return route.continue();
+		});
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+		await p.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
+		await p.click('#download-starter');
+		await p.waitForFunction(settled('state-starter'), 'state-starter', { timeout: 120000 });
+		const t = await p.textContent('#state-starter');
+		check('corrupt file is detected by its checksum', /corrupt/.test(t), t);
+		check('play stays disabled after a failed download', await p.isDisabled('#play'));
+		await ctx.close();
+	}
+
+	// 5c. no starter content on this server
+	{
+		const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+		const p = await ctx.newPage();
+		await p.route('**/starterpack/manifest.json', (route) => route.fulfill({ status: 404, body: 'nope' }));
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+		await p.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
+		await p.click('#download-starter');
+		await p.waitForFunction(settled('state-starter'), 'state-starter', { timeout: 30000 });
+		const t = await p.textContent('#state-starter');
+		check('missing starter content gives a clear message', /does not offer the starter content/.test(t), t);
+		await ctx.close();
+	}
+
+	// 5d. switching between the two options never mixes the files
+	{
+		const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+		const p = await ctx.newPage();
+		p.on('dialog', (d) => d.accept());
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+		await p.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+		await importFolder(p, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
+		await importFolder(p, '#pick-generals', 'state-generals', path.join(fake, 'Generals'));
+		check('own install: play enabled', !(await p.isDisabled('#play')));
+		check('own install: mode announced', /your Zero Hour installation/.test(await p.textContent('#play-mode')));
+		await p.click('#download-starter'); // confirm() is accepted
+		await p.waitForFunction(settled('state-starter'), 'state-starter', { timeout: 120000 });
+		let t = await walkOpfs(p);
+		check('starter replaced the own install', !('game/inizh.big' in t) && !('generals/ini.big' in t) && ('game/data/ini/gamedata.ini' in t), Object.keys(t).slice(0, 5).join(','));
+		await importFolder(p, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
+		t = await walkOpfs(p);
+		check('own install replaced the starter content', ('game/inizh.big' in t) && !Object.keys(t).some((k) => k.startsWith('game/art/')) && !Object.keys(t).some((k) => k.startsWith('game/data/ini/object')), Object.keys(t).slice(0, 8).join(','));
+		check('starter state reset after importing', /Not downloaded/.test(await p.textContent('#state-starter')), await p.textContent('#state-starter'));
+		await ctx.close();
+	}
 }
 
 // ---- 4. the error panel, in dark mode -------------------------------------------------------------

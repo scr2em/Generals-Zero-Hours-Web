@@ -220,6 +220,10 @@ UnsignedInt INI::loadFileDirectory( AsciiString fileDirName, INILoadType loadTyp
 	const Bool expectFileFound = (loadFlags & LoadFlags_ExpectFileFound) != 0;
 	if (expectFileFound && filesRead == 0)
 	{
+#ifdef __EMSCRIPTEN__
+		// There is no debugger or log file in the browser; tell the page which file is missing.
+		fprintf(stderr, "Required game file %s.ini was not found. Import the complete game folders again.\n", iniDir.str());
+#endif
 		throw INI_CANT_OPEN_FILE;
 	}
 
@@ -274,6 +278,9 @@ UnsignedInt INI::loadDirectory( AsciiString dirName, INILoadType loadType, Xfer 
 	const Bool expectFileFound = (loadFlags & LoadFlags_ExpectFileFound) != 0;
 	if (expectFileFound && filesRead == 0)
 	{
+#ifdef __EMSCRIPTEN__
+		fprintf(stderr, "Required game folder %s was not found or has no INI files. Import the complete game folders again.\n", dirName.str());
+#endif
 		throw INI_CANT_OPEN_FILE;
 	}
 
@@ -299,6 +306,9 @@ void INI::prepFile( AsciiString filename, INILoadType loadType )
 	{
 
 		DEBUG_CRASH(( "INI::load, cannot open file '%s'", filename.str() ));
+#ifdef __EMSCRIPTEN__
+		fprintf(stderr, "Required game file %s could not be opened.\n", filename.str());
+#endif
 		throw INI_CANT_OPEN_FILE;
 
 	}

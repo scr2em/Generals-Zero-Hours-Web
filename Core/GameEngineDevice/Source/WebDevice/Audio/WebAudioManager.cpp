@@ -1219,7 +1219,9 @@ void WebAudioManager::openDevice()
 	const AudioSettings *audioSettings = getAudioSettings();
 	m_selectedSpeakerType = TheAudio->translateSpeakerTypeToUnsignedInt(m_prefSpeaker);
 
-	m_deviceWorks = WebAudio_Init(audioSettings->m_outputRate) != 0;
+	// The game mixed at the OutputRate of its settings (22 kHz in the retail files), but the music is 44.1 kHz:
+	// the browser resamples to the speakers anyway, so never go below CD quality.
+	m_deviceWorks = WebAudio_Init(MAX(44100, audioSettings->m_outputRate)) != 0;
 
 	if (m_deviceWorks) {
 		buildProviderList();
@@ -1750,7 +1752,7 @@ Bool WebAudioManager::isObjectPlayingVoice( UnsignedInt objID ) const
 		if (!(*it)->isPlaying()) {
 			continue;
 		}
-		if ((*it)->m_audioEventRTS->getObjectID() == objID && (*it)->m_audioEventRTS->getAudioEventInfo()->m_type & ST_VOICE) {
+		if ((UnsignedInt)(*it)->m_audioEventRTS->getObjectID() == objID && (*it)->m_audioEventRTS->getAudioEventInfo()->m_type & ST_VOICE) {
 			return true;
 		}
 	}
@@ -1760,7 +1762,7 @@ Bool WebAudioManager::isObjectPlayingVoice( UnsignedInt objID ) const
 		if (!(*it)->isPlaying()) {
 			continue;
 		}
-		if ((*it)->m_audioEventRTS->getObjectID() == objID && (*it)->m_audioEventRTS->getAudioEventInfo()->m_type & ST_VOICE) {
+		if ((UnsignedInt)(*it)->m_audioEventRTS->getObjectID() == objID && (*it)->m_audioEventRTS->getAudioEventInfo()->m_type & ST_VOICE) {
 			return true;
 		}
 	}

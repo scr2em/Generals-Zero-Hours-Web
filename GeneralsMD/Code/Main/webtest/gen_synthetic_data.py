@@ -47,6 +47,12 @@ def make_big(files):
 # Content, by stage
 # ----------------------------------------------------------------------------------------------
 
+# Files that must exist for the engine to load a block of INI files but whose content does not
+# matter for what is tested: empty INI files (comments only).
+EMPTY_INI = [
+    'Data\\INI\\Default\\GameData.ini',
+]
+
 # Stage 1: the engine can open the archives and load GameData.ini.
 GAME_DATA = """\
 ; Synthetic test data. Not EA content.
@@ -61,7 +67,7 @@ End
 
 STAGES = {
     1: {
-        'inizh': [('Data\\INI\\GameData.ini', GAME_DATA)],
+        'inizh': [('Data\\INI\\GameData.ini', GAME_DATA)] + [(p, '; empty\n') for p in EMPTY_INI],
         'ini': [],
     },
 }
@@ -81,10 +87,18 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('out')
     ap.add_argument('--stage', type=int, default=max(STAGES))
+    ap.add_argument('--extra-empty', help='text file with more INI paths (one per line) to write as empty files; used while finding what the engine asks for')
     ap.add_argument('--loose', action='store_true', help='also write the Zero Hour INI files as loose files in mixed case (tests the plain file system)')
     args = ap.parse_args()
 
     inizh, ini = build(args.stage)
+    if args.extra_empty:
+        have = set(p.lower() for p, _ in inizh)
+        for line in open(args.extra_empty):
+            p = line.strip()
+            if p and p.lower() not in have:
+                inizh.append((p, b'; empty\n'))
+                have.add(p.lower())
     zh = os.path.join(args.out, 'ZeroHour')
     gen = os.path.join(args.out, 'Generals')
     os.makedirs(zh, exist_ok=True)

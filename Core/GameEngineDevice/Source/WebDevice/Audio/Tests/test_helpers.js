@@ -13,6 +13,7 @@ if (typeof document !== 'undefined') {
     // thread drops blocks, which shows up as clicks that are not in the audio).
     T.ready = 0;
     T.endFrame = 0;
+    T.reset = function () { T.rec = null; T.chunks = []; T.total = 0; T.ready = 0; T.endFrame = 0; return 1; };
     T.startRecording = function () {
       var A = globalThis.zhWebAudio;
       if (!A || !A.ctx) return 0;

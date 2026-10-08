@@ -1,6 +1,14 @@
-// Copies the player's own game install into the browser's Origin Private File
-// System (OPFS), where the game finds it. Nothing is uploaded anywhere and the
-// game data is never part of the build.
+// Puts game data into the browser's Origin Private File System (OPFS), where the
+// game finds it. Two sources:
+//
+//   * the player's own Zero Hour / Generals install, copied from a folder they
+//     pick (nothing is uploaded anywhere; the game data is never part of the build);
+//   * the free starter content: an original placeholder game (not Command &
+//     Conquer content), downloaded from the server next to the game, described
+//     by starterpack/manifest.json (see Content/StarterPack/build_pack.py).
+//
+// Each target has a manifest in OPFS ("game.manifest.json") whose "kind" tells
+// which of the two put the files there, so the page never mixes them.
 //
 // Layout in OPFS (the game mounts the same tree, see WebStorage.cpp):
 //   game/        Zero Hour install
@@ -34,7 +42,14 @@ const SKIP_EXTENSIONS = new Set([
 	'bik', 'bk2', 'tmp', 'log', 'dmp', 'ds_store',
 ]);
 
-const MANIFEST_VERSION = 1;
+const MANIFEST_VERSION = 2;
+
+// Where the free starter content is served from, relative to the page.
+export const STARTER = {
+	label: 'Free starter content',
+	baseUrl: 'starterpack/',
+	targetKey: 'game',
+};
 
 export function checkEnvironment() {
 	const canvas = document.createElement('canvas');
@@ -227,6 +242,8 @@ export async function opfsRoot() {
 
 // Copies the planned files into OPFS. onProgress({ done, total, bytesDone, bytesTotal, path }).
 // Files already present with the same size are skipped, so an interrupted import resumes.
+// plan.prefetch (default 1) is how many files are requested ahead of the one being written,
+// which only matters when getFile() is slow (the starter download).
 export async function runImport(plan, { onProgress = () => {}, signal = null, forceWorker = false } = {}) {
 	const root = await opfsRoot();
 	const target = TARGETS[plan.targetKey];
@@ -256,7 +273,15 @@ export async function runImport(plan, { onProgress = () => {}, signal = null, fo
 		report(path, i, true);
 
 		const dir = await getDirectory(base, dirSegments, cache);
-		const file = await entry.getFile();
+		for (let ahead = i + 1; ahead <= i + (plan.prefetch || 1) && ahead < plan.files.length; ahead++) {
+			const next = plan.files[ahead];
+			if (!next.pending) {
+				next.pending = next.getFile();
+				next.pending.catch(() => {}); // reported when it is awaited
+			}
+		}
+		const file = await (entry.pending || entry.getFile());
+		entry.pending = null;
 
 		let existing = null;
 		try {
@@ -279,7 +304,9 @@ export async function runImport(plan, { onProgress = () => {}, signal = null, fo
 
 	const manifest = {
 		version: MANIFEST_VERSION,
+		kind: plan.kind || 'install',
 		source: plan.sourceName,
+		...(plan.manifestExtra || {}),
 		files: plan.files.length,
 		bytes: plan.bytes,
 		importedAt: new Date().toISOString(),
@@ -294,6 +321,121 @@ export async function runImport(plan, { onProgress = () => {}, signal = null, fo
 	}
 	onProgress({ done: plan.files.length, total: plan.files.length, bytesDone: plan.bytes, bytesTotal: plan.bytes, path: '' });
 	return { copied, manifest };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Free starter content
+// ---------------------------------------------------------------------------------------------
+
+function cleanStarterPath(path) {
+	if (typeof path !== 'string' || !path || path.startsWith('/') || path.includes('\\') || path.includes('\0')) {
+		throw new Error('The starter content manifest lists a bad path: ' + JSON.stringify(path));
+	}
+	const segments = path.split('/');
+	if (segments.some((s) => !s || s === '.' || s === '..')) {
+		throw new Error('The starter content manifest lists a bad path: ' + path);
+	}
+	return segments.map((s) => s.toLowerCase());
+}
+
+async function sha256Hex(blob) {
+	if (!(self.crypto && self.crypto.subtle)) return null;
+	const digest = await self.crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+	return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Downloads and validates starterpack/manifest.json. Throws with a readable message.
+export async function fetchStarterManifest({ baseUrl = STARTER.baseUrl, signal = null } = {}) {
+	let response;
+	try {
+		response = await fetch(new URL(baseUrl + 'manifest.json', document.baseURI), { cache: 'no-store', signal });
+	} catch (e) {
+		if (e && e.name === 'AbortError') throw e;
+		throw new Error('Could not reach the starter content on this server (' + (e && e.message || e) + ').');
+	}
+	if (!response.ok) {
+		throw new Error('This server does not offer the starter content (manifest.json: HTTP ' + response.status + ').');
+	}
+	let manifest;
+	try {
+		manifest = await response.json();
+	} catch (e) {
+		throw new Error('The starter content manifest is not valid JSON.');
+	}
+	if (!manifest || !Array.isArray(manifest.files) || manifest.files.length === 0) {
+		throw new Error('The starter content manifest lists no files.');
+	}
+	let total = 0;
+	for (const f of manifest.files) {
+		cleanStarterPath(f.path);
+		if (!Number.isInteger(f.size) || f.size < 0) throw new Error('Bad size for ' + f.path + ' in the manifest.');
+		total += f.size;
+	}
+	manifest.totalSize = total;
+	return manifest;
+}
+
+// A plan (see runImport) that fetches each file of the starter manifest.
+export function planStarter(manifest, { baseUrl = STARTER.baseUrl, signal = null } = {}) {
+	const files = manifest.files.map((entry) => {
+		const segments = cleanStarterPath(entry.path);
+		return {
+			segments,
+			size: entry.size,
+			getFile: async () => {
+				const url = new URL(baseUrl + entry.path.split('/').map(encodeURIComponent).join('/'), document.baseURI);
+				let response;
+				try {
+					response = await fetch(url, { signal });
+				} catch (e) {
+					if (e && e.name === 'AbortError') throw e;
+					throw new Error('Download failed for ' + entry.path + ': ' + (e && e.message || e));
+				}
+				if (!response.ok) throw new Error('Download failed for ' + entry.path + ' (HTTP ' + response.status + ').');
+				const blob = await response.blob();
+				if (blob.size !== entry.size) {
+					throw new Error(entry.path + ' has the wrong size (' + blob.size + ', expected ' + entry.size + ').');
+				}
+				if (entry.sha256) {
+					const hash = await sha256Hex(blob);
+					if (hash && hash !== entry.sha256) throw new Error(entry.path + ' is corrupt (checksum mismatch).');
+				}
+				return blob;
+			},
+		};
+	});
+	return {
+		targetKey: STARTER.targetKey,
+		sourceName: STARTER.label,
+		kind: 'starter',
+		manifestExtra: {
+			name: manifest.name || STARTER.label,
+			packVersion: manifest.version,
+			license: manifest.license || '',
+			description: manifest.description || '',
+		},
+		prefetch: 4,
+		looksRight: true,
+		files,
+		skipped: 0,
+		bytes: files.reduce((sum, f) => sum + f.size, 0),
+	};
+}
+
+// Replaces whatever is in game/ (and generals/) with the starter content. The caller has to
+// confirm with the player first when status shows the player's own install there.
+export async function downloadStarter({ onProgress = () => {}, signal = null, forceWorker = false } = {}) {
+	const manifest = await fetchStarterManifest({ signal });
+	const plan = planStarter(manifest, { signal });
+	const { usage, quota } = await storageEstimate();
+	if (quota && quota - usage < plan.bytes * 1.1) {
+		throw new Error('Not enough browser storage: need ' + formatBytes(plan.bytes) + ', ' + formatBytes(quota - usage) + ' available.');
+	}
+	// Start clean: no leftovers of another install or an older pack, no half downloads.
+	await clearTarget('game');
+	await clearTarget('generals');
+	const result = await runImport(plan, { onProgress, signal, forceWorker });
+	return { ...result, plan };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -312,6 +454,7 @@ export async function getStatus() {
 		try {
 			const handle = await root.getFileHandle(TARGETS[key].dir + '.manifest.json');
 			status[key] = JSON.parse(await (await handle.getFile()).text());
+			if (status[key] && !status[key].kind) status[key].kind = 'install';
 		} catch (e) {
 			status[key] = null;
 		}

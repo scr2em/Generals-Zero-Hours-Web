@@ -361,7 +361,9 @@ static void finishGame()
 //=============================================================================
 static void reportFatal( const char *message )
 {
-	fprintf( stderr, "Fatal error: %s\n", message ? message : "(no message)" );
+	// Debug builds route failed asserts here too; they carry on, release crashes end the game.
+	const bool assertion = message && strncmp( message, "ASSERTION FAILURE", 17 ) == 0;
+	fprintf( stderr, "%s: %s\n", assertion ? "Assertion failed" : "Fatal error", message ? message : "(no message)" );
 	fflush( stderr );
 }
 

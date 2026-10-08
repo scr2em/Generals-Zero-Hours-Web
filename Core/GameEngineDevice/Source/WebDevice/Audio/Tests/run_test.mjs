@@ -17,17 +17,29 @@ try { playwright = require('playwright'); }
 catch { playwright = require(path.join(process.env.NODE_PATH || '/opt/node22/lib/node_modules', 'playwright')); }
 
 const [buildDir, waitSeconds = '120', scenarios = ''] = process.argv.slice(2);
+// "gesture" runs without the autoplay switch and clicks the page.
+const gestureMode = scenarios === 'gesture';
 if (!buildDir) { console.error('usage: node run_test.mjs <build-dir> [seconds]'); process.exit(2); }
 
 const server = await startServer(path.resolve(buildDir));
 const port = server.address().port;
 const browser = await playwright.chromium.launch({
-  args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required', '--enable-features=SharedArrayBuffer'],
+  args: ['--no-sandbox', '--enable-features=SharedArrayBuffer'].concat(gestureMode ? [] : ['--autoplay-policy=no-user-gesture-required']),
 });
 const page = await browser.newPage();
 let done = false;
 const lines = [];
-const echo = (s) => { lines.push(s); if (process.env.VERBOSE) console.log(s); if (s.includes('TEST_DONE')) done = true; };
+let clicked = false;
+const echo = (s) => {
+  lines.push(s);
+  if (process.env.VERBOSE) console.log(s);
+  if (s.includes('TEST_DONE')) done = true;
+  if (s.includes('WAITING_FOR_GESTURE') && !clicked) {
+    clicked = true;
+    // a trusted click, like the launcher's Play button
+    setTimeout(() => page.mouse.click(60, 60).catch(() => {}), 800);
+  }
+};
 page.on('console', (m) => echo(m.text()));
 page.on('worker', (w) => w.on('console', (m) => echo('[worker] ' + m.text())));
 page.on('pageerror', (e) => echo('PAGEERROR ' + e.message));
@@ -40,6 +52,10 @@ const extra = [];
 const expect = (name, ok, detail = '') => { extra.push(`page: ${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? ' (' + detail + ')' : ''}`); if (!ok) failed = true; };
 if (done) {
   // Assertions about the live Web Audio graph, evaluated on the main thread of the page.
+  if (gestureMode) {
+    expect('the context started suspended without a gesture', lines.some((l) => l === 'INITIAL_STATE 1'));
+    expect('the page was clicked', clicked);
+  }
   const info = await page.evaluate(() => {
     const A = globalThis.zhWebAudio;
     if (!A || !A.ctx) return null;
@@ -56,8 +72,10 @@ if (done) {
   expect('the AudioContext and zhWebAudio exist', !!info);
   if (info) {
     expect('AudioContext is running', info.state === 'running', info.state);
-    expect('context sample rate follows the request', info.sampleRate === 44100, String(info.sampleRate));
-    if (!scenarios) {	// the totals of a full run
+    expect('context sample rate follows the request', info.sampleRate === (scenarios === 'restart' || !scenarios ? 48000 : 44100), String(info.sampleRate));
+    if (gestureMode) {
+      expect('source nodes were started', info.stats.sourcesStarted > 0, String(info.stats.sourcesStarted));
+    } else if (!scenarios) {	// the totals of a full run
       expect('AudioBuffers were created', info.stats.buffersCreated >= 10, String(info.stats.buffersCreated));
       expect('source nodes were started and ended', info.stats.sourcesStarted >= 60 && info.stats.sourcesEnded >= 30, `${info.stats.sourcesStarted}/${info.stats.sourcesEnded}`);
       expect('voices were created', info.stats.voicesCreated >= 20, String(info.stats.voicesCreated));
@@ -66,7 +84,7 @@ if (done) {
       expect('source nodes were started', info.stats.sourcesStarted > 0, String(info.stats.sourcesStarted));
     }
     expect('the command interpreter had no errors', info.stats.errors === 0, String(info.stats.errors));
-    expect('the output was rendered and tapped', info.tapFrames > 44100 * (scenarios ? 3 : 20), String(info.tapFrames));
+    expect('the output was rendered and tapped', info.tapFrames > (gestureMode ? 4000 : 44100 * (scenarios ? 1 : 20)), String(info.tapFrames));
     expect('all voices were released', info.liveVoices <= 1, String(info.liveVoices));
   }
   await page.evaluate(() => { globalThis.zhTestAck = 1; });

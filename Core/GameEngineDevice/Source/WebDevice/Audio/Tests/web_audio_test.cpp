@@ -175,6 +175,50 @@ static void resetListener()
 
 // Scenarios ------------------------------------------------------------------------------------
 
+// Decoding in the browser build (the same code is unit tested natively with the sanitizers) ---
+
+static double goertzel(const std::vector<int16_t> &pcm, uint32_t channels, uint32_t ch, double freq, double rate)
+{
+	const size_t n = pcm.size() / channels;
+	double re = 0, im = 0;
+	for (size_t i = 0; i < n; ++i)
+	{
+		const double s = pcm[i * channels + ch] / 32768.0;
+		re += s * cos(2 * M_PI * freq * (double)i / rate);
+		im += s * sin(2 * M_PI * freq * (double)i / rate);
+	}
+	return 2.0 * sqrt(re * re + im * im) / (double)n;
+}
+
+static void testDecoders()
+{
+	printf("== decoders (WebAssembly build)\n");
+	struct { const char *name; WebAudio::Codec codec; uint32_t channels, rate; uint64_t frames; double fl, fr; } files[] = {
+		{ "pcm16_mono_44100_440.wav", WebAudio::Codec::Pcm, 1, 44100, 44100, 440, 0 },
+		{ "pcm8_mono_22050_550.wav", WebAudio::Codec::Pcm, 1, 22050, 11025, 550, 0 },
+		{ "adpcm_mono_22050_880.wav", WebAudio::Codec::ImaAdpcm, 1, 22050, 33075, 880, 0 },
+		{ "adpcm_stereo_44100_660.wav", WebAudio::Codec::ImaAdpcm, 2, 44100, 44100, 660, 990 },
+		{ "music_stereo_44100_1320.mp3", WebAudio::Codec::Mp3, 2, 44100, 176400, 1320, 1760 },
+		{ "music_mono_22050_1100.mp3", WebAudio::Codec::Mp3, 1, 22050, 44100, 1100, 0 },
+	};
+	for (auto &f : files)
+	{
+		std::vector<uint8_t> file = readFile(f.name);
+		std::vector<int16_t> pcm;
+		WebAudio::StreamInfo info;
+		const double t0 = nowMs();
+		const bool ok = WebAudio::decodeAll(file.data(), file.size(), &pcm, &info);
+		const double dt = nowMs() - t0;
+		CHECK(ok, "%s decodes", f.name);
+		CHECK(info.codec == f.codec && info.channels == f.channels && info.sampleRate == f.rate, "%s: format", f.name);
+		CHECK(info.totalFrames == f.frames, "%s: %llu frames (want %llu)", f.name, (unsigned long long)info.totalFrames, (unsigned long long)f.frames);
+		CHECK(fabs(goertzel(pcm, f.channels, 0, f.fl, f.rate) - 0.5) < 0.03, "%s: tone", f.name);
+		if (f.channels == 2)
+			CHECK(fabs(goertzel(pcm, 2, 1, f.fr, f.rate) - 0.5) < 0.03, "%s: right tone", f.name);
+		printf("  %s: %.1f ms for %.2f s of sound (%.0fx real time)\n", f.name, dt, (double)info.totalFrames / f.rate, (double)info.totalFrames / f.rate * 1000.0 / (dt > 0.01 ? dt : 0.01));
+	}
+}
+
 static void testContext()
 {
 	printf("== context\n");
@@ -662,23 +706,44 @@ static void testSuspendedContext()
 	MAIN_THREAD_EM_ASM({ zhTest.suspend(); });
 	sleepMs(150);
 	CHECK(WebAudio_GetState() == WEBAUDIO_STATE_SUSPENDED, "state %d", WebAudio_GetState());
+
+	// A sound effect that is triggered now waits for the context for a moment, then it is dropped.
 	WebAudio_GetStats(&before);
 	WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
 	WebAudio_VoiceSetGain(v, 1.0f);
 	WebAudio_VoiceQueue(v, s.buffer, 0, 0);
 	WebAudio_Flush();
-	sleepMs(150);
+	sleepMs(100);
+	CHECK(WebAudio_VoicePendingSegments(v) == 1, "the sound waits for the context: %u", WebAudio_VoicePendingSegments(v));
+	sleepMs(450);
 	WebAudio_GetStats(&after);
-	CHECK(after.segmentsDropped == before.segmentsDropped + 1, "sound effect dropped (%u -> %u)", before.segmentsDropped, after.segmentsDropped);
+	CHECK(after.segmentsDropped == before.segmentsDropped + 1, "stale sound effect dropped (%u -> %u)", before.segmentsDropped, after.segmentsDropped);
 	CHECK(WebAudio_VoicePendingSegments(v) == 0, "a dropped sound is finished: %u", WebAudio_VoicePendingSegments(v));
 	WebAudio_DestroyVoice(v, 0.0f);
-	// a stream is kept and starts when the context runs
+
+	// A sound triggered just before the context runs (the click that unlocks the audio) plays.
+	v = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
+	WebAudio_VoiceSetGain(v, 1.0f);
+	WebAudio_VoiceQueue(v, s.buffer, 0, 0);
+	WebAudio_Flush();
+	sleepMs(60);
+	WebAudio_Resume();
+	MAIN_THREAD_EM_ASM({ zhTest.resume(); });
+	CHECK(waitFor([](void *) { return WebAudio_GetState() == WEBAUDIO_STATE_RUNNING; }, nullptr, 3000), "context resumes");
+	sleepMs(200);
+	CHECK(tone(0, 440, 100) > 0.2, "the waiting sound plays once the context runs: %f", tone(0, 440, 100));
+	CHECK(waitFor(voiceDone, &v, 1500), "it ends");
+	WebAudio_DestroyVoice(v, 0.0f);
+
+	// A stream is not dropped: it starts when the context runs.
+	MAIN_THREAD_EM_ASM({ zhTest.suspend(); });
+	sleepMs(150);
 	std::vector<uint8_t> mp3 = readFile("music_mono_22050_1100.mp3");
 	WebAudioVoice m = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
 	WebAudio_VoiceSetGain(m, 1.0f);
 	WebAudioStream st = WebAudio_StreamOpen(mp3.data(), (uint32_t)mp3.size(), m, 1);
 	CHECK(st != 0, "stream open");
-	sleepMs(300);
+	sleepMs(600);
 	CHECK(WebAudio_VoicePendingSegments(m) > 0, "stream chunks wait for the context: %u", WebAudio_VoicePendingSegments(m));
 	WebAudio_Resume();
 	MAIN_THREAD_EM_ASM({ zhTest.resume(); });
@@ -690,6 +755,76 @@ static void testSuspendedContext()
 	WebAudio_DestroyBuffer(s.buffer);
 	WebAudio_Flush();
 	sleepMs(200);
+}
+
+// The heap grows while the audio runs (the game loads hundreds of megabytes): the main thread side reads
+// commands and PCM blocks from the heap, which may have moved into a larger memory since the last command.
+static void testHeapGrowth()
+{
+	printf("== heap growth while playing\n");
+	Sound s = makeTones(440, 0, 4.0, 44100);
+	WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_3D);
+	WebAudio_VoiceSetGain(v, 1.0f);
+	WebAudio_VoiceSetPosition(v, 50, 100, 0);
+	WebAudio_VoiceQueue(v, s.buffer, 0, 0);
+	WebAudio_Flush();
+	sleepMs(300);
+	const double before = MAIN_THREAD_EM_ASM_DOUBLE({ return HEAPU8.length; });
+	std::vector<uint8_t *> blocks;
+	for (int i = 0; i < 6; ++i)
+	{
+		uint8_t *p = static_cast<uint8_t *>(malloc(64u << 20));
+		if (!p)
+			break;
+		memset(p, i, 64u << 20);	// touch it
+		blocks.push_back(p);
+		WebAudio_VoiceSetPosition(v, 50.0f + (float)i, 100, 0);
+		WebAudio_Flush();
+		// new sounds uploaded from the grown heap
+		Sound extra = makeTones(500 + 100 * i, 0, 0.3, 22050);
+		WebAudioVoice w = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
+		WebAudio_VoiceSetGain(w, 0.2f);
+		WebAudio_VoiceQueue(w, extra.buffer, 0, 0);
+		WebAudio_Flush();
+		sleepMs(60);
+		WebAudio_DestroyVoice(w, 0.0f);
+		WebAudio_DestroyBuffer(extra.buffer);
+	}
+	const double after = MAIN_THREAD_EM_ASM_DOUBLE({ return HEAPU8.length; });
+	printf("  heap %.0f MB -> %.0f MB\n", before / 1048576.0, after / 1048576.0);
+	CHECK(after > before, "the heap did not grow");
+	sleepMs(300);
+	WebAudioStats stats;
+	WebAudio_GetStats(&stats);
+	CHECK(stats.errors == 0, "interpreter errors %u", stats.errors);
+	CHECK(tone(0, 440, 150) + tone(1, 440, 150) > 0.1, "still playing: %f %f", tone(0, 440, 150), tone(1, 440, 150));
+	CHECK(fabs(pannerCoord(v, 0) - 55.0) < 1e-3, "the last position arrived: %f", pannerCoord(v, 0));
+	// and a stream decoded on its thread while the heap grows
+	std::vector<uint8_t> mp3 = readFile("music_stereo_44100_1320.mp3");
+	WebAudioVoice m = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
+	WebAudio_VoiceSetGain(m, 0.5f);
+	WebAudioStream st = WebAudio_StreamOpen(mp3.data(), (uint32_t)mp3.size(), m, 1);
+	for (int i = 0; i < 4; ++i)
+	{
+		uint8_t *p = static_cast<uint8_t *>(malloc(48u << 20));
+		if (p)
+		{
+			memset(p, 1, 48u << 20);
+			blocks.push_back(p);
+		}
+		sleepMs(150);
+	}
+	CHECK(st != 0 && tone(0, 1320, 250) > 0.15, "music during growth: %f", tone(0, 1320, 250));
+	WebAudio_GetStats(&stats);
+	CHECK(stats.errors == 0, "interpreter errors %u", stats.errors);
+	WebAudio_StreamClose(st);
+	WebAudio_DestroyVoice(m, 0.0f);
+	WebAudio_DestroyVoice(v, 0.0f);
+	WebAudio_DestroyBuffer(s.buffer);
+	WebAudio_Flush();
+	for (uint8_t *p : blocks)
+		free(p);
+	sleepMs(150);
 }
 
 static void testStreams()
@@ -793,6 +928,36 @@ static void testStreams()
 	}
 }
 
+// The device can be shut down and started again (the engine does that when the options change the audio device).
+static void testRestart()
+{
+	printf("== shutdown and restart\n");
+	WebAudio_Shutdown();
+	sleepMs(300);
+	CHECK(WebAudio_GetState() == WEBAUDIO_STATE_NONE, "state after shutdown %d", WebAudio_GetState());
+	CHECK(WebAudio_CreateVoice(WEBAUDIO_VOICE_2D) == 0, "no voices without a device");
+	CHECK(WebAudio_CreateBuffer(nullptr, 0, 0, 0) == 0, "no buffers without a device");
+	WebAudio_Flush();	// harmless
+
+	MAIN_THREAD_EM_ASM({ zhTest.reset(); });
+	CHECK(WebAudio_Init(48000) == 1, "init again");
+	CHECK(MAIN_THREAD_EM_ASM_INT({ return zhTest.startRecording(); }) == 1, "recording tap");
+	CHECK(waitFor([](void *) { return WebAudio_GetState() == WEBAUDIO_STATE_RUNNING && MAIN_THREAD_EM_ASM_INT({ return zhTest.ready; }) == 1; }, nullptr, 3000), "running again");
+	CHECK(WebAudio_GetSampleRate() == 48000, "new sample rate %d", WebAudio_GetSampleRate());
+	Sound s = makeTones(440, 0, 1.0, 44100);	// a 44.1 kHz sound on a 48 kHz context
+	WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
+	WebAudio_VoiceSetGain(v, 1.0f);
+	WebAudio_VoiceQueue(v, s.buffer, 0, 0);
+	WebAudio_Flush();
+	sleepMs(400);
+	CHECK(fabs(tone(0, 440, 200) - 0.244) < 0.02, "plays at the right pitch and level: %f", tone(0, 440, 200));
+	CHECK(waitFor(voiceDone, &v, 1500), "ends");
+	WebAudio_DestroyVoice(v, 0.0f);
+	WebAudio_DestroyBuffer(s.buffer);
+	WebAudio_Flush();
+	sleepMs(100);
+}
+
 // The engine pattern: a frame loop that yields once per frame ---------------------------------
 
 struct FrameLoop
@@ -807,6 +972,22 @@ struct FrameLoop
 };
 
 static FrameLoop g_loop;
+
+static void finishTest()
+{
+	printf("%d checks, %d failures\n", g_checks, g_failures);
+	printf(g_failures ? "RESULT: FAIL\n" : "RESULT: PASS\n");
+	printf("TEST_DONE\n");
+
+	// The runner inspects the live Web Audio graph now (it sets zhTestAck when it is done), then
+	// the device is shut down.
+	for (int i = 0; i < 100 && !MAIN_THREAD_EM_ASM_INT({ return globalThis.zhTestAck ? 1 : 0; }); ++i)
+		sleepMs(50);
+	WebAudio_Shutdown();
+	sleepMs(300);
+	printf("SHUTDOWN: %s\n", (WebAudio_GetState() == WEBAUDIO_STATE_NONE &&
+		MAIN_THREAD_EM_ASM_INT({ return globalThis.zhWebAudio ? 1 : 0; }) == 0) ? "ok" : "FAIL");
+}
 
 static void finishFrameLoop();
 
@@ -874,19 +1055,7 @@ static void finishFrameLoop()
 	if (g_allScenarios)
 		CHECK(stats.voicesCreated > 15 && stats.streamChunks > 10, "counters");
 	CHECK(WebAudio_GetState() == WEBAUDIO_STATE_RUNNING, "still running at the end");
-
-	printf("%d checks, %d failures\n", g_checks, g_failures);
-	printf(g_failures ? "RESULT: FAIL\n" : "RESULT: PASS\n");
-	printf("TEST_DONE\n");
-
-	// The runner inspects the live Web Audio graph now (it sets zhTestAck when it is done), then
-	// the device is shut down.
-	for (int i = 0; i < 100 && !MAIN_THREAD_EM_ASM_INT({ return globalThis.zhTestAck ? 1 : 0; }); ++i)
-		sleepMs(50);
-	WebAudio_Shutdown();
-	sleepMs(300);
-	printf("SHUTDOWN: %s\n", (WebAudio_GetState() == WEBAUDIO_STATE_NONE &&
-		MAIN_THREAD_EM_ASM_INT({ return globalThis.zhWebAudio ? 1 : 0; }) == 0) ? "ok" : "FAIL");
+	finishTest();
 }
 
 static void startFrameLoop()
@@ -898,6 +1067,43 @@ static void startFrameLoop()
 	WebAudio_Flush();
 	emscripten_set_main_loop(frameStep, 0, 0);
 	emscripten_set_main_loop_timing(EM_TIMING_SETTIMEOUT, 16);
+}
+
+// Without --autoplay-policy=no-user-gesture-required (run_test.mjs gesture --policy) a page that had no
+// user gesture gets a suspended context; the first click must resume it.
+static void testGesture()
+{
+	printf("== autoplay policy and user gesture\n");
+	CHECK(WebAudio_Init(44100) == 1, "Web Audio is not available");
+	CHECK(MAIN_THREAD_EM_ASM_INT({ return zhTest.startRecording(); }) == 1, "recording tap");
+	const int initial = WebAudio_GetState();
+	printf("INITIAL_STATE %d\n", initial);
+	if (initial != WEBAUDIO_STATE_RUNNING)
+	{
+		// the sound that the click itself triggers must not be lost
+		Sound s = makeTones(440, 0, 0.5, 44100);
+		WebAudioVoice v = WebAudio_CreateVoice(WEBAUDIO_VOICE_2D);
+		WebAudio_VoiceSetGain(v, 1.0f);
+		printf("WAITING_FOR_GESTURE\n");
+		const bool resumed = waitFor([](void *) { return WebAudio_GetState() == WEBAUDIO_STATE_RUNNING; }, nullptr, 30000);
+		CHECK(resumed, "the first user gesture resumes the context");
+		if (resumed)
+		{
+			WebAudio_VoiceQueue(v, s.buffer, 0, 0);
+			WebAudio_Flush();
+			sleepMs(300);
+			CHECK(waitFor([](void *) { return MAIN_THREAD_EM_ASM_INT({ return zhTest.ready; }) == 1; }, nullptr, 3000), "tap");
+			sleepMs(100);
+			CHECK(tone(0, 440, 150) > 0.2, "sound plays after the gesture: %f", tone(0, 440, 150));
+		}
+		WebAudio_DestroyVoice(v, 0.0f);
+		WebAudio_DestroyBuffer(s.buffer);
+	}
+	else
+	{
+		printf("  (the browser did not block audio)\n");
+	}
+	finishTest();
 }
 
 static bool wanted(int argc, char **argv, const char *name)
@@ -914,10 +1120,16 @@ static bool wanted(int argc, char **argv, const char *name)
 int main(int argc, char **argv)
 {
 	g_allScenarios = argc <= 1;
+	if (argc > 1 && strcmp(argv[1], "gesture") == 0)
+	{
+		testGesture();
+		return 0;
+	}
 	printf("web_audio_test: engine thread is %s\n", emscripten_is_main_runtime_thread() ? "the main thread" : "a worker (as in the game)");
 	testContext();
 	if (WebAudio_GetState() == WEBAUDIO_STATE_RUNNING)
 	{
+		if (wanted(argc, argv, "decoders")) testDecoders();
 		if (wanted(argc, argv, "decode")) testPcmAndAdpcm();
 		if (wanted(argc, argv, "volume")) testVolumeCategories();
 		if (wanted(argc, argv, "positional")) testPositional();
@@ -926,6 +1138,8 @@ int main(int argc, char **argv)
 		if (wanted(argc, argv, "chain")) testChainingPauseAndLifetime();
 		if (wanted(argc, argv, "suspend")) testSuspendedContext();
 		if (wanted(argc, argv, "streams")) testStreams();
+		if (wanted(argc, argv, "heap")) testHeapGrowth();
+		if (wanted(argc, argv, "restart")) testRestart();
 		startFrameLoop();	// finishes the test from the loop
 		return 0;
 	}

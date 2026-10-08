@@ -3,7 +3,8 @@
 #
 # In the game build, add this directory with add_subdirectory(), link web_audio_backend to the
 # game engine device library and add WebAudioManager.h/.cpp to that library's sources (they need
-# the engine's include paths and precompiled header; see Tests/README.md).
+# the engine's include paths and precompiled header). Alternatively compile WebAudioDecoder.cpp and
+# WebAudioBackend.cpp as part of that library too and add Dependencies/minimp3 to its include paths.
 #
 # Standalone build, for the tests:
 #   source emsdk_env.sh

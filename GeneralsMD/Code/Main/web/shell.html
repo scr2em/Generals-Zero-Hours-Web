@@ -70,6 +70,46 @@
 		background: var(--surface-2);
 		font-size: 13px;
 	}
+	.choice {
+		margin: 0 0 14px;
+		padding: 14px 16px 4px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--surface-2);
+	}
+	.choice > h2 { margin: 0; font-size: 16px; }
+	.choice > p { margin: 4px 0 6px; color: var(--muted); font-size: 13px; }
+	.choice .row:first-of-type { border-top: none; }
+	.choice.active { border-color: var(--accent); }
+	.badge {
+		display: inline-block;
+		margin-left: 8px;
+		padding: 1px 8px;
+		border-radius: 10px;
+		border: 1px solid var(--border);
+		color: var(--muted);
+		font-size: 11px;
+		font-weight: 600;
+		vertical-align: middle;
+	}
+	.placeholder-note {
+		margin: 8px 0 6px;
+		padding: 8px 10px;
+		border-left: 3px solid var(--accent);
+		background: var(--surface);
+		border-radius: 4px;
+		font-size: 12px;
+		color: var(--muted);
+	}
+	#play-mode { color: var(--muted); font-size: 12px; }
+	#mode-badge {
+		align-self: center;
+		padding: 4px 10px;
+		border-radius: 12px;
+		background: rgba(22, 27, 34, 0.85);
+		color: #e6edf3;
+		font-size: 12px;
+	}
 	.row {
 		display: grid;
 		grid-template-columns: 1fr auto;
@@ -190,20 +230,39 @@
 <main id="setup">
 	<div class="card">
 		<h1>Command &amp; Conquer Generals: Zero Hour</h1>
-		<p class="subtitle">WebAssembly port &mdash; bring your own game files</p>
+		<p class="subtitle">WebAssembly port &mdash; two ways to play</p>
 
 		<div id="env-notice" class="notice" hidden></div>
 
-		<div class="row" id="row-game">
-			<div class="name">Zero Hour folder</div>
-			<button type="button" id="pick-game">Select your Zero Hour folder</button>
-			<div class="state" id="state-game">Checking&hellip;</div>
-		</div>
-		<div class="row" id="row-generals">
-			<div class="name">Generals folder</div>
-			<button type="button" id="pick-generals">Select your Generals folder</button>
-			<div class="state" id="state-generals">Checking&hellip;</div>
-		</div>
+		<section class="choice" id="choice-install" aria-labelledby="install-title">
+			<h2 id="install-title">Use my Zero Hour installation</h2>
+			<p>Bring your own copy of the game. Its files are copied once into this browser&rsquo;s private storage.</p>
+			<div class="row" id="row-game">
+				<div class="name">Zero Hour folder</div>
+				<button type="button" id="pick-game">Select your Zero Hour folder</button>
+				<div class="state" id="state-game">Checking&hellip;</div>
+			</div>
+			<div class="row" id="row-generals">
+				<div class="name">Generals folder</div>
+				<button type="button" id="pick-generals">Select your Generals folder</button>
+				<div class="state" id="state-generals">Checking&hellip;</div>
+			</div>
+		</section>
+
+		<section class="choice" id="choice-starter" aria-labelledby="starter-title">
+			<h2 id="starter-title">Play with free starter content <span class="badge">no game files needed</span></h2>
+			<p>A small original placeholder game that ships with this port: one made-up faction, a few units and
+				buildings, and one two-player skirmish map against the computer.</p>
+			<div class="placeholder-note" id="starter-note">
+				This is <strong>not</strong> Command &amp; Conquer. It is an original stand-in game
+				(code and art are free software, GPL-3.0-or-later) so the engine can be tried without owning anything.
+			</div>
+			<div class="row" id="row-starter">
+				<div class="name">Starter content</div>
+				<button type="button" id="download-starter">Download starter content</button>
+				<div class="state" id="state-starter">Checking&hellip;</div>
+			</div>
+		</section>
 
 		<div class="progress" id="progress" hidden>
 			<div class="bar"><div id="bar"></div></div>
@@ -221,12 +280,13 @@
 				</select>
 			</label>
 			<span class="spacer"></span>
+			<span class="state" id="play-mode" aria-live="polite"></span>
 			<button type="button" id="play" class="primary" disabled>Play</button>
 		</div>
 
 		<p class="fine">
-			The game files are copied once into this browser&rsquo;s private storage and never leave your computer.
-			Zero Hour also needs the original Generals files.
+			Your own game files are copied once into this browser&rsquo;s private storage and never leave your computer.
+			Zero Hour also needs the original Generals files. The starter content is downloaded from this site instead.
 			<button type="button" class="link" id="clear">Remove imported files</button>
 		</p>
 		<input type="file" id="folder-input" webkitdirectory multiple hidden>
@@ -237,6 +297,7 @@
 	<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
 	<div id="loading">Loading&hellip;</div>
 	<div id="toolbar">
+		<span id="mode-badge" hidden>Free starter content &middot; original placeholder game</span>
 		<button type="button" id="fullscreen" title="Toggle fullscreen">Fullscreen</button>
 		<button type="button" id="quit" title="Leave the game">Exit</button>
 	</div>
@@ -327,24 +388,46 @@ function setState(key, text, kind) {
 	el.className = 'state' + (kind ? ' ' + kind : '');
 }
 
+// 'starter', 'install' or null: what is in the browser's game/ folder right now.
+function currentMode() {
+	if (status.game && status.game.kind === 'starter') return 'starter';
+	if (status.game && status.generals) return 'install';
+	return null;
+}
+
 async function refreshStatus() {
 	status = await importer.getStatus();
+	const starter = status.game && status.game.kind === 'starter' ? status.game : null;
 	for (const key of Object.keys(importer.TARGETS)) {
 		const m = status[key];
-		if (m) {
+		if (m && m.kind !== 'starter') {
 			setState(key, 'Ready · ' + m.files.toLocaleString() + ' files · ' + importer.formatBytes(m.bytes), 'ok');
 		} else {
-			setState(key, 'Not imported yet');
+			setState(key, starter ? 'Not imported (the starter content is installed instead)' : 'Not imported yet');
 		}
 	}
+	if (starter) {
+		setState('starter', 'Ready · ' + starter.files.toLocaleString() + ' files · ' + importer.formatBytes(starter.bytes) +
+			(starter.packVersion ? ' · version ' + starter.packVersion : ''), 'ok');
+		$('download-starter').textContent = 'Download again';
+	} else {
+		setState('starter', 'Not downloaded yet');
+		$('download-starter').textContent = 'Download starter content';
+	}
+	const mode = currentMode();
+	$('choice-starter').classList.toggle('active', mode === 'starter');
+	$('choice-install').classList.toggle('active', mode === 'install');
+	$('play-mode').textContent = mode === 'starter' ? 'Will play: free starter content (placeholder game)'
+		: mode === 'install' ? 'Will play: your Zero Hour installation' : '';
 	updateButtons();
 }
 
 function updateButtons() {
-	const ready = !!(status.game && status.generals) && problems.length === 0;
+	const ready = currentMode() !== null && problems.length === 0;
 	$('play').disabled = busy || !ready;
 	$('pick-game').disabled = busy || !env.opfs;
 	$('pick-generals').disabled = busy || !env.opfs;
+	$('download-starter').disabled = busy || !env.opfs;
 	$('clear').disabled = busy;
 }
 
@@ -396,6 +479,12 @@ async function pickAndImport(key) {
 			return;
 		}
 		await importer.requestPersistence();
+		if (status.game && status.game.kind === 'starter') {
+			// The starter content lives in game/ too; it can be downloaded again at any time.
+			await importer.clearTarget('game');
+			await importer.clearTarget('generals');
+			status = await importer.getStatus();
+		}
 		setState(key, 'Copying ' + plan.files.length.toLocaleString() + ' files\u2026');
 		await importer.runImport(plan, { onProgress: showProgress, forceWorker: params.get('writer') === 'worker' });
 	} catch (e) {
@@ -411,10 +500,46 @@ async function pickAndImport(key) {
 	}
 }
 
+
+let downloadAbort = null;
+async function downloadStarterContent() {
+	if (busy) return;
+	const own = status.game && status.game.kind !== 'starter';
+	if (own && !confirm('This replaces the game files you imported into this browser with the free starter content ' +
+		'(your original files on disk are not touched). Continue?')) {
+		return;
+	}
+	busy = true;
+	let problem = null;
+	updateButtons();
+	downloadAbort = new AbortController();
+	try {
+		await importer.requestPersistence();
+		setState('starter', 'Downloading\u2026');
+		await importer.downloadStarter({
+			signal: downloadAbort.signal,
+			onProgress: (p) => showProgress(p),
+			forceWorker: params.get('writer') === 'worker',
+		});
+	} catch (e) {
+		if (!(e && e.name === 'AbortError')) {
+			problem = e && e.message || String(e);
+			pushLog('Starter download failed: ' + (e && e.stack || e), false);
+		}
+	} finally {
+		busy = false;
+		downloadAbort = null;
+		$('progress').hidden = true;
+		await refreshStatus();
+		if (problem) setState('starter', problem, 'err');
+	}
+}
+$('download-starter').onclick = downloadStarterContent;
+
 $('pick-game').onclick = () => pickAndImport('game');
 $('pick-generals').onclick = () => pickAndImport('generals');
 $('clear').onclick = async () => {
-	if (busy || !confirm('Remove the imported game files from this browser? Saved games and options are kept.')) return;
+	if (busy || !confirm('Remove the imported game files (or the starter content) from this browser? Saved games and options are kept.')) return;
 	for (const key of Object.keys(importer.TARGETS)) await importer.clearTarget(key);
 	await refreshStatus();
 };
@@ -474,6 +599,7 @@ function startGame() {
 	clientSize = { width: w, height: h };
 	$('setup').hidden = true;
 	$('stage').hidden = false;
+	$('mode-badge').hidden = currentMode() !== 'starter';
 	layoutCanvas();
 	canvas.focus();
 
