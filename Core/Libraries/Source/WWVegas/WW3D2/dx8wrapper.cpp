@@ -714,12 +714,20 @@ void DX8Wrapper::Enumerate_Devices()
 			desc.set_device_name(id.Description);
 			desc.set_driver_name(id.Driver);
 
+#ifdef __EMSCRIPTEN__
+			// d3d8types.h declares the LARGE_INTEGER member only when _WIN32 is defined; the two DWORD members have the same layout.
+			const DWORD driver_version_high = id.DriverVersionHighPart;
+			const DWORD driver_version_low = id.DriverVersionLowPart;
+#else
+			const DWORD driver_version_high = id.DriverVersion.HighPart;
+			const DWORD driver_version_low = id.DriverVersion.LowPart;
+#endif
 			char buf[64];
 			sprintf(buf,"%d.%d.%d.%d", //"%04x.%04x.%04x.%04x",
-				HIWORD(id.DriverVersion.HighPart),
-				LOWORD(id.DriverVersion.HighPart),
-				HIWORD(id.DriverVersion.LowPart),
-				LOWORD(id.DriverVersion.LowPart));
+				HIWORD(driver_version_high),
+				LOWORD(driver_version_high),
+				HIWORD(driver_version_low),
+				LOWORD(driver_version_low));
 
 			desc.set_driver_version(buf);
 

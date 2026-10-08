@@ -2971,7 +2971,13 @@ ChipsetType W3DShaderManager::getChipset()
 		D3DADAPTER_IDENTIFIER8 did;
 		::ZeroMemory(&did, sizeof(D3DADAPTER_IDENTIFIER8));
 	/*	HRESULT res = */ d3d8Interface->GetAdapterIdentifier(0,D3DENUM_NO_WHQL_LEVEL,&did);
+#ifdef __EMSCRIPTEN__
+		// d3d8types.h declares the LARGE_INTEGER member only when _WIN32 is defined; the two DWORD members have the same layout.
+		((LARGE_INTEGER*)&m_driverVersion)->LowPart = did.DriverVersionLowPart;
+		((LARGE_INTEGER*)&m_driverVersion)->HighPart = did.DriverVersionHighPart;
+#else
 		*((LARGE_INTEGER*)&m_driverVersion) = did.DriverVersion;
+#endif
 
 		if(did.VendorId == DC_NVIDIA_VENDOR_ID)
 		{

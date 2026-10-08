@@ -630,6 +630,18 @@ HMONITOR WINAPI MonitorFromWindow(HWND, DWORD)
 	return reinterpret_cast<HMONITOR>(1);
 }
 
+BOOL WINAPI GetMonitorInfoA(HMONITOR, LPMONITORINFO lpmi)
+{
+	if (lpmi == nullptr || lpmi->cbSize < sizeof(MONITORINFO))
+		return FALSE;
+	// The one monitor is the browser's screen.
+	const RECT screen = { 0, 0, State().screenWidth, State().screenHeight };
+	lpmi->rcMonitor = screen;
+	lpmi->rcWork = screen;
+	lpmi->dwFlags = MONITORINFOF_PRIMARY;
+	return TRUE;
+}
+
 /* ---------------------------------------------------------------------------
 ** Messages
 ** ------------------------------------------------------------------------- */

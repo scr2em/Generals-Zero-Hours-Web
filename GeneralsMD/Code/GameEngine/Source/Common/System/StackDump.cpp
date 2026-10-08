@@ -91,6 +91,11 @@ MYEIP1:
 		:
 		: "memory"
 	);
+#elif defined(__EMSCRIPTEN__)
+	// WebAssembly has no registers to read, and the debug help library that would walk the stack never loads.
+	myeip = 0;
+	myesp = 0;
+	myebp = 0;
 #else
 	#error "Unsupported compiler or architecture for register capture"
 #endif
@@ -353,6 +358,11 @@ MYEIP2:
 		:
 		: "eax", "memory"
 	);
+#elif defined(__EMSCRIPTEN__)
+	// WebAssembly has no registers to read, and the debug help library that would walk the stack never loads.
+	myeip = 0;
+	myesp = 0;
+	myebp = 0;
 #else
 	#error "Unsupported compiler or architecture for register capture"
 #endif
@@ -559,8 +569,10 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 	{
 		DOUBLE_DEBUG (("Exception code is %x", e_info->ExceptionRecord->ExceptionCode));
 	}
+#ifndef __EMSCRIPTEN__
 	Int *winMainAddr = (Int *)WinMain;
 	DOUBLE_DEBUG(("WinMain at %x", winMainAddr));
+#endif
 	/*
 	** Match the exception type with the error string and print it out
 	*/

@@ -179,6 +179,25 @@ inline int recvfrom(SOCKET s, char *buf, int len, int flags, struct sockaddr *fr
 {
 	return static_cast<int>(recvfrom(s, buf, static_cast<size_t>(len), flags, from, reinterpret_cast<socklen_t *>(fromlen)));
 }
+
+/* The length argument is often a literal null, which would match both the
+** int and the socklen_t overload. */
+inline SOCKET accept(SOCKET s, struct sockaddr *addr, decltype(nullptr))
+{
+	return accept(s, addr, static_cast<socklen_t *>(nullptr));
+}
+inline int getsockname(SOCKET s, struct sockaddr *name, decltype(nullptr))
+{
+	return getsockname(s, name, static_cast<socklen_t *>(nullptr));
+}
+inline int getpeername(SOCKET s, struct sockaddr *name, decltype(nullptr))
+{
+	return getpeername(s, name, static_cast<socklen_t *>(nullptr));
+}
+inline int recvfrom(SOCKET s, char *buf, int len, int flags, struct sockaddr *from, decltype(nullptr))
+{
+	return static_cast<int>(recvfrom(s, buf, static_cast<size_t>(len), flags, from, static_cast<socklen_t *>(nullptr)));
+}
 }
 #endif
 

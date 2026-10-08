@@ -136,6 +136,14 @@ WEB_WEAK BOOL WINAPI SetWindowTextA(HWND, LPCSTR lpString)
 	return TRUE;
 }
 
+WEB_WEAK BOOL WINAPI SetWindowTextW(HWND hWnd, LPCWSTR lpString)
+{
+	char title[512];
+	const int length = lpString != nullptr ? WideCharToMultiByte(CP_UTF8, 0, lpString, -1, title, sizeof(title) - 1, nullptr, nullptr) : 0;
+	title[length > 0 ? length : 0] = '\0';
+	return SetWindowTextA(hWnd, title);
+}
+
 WEB_WEAK SHORT WINAPI GetKeyState(int nVirtKey)
 {
 	return static_cast<SHORT>(WebPlatform_GetKeyState(nVirtKey));

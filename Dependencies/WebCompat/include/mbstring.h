@@ -1,6 +1,5 @@
 /*
 **	Command & Conquer Generals Zero Hour(tm)
-**	Copyright 2026 TheSuperHackers
 **
 **	This program is free software: you can redistribute it and/or modify
 **	it under the terms of the GNU General Public License as published by
@@ -15,15 +14,28 @@
 **	You should have received a copy of the GNU General Public License
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
-// This file includes the dbghelp types of imagehlp.h. The imagehlp.h of VC6 does not have the
-// minidump API yet, so a subset of it is added for VC6 and for the WebAssembly build.
-
+/*
+** WebAssembly port: multibyte string functions. The game's ANSI code page is
+** Windows-1252, which has no multibyte characters, so a character is a byte.
+*/
 #pragma once
 
-#include <windows.h>
-#include <imagehlp.h> // Must be included after windows.h
+#include <stddef.h>
 
-#if (defined(_MSC_VER) && _MSC_VER < 1300) || defined(__EMSCRIPTEN__)
-#include "minidump_subset.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* The number of characters in the first count bytes of the string, which
+** ends at the first zero byte. */
+static inline size_t _mbsnccnt(const unsigned char *string, size_t count)
+{
+	size_t length = 0;
+	while (length < count && string[length] != 0)
+		++length;
+	return length;
+}
+
+#ifdef __cplusplus
+}
 #endif

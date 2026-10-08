@@ -14,6 +14,11 @@
 **	You should have received a copy of the GNU General Public License
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-/* WebAssembly port: everything this header provides lives in windows.h. */
+/* WebAssembly port: nearly everything this header provides lives in windows.h. */
 #pragma once
 #include "windows.h"
+
+/* Global memory blocks that are locked for their whole life (a global memory
+** handle is the pointer to the block). */
+#define GlobalAllocPtr(flags, cb)  (GlobalLock(GlobalAlloc((flags), (cb))))
+#define GlobalFreePtr(lp)          ((BOOL)(GlobalFree((HGLOBAL)(lp)) == nullptr))

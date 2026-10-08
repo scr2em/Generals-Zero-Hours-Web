@@ -19,6 +19,11 @@ add_subdirectory(Miles)
 if (WIN32)
     add_subdirectory(DbgHelp)
     add_subdirectory(Usp10)
+elseif (IS_WEB_BUILD)
+    # The game keeps its Windows code paths, which load dbghelp.dll through
+    # the loader. It is never there on the web, so the loader does nothing.
+    add_subdirectory(DbgHelp)
+    add_library(deps_usp10 INTERFACE)
 else()
     add_library(deps_dbghelp INTERFACE)
     add_library(deps_usp10 INTERFACE)

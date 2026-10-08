@@ -1,6 +1,5 @@
 /*
 **	Command & Conquer Generals Zero Hour(tm)
-**	Copyright 2026 TheSuperHackers
 **
 **	This program is free software: you can redistribute it and/or modify
 **	it under the terms of the GNU General Public License as published by
@@ -15,15 +14,5 @@
 **	You should have received a copy of the GNU General Public License
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
-// This file includes the dbghelp types of imagehlp.h. The imagehlp.h of VC6 does not have the
-// minidump API yet, so a subset of it is added for VC6 and for the WebAssembly build.
-
-#pragma once
-
-#include <windows.h>
-#include <imagehlp.h> // Must be included after windows.h
-
-#if (defined(_MSC_VER) && _MSC_VER < 1300) || defined(__EMSCRIPTEN__)
-#include "minidump_subset.h"
-#endif
+/* WebAssembly port: structure packing, as in the Windows SDK. */
+#pragma pack(push, 4)

@@ -84,6 +84,10 @@ add_subdirectory(Dependencies/WebD3D8)
 add_library(d3d8lib INTERFACE)
 target_include_directories(d3d8lib INTERFACE ${dx8_SOURCE_DIR})
 target_compile_definitions(d3d8lib INTERFACE BUILD_WITH_D3D8)
+# ddraw.h (the DDS file constants), dsound.h and the d3dx math headers sit in
+# the SDK's extra directory next to copies of headers that WebCompat provides
+# (basetsd.h), so it must be searched last.
+target_compile_options(d3d8lib INTERFACE "SHELL:-idirafter ${dx8_SOURCE_DIR}/extra")
 if(TARGET web_d3d8)
     target_link_libraries(d3d8lib INTERFACE web_d3d8)
 endif()

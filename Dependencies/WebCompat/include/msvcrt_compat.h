@@ -99,6 +99,7 @@ char *_ui64toa(unsigned long long value, char *buffer, int radix);
 #define _strtoui64 strtoull
 
 /* Wide strings (16-bit wchar_t, see wchar16.cpp) */
+#define iswascii(c) (((c) & ~0x7F) == 0)
 int _wcsicmp(const wchar_t *a, const wchar_t *b);
 int _wcsnicmp(const wchar_t *a, const wchar_t *b, size_t n);
 wchar_t *_wcsupr(wchar_t *s);
@@ -127,8 +128,10 @@ wchar_t *_wfullpath(wchar_t *absPath, const wchar_t *relPath, size_t maxLength);
 int webcompat_resolve_path(const char *path, char *resolved, size_t resolvedSize);
 FILE *webcompat_fopen(const char *path, const char *mode);
 FILE *webcompat_freopen(const char *path, const char *mode, FILE *stream);
-#define fopen(path, mode) webcompat_fopen((path), (mode))
-#define freopen(path, mode, stream) webcompat_freopen((path), (mode), (stream))
+/* Object-like, so that the library's std::fopen (libc++'s <fstream> calls it)
+** becomes std::webcompat_fopen, declared below. */
+#define fopen webcompat_fopen
+#define freopen webcompat_freopen
 void _splitpath(const char *path, char *drive, char *dir, char *fname, char *ext);
 void _makepath(char *path, const char *drive, const char *dir, const char *fname, const char *ext);
 char *_fullpath(char *absPath, const char *relPath, size_t maxLength);
@@ -202,6 +205,12 @@ size_t malloc_usable_size(void *p);
 
 #ifdef __cplusplus
 } /* extern "C" */
+
+namespace std
+{
+using ::webcompat_fopen;
+using ::webcompat_freopen;
+}
 
 /* Windows' struct _stat and _stat() are ordinary names for struct stat and
 ** stat(), but the path is a Windows path. */

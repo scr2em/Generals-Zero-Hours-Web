@@ -817,6 +817,53 @@ BOOL WINAPI CreateProcessA(LPCSTR, LPSTR, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTR
 	return FALSE;
 }
 
+BOOL WINAPI CreateProcessW(LPCWSTR, LPWSTR, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTRIBUTES, BOOL, DWORD, LPVOID, LPCWSTR, LPSTARTUPINFOW, LPPROCESS_INFORMATION)
+{
+	SetLastError(ERROR_ACCESS_DENIED);
+	return FALSE;
+}
+
+BOOL WINAPI CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe, LPSECURITY_ATTRIBUTES, DWORD)
+{
+	// Pipes only connect programs; there is no second program to connect.
+	if (hReadPipe)
+		*hReadPipe = nullptr;
+	if (hWritePipe)
+		*hWritePipe = nullptr;
+	SetLastError(ERROR_ACCESS_DENIED);
+	return FALSE;
+}
+
+BOOL WINAPI PeekNamedPipe(HANDLE, LPVOID, DWORD, LPDWORD, LPDWORD, LPDWORD)
+{
+	SetLastError(ERROR_INVALID_HANDLE);
+	return FALSE;
+}
+
+BOOL WINAPI SetHandleInformation(HANDLE, DWORD, DWORD)
+{
+	// Handles are never inherited, there are no child processes.
+	return TRUE;
+}
+
+HANDLE WINAPI CreateJobObjectW(LPSECURITY_ATTRIBUTES, LPCWSTR)
+{
+	SetLastError(ERROR_ACCESS_DENIED);
+	return nullptr;
+}
+
+BOOL WINAPI SetInformationJobObject(HANDLE, JOBOBJECTINFOCLASS, LPVOID, DWORD)
+{
+	SetLastError(ERROR_INVALID_HANDLE);
+	return FALSE;
+}
+
+BOOL WINAPI AssignProcessToJobObject(HANDLE, HANDLE)
+{
+	SetLastError(ERROR_INVALID_HANDLE);
+	return FALSE;
+}
+
 LPSTR WINAPI GetCommandLineA(void)
 {
 	// The program name and arguments, quoted as Windows does.

@@ -57,6 +57,10 @@ public:
 	CComObject() {}
 };
 
+template <class T> struct WebComIID;
+template <> struct WebComIID<IUnknown> { static const IID &Get() { return IID_IUnknown; } };
+template <> struct WebComIID<IDispatch> { static const IID &Get() { return IID_IDispatch; } };
+
 // Smart pointer that queries for an interface.
 template <class T>
 class CComQIPtr
@@ -65,7 +69,7 @@ public:
 	CComQIPtr(IUnknown *lp) : p(nullptr)
 	{
 		if (lp != nullptr)
-			lp->QueryInterface(__uuidof(T), reinterpret_cast<void **>(&p));
+			lp->QueryInterface(WebComIID<T>::Get(), reinterpret_cast<void **>(&p));
 	}
 	~CComQIPtr() { if (p != nullptr) p->Release(); }
 	operator T *() const { return p; }

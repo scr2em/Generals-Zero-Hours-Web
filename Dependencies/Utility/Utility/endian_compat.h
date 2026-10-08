@@ -22,7 +22,7 @@
 #ifndef ENDIAN_COMPAT_H
 #define ENDIAN_COMPAT_H
 
-#if defined(__linux__) || defined(__CYGWIN__)
+#if defined(__linux__) || defined(__CYGWIN__) || defined(__EMSCRIPTEN__)
 #include <endian.h>
 
 #elif defined(__APPLE__)
@@ -113,7 +113,7 @@
 
 
 // Endian helper function data types
-#if defined(__linux__) || defined(__CYGWIN__)
+#if defined(__linux__) || defined(__CYGWIN__) || defined(__EMSCRIPTEN__)
 typedef uint16_t SwapType16;
 typedef uint32_t SwapType32;
 typedef uint64_t SwapType64;

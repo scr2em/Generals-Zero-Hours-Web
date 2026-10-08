@@ -327,6 +327,35 @@ HMODULE WINAPI GetModuleHandleA(LPCSTR lpModuleName)
 	return reinterpret_cast<HMODULE>(0x00400000);
 }
 
+HMODULE WINAPI GetModuleHandleW(LPCWSTR lpModuleName)
+{
+	if (lpModuleName)
+	{
+		SetLastError(126);
+		return nullptr;
+	}
+	return reinterpret_cast<HMODULE>(0x00400000);
+}
+
+DWORD WINAPI GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize)
+{
+	char narrow[MAX_PATH];
+	const DWORD length = GetModuleFileNameA(hModule, narrow, sizeof(narrow));
+	if (!lpFilename || nSize == 0)
+		return 0;
+	// The path is ASCII.
+	DWORD copied = length < nSize ? length : nSize - 1;
+	for (DWORD i = 0; i < copied; ++i)
+		lpFilename[i] = (unsigned char)narrow[i];
+	lpFilename[copied] = 0;
+	if (copied < length)
+	{
+		SetLastError(ERROR_INSUFFICIENT_BUFFER);
+		return nSize;
+	}
+	return copied;
+}
+
 DWORD WINAPI GetModuleFileNameA(HMODULE, LPSTR lpFilename, DWORD nSize)
 {
 	static const char s_path[] = "/game/generalszh.exe";

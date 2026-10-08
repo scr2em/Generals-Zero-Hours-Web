@@ -127,6 +127,9 @@ typedef unsigned char       UINT8;
 typedef int                 LONG32;
 typedef unsigned int        ULONG32;
 typedef unsigned int        DWORD32;
+typedef long long           LONG64;
+typedef unsigned long long  ULONG64;
+typedef unsigned long long  DWORD64;
 
 /* The types of 32-bit Windows, which are not those of <stdint.h> on wasm32. */
 typedef int                 INT_PTR;
@@ -761,6 +764,10 @@ typedef LONG (WINAPI *LPTOP_LEVEL_EXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *
 #define CREATE_NEW               1
 #define CREATE_ALWAYS            2
 #define OPEN_EXISTING            3
+#define OF_READ                  0x0000
+#define OF_WRITE                 0x0001
+#define OF_READWRITE             0x0002
+#define OF_CREATE                0x1000
 #define OPEN_ALWAYS              4
 #define TRUNCATE_EXISTING        5
 #define FILE_BEGIN               0
@@ -807,6 +814,7 @@ typedef LONG (WINAPI *LPTOP_LEVEL_EXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *
 #define LMEM_FIXED       0x0000
 #define LMEM_ZEROINIT    0x0040
 #define LPTR             (LMEM_FIXED | LMEM_ZEROINIT)
+#define HEAP_GENERATE_EXCEPTIONS 0x00000004
 #define HEAP_ZERO_MEMORY 0x00000008
 
 /* Threads and processes */
@@ -840,7 +848,10 @@ typedef LONG (WINAPI *LPTOP_LEVEL_EXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *
 #define LOCALE_USER_DEFAULT   0x0400
 #define DATE_SHORTDATE        0x00000001
 #define DATE_LONGDATE         0x00000002
+#define TIME_NOMINUTESORSECONDS 0x00000001
 #define TIME_NOSECONDS        0x00000002
+#define TIME_NOTIMEMARKER     0x00000004
+#define TIME_FORCE24HOURFORMAT 0x00000008
 #define LANG_NEUTRAL          0x00
 #define LANG_ENGLISH          0x09
 #define SUBLANG_DEFAULT       0x01
@@ -1130,7 +1141,10 @@ typedef LONG (WINAPI *LPTOP_LEVEL_EXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *
 #define DT_NOCLIP           0x00000100
 #define DT_CALCRECT         0x00000400
 #define DT_NOPREFIX         0x00000800
+#define MONITOR_DEFAULTTONULL    0
+#define MONITOR_DEFAULTTOPRIMARY 1
 #define MONITOR_DEFAULTTONEAREST 2
+#define MONITORINFOF_PRIMARY     1
 #define ENUM_CURRENT_SETTINGS ((DWORD)-1)
 #define CDS_FULLSCREEN      0x00000004
 #define DISP_CHANGE_SUCCESSFUL 0
@@ -1301,6 +1315,7 @@ typedef LONG (WINAPI *LPTOP_LEVEL_EXCEPTION_FILTER)(struct _EXCEPTION_POINTERS *
 
 /* Time */
 DWORD   WINAPI GetTickCount(void);
+#define GetCurrentTime() GetTickCount()
 BOOL    WINAPI QueryPerformanceCounter(LARGE_INTEGER *lpPerformanceCount);
 BOOL    WINAPI QueryPerformanceFrequency(LARGE_INTEGER *lpFrequency);
 void    WINAPI Sleep(DWORD dwMilliseconds);
@@ -1359,6 +1374,15 @@ LONG    WINAPI InterlockedDecrement(LONG volatile *lpAddend);
 LONG    WINAPI InterlockedExchange(LONG volatile *Target, LONG Value);
 LONG    WINAPI InterlockedExchangeAdd(LONG volatile *Addend, LONG Value);
 LONG    WINAPI InterlockedCompareExchange(LONG volatile *Destination, LONG Exchange, LONG Comperand);
+static inline PVOID InterlockedExchangePointer(PVOID volatile *Target, PVOID Value)
+{
+	return __atomic_exchange_n(Target, Value, __ATOMIC_SEQ_CST);
+}
+static inline PVOID InterlockedCompareExchangePointer(PVOID volatile *Destination, PVOID Exchange, PVOID Comperand)
+{
+	__atomic_compare_exchange_n(Destination, &Comperand, Exchange, false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+	return Comperand;
+}
 HANDLE  WINAPI CreateMutexA(LPSECURITY_ATTRIBUTES lpMutexAttributes, BOOL bInitialOwner, LPCSTR lpName);
 HANDLE  WINAPI OpenMutexA(DWORD dwDesiredAccess, BOOL bInheritHandle, LPCSTR lpName);
 BOOL    WINAPI ReleaseMutex(HANDLE hMutex);
@@ -1408,6 +1432,63 @@ BOOL    WINAPI TerminateProcess(HANDLE hProcess, UINT uExitCode);
 BOOL    WINAPI GetExitCodeProcess(HANDLE hProcess, LPDWORD lpExitCode);
 BOOL    WINAPI CreateProcessA(LPCSTR lpApplicationName, LPSTR lpCommandLine, LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment, LPCSTR lpCurrentDirectory, LPSTARTUPINFO lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation);
 #define CreateProcess CreateProcessA
+
+/* Other programs cannot be started from a browser tab: creating a process or
+** a pipe fails, so the code that does so falls back to its failure path. */
+typedef struct _STARTUPINFOW {
+	DWORD  cb;
+	LPWSTR lpReserved;
+	LPWSTR lpDesktop;
+	LPWSTR lpTitle;
+	DWORD  dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+	WORD   wShowWindow;
+	WORD   cbReserved2;
+	LPBYTE lpReserved2;
+	HANDLE hStdInput, hStdOutput, hStdError;
+} STARTUPINFOW, *LPSTARTUPINFOW;
+#define STARTF_USESHOWWINDOW    0x00000001
+#define STARTF_USESTDHANDLES    0x00000100
+#define STARTF_FORCEOFFFEEDBACK 0x00000080
+#define HANDLE_FLAG_INHERIT     0x00000001
+BOOL    WINAPI CreateProcessW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine, LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles, DWORD dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation);
+BOOL    WINAPI CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe, LPSECURITY_ATTRIBUTES lpPipeAttributes, DWORD nSize);
+BOOL    WINAPI PeekNamedPipe(HANDLE hNamedPipe, LPVOID lpBuffer, DWORD nBufferSize, LPDWORD lpBytesRead, LPDWORD lpTotalBytesAvail, LPDWORD lpBytesLeftThisMessage);
+BOOL    WINAPI SetHandleInformation(HANDLE hObject, DWORD dwMask, DWORD dwFlags);
+
+typedef struct _IO_COUNTERS {
+	ULONGLONG ReadOperationCount;
+	ULONGLONG WriteOperationCount;
+	ULONGLONG OtherOperationCount;
+	ULONGLONG ReadTransferCount;
+	ULONGLONG WriteTransferCount;
+	ULONGLONG OtherTransferCount;
+} IO_COUNTERS;
+typedef struct _JOBOBJECT_BASIC_LIMIT_INFORMATION {
+	LARGE_INTEGER PerProcessUserTimeLimit;
+	LARGE_INTEGER PerJobUserTimeLimit;
+	DWORD         LimitFlags;
+	SIZE_T        MinimumWorkingSetSize;
+	SIZE_T        MaximumWorkingSetSize;
+	DWORD         ActiveProcessLimit;
+	ULONG_PTR     Affinity;
+	DWORD         PriorityClass;
+	DWORD         SchedulingClass;
+} JOBOBJECT_BASIC_LIMIT_INFORMATION;
+typedef struct _JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+	JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+	IO_COUNTERS IoInfo;
+	SIZE_T      ProcessMemoryLimit;
+	SIZE_T      JobMemoryLimit;
+	SIZE_T      PeakProcessMemoryUsed;
+	SIZE_T      PeakJobMemoryUsed;
+} JOBOBJECT_EXTENDED_LIMIT_INFORMATION;
+typedef enum _JOBOBJECTINFOCLASS {
+	JobObjectExtendedLimitInformation = 9
+} JOBOBJECTINFOCLASS;
+#define JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE 0x00002000
+HANDLE  WINAPI CreateJobObjectW(LPSECURITY_ATTRIBUTES lpJobAttributes, LPCWSTR lpName);
+BOOL    WINAPI SetInformationJobObject(HANDLE hJob, JOBOBJECTINFOCLASS JobObjectInformationClass, LPVOID lpJobObjectInformation, DWORD cbJobObjectInformationLength);
+BOOL    WINAPI AssignProcessToJobObject(HANDLE hJob, HANDLE hProcess);
 LPSTR   WINAPI GetCommandLineA(void);
 #define GetCommandLine GetCommandLineA
 DWORD   WINAPI GetEnvironmentVariableA(LPCSTR lpName, LPSTR lpBuffer, DWORD nSize);
@@ -1429,6 +1510,8 @@ BOOL    WINAPI FreeLibrary(HMODULE hLibModule);
 #define LoadLibrary LoadLibraryA
 #define GetModuleHandle GetModuleHandleA
 #define GetModuleFileName GetModuleFileNameA
+DWORD   WINAPI GetModuleFileNameW(HMODULE hModule, LPWSTR lpFilename, DWORD nSize);
+HMODULE WINAPI GetModuleHandleW(LPCWSTR lpModuleName);
 HRSRC   WINAPI FindResourceA(HMODULE hModule, LPCSTR lpName, LPCSTR lpType);
 HGLOBAL WINAPI LoadResource(HMODULE hModule, HRSRC hResInfo);
 LPVOID  WINAPI LockResource(HGLOBAL hResData);
@@ -1703,6 +1786,7 @@ LONG    WINAPI SetWindowLongA(HWND hWnd, int nIndex, LONG dwNewLong);
 #define GWLP_WNDPROC GWL_WNDPROC
 #define GWLP_USERDATA GWL_USERDATA
 BOOL    WINAPI SetWindowTextA(HWND hWnd, LPCSTR lpString);
+BOOL    WINAPI SetWindowTextW(HWND hWnd, LPCWSTR lpString);
 int     WINAPI GetWindowTextA(HWND hWnd, LPSTR lpString, int nMaxCount);
 #define SetWindowText SetWindowTextA
 #define GetWindowText GetWindowTextA
@@ -1715,6 +1799,29 @@ HWND    WINAPI GetDlgItem(HWND hDlg, int nIDDlgItem);
 UINT_PTR WINAPI SetTimer(HWND hWnd, UINT_PTR nIDEvent, UINT uElapse, TIMERPROC lpTimerFunc);
 BOOL    WINAPI KillTimer(HWND hWnd, UINT_PTR uIDEvent);
 HMONITOR WINAPI MonitorFromWindow(HWND hwnd, DWORD dwFlags);
+typedef struct tagVS_FIXEDFILEINFO {
+	DWORD dwSignature;
+	DWORD dwStrucVersion;
+	DWORD dwFileVersionMS;
+	DWORD dwFileVersionLS;
+	DWORD dwProductVersionMS;
+	DWORD dwProductVersionLS;
+	DWORD dwFileFlagsMask;
+	DWORD dwFileFlags;
+	DWORD dwFileOS;
+	DWORD dwFileType;
+	DWORD dwFileSubtype;
+	DWORD dwFileDateMS;
+	DWORD dwFileDateLS;
+} VS_FIXEDFILEINFO;
+typedef struct tagMONITORINFO {
+	DWORD cbSize;
+	RECT  rcMonitor;
+	RECT  rcWork;
+	DWORD dwFlags;
+} MONITORINFO, *LPMONITORINFO;
+BOOL    WINAPI GetMonitorInfoA(HMONITOR hMonitor, LPMONITORINFO lpmi);
+#define GetMonitorInfo GetMonitorInfoA
 
 BOOL    WINAPI PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax, UINT wRemoveMsg);
 BOOL    WINAPI GetMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT wMsgFilterMax);
@@ -1920,5 +2027,10 @@ void webcompat_set_key_state(int virtualKey, int down);
 #include "mmsystem.h"
 #include "winerror.h"
 #include "objbase.h"
+
+/* windows.h declares Winsock 1 too, unless told not to. */
+#if !defined(WIN32_LEAN_AND_MEAN) && !defined(_WINSOCKAPI_)
+#include "winsock.h"
+#endif
 
 #endif /* WEBCOMPAT_WINDOWS_H */
