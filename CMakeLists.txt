@@ -64,6 +64,10 @@ else()
 endif()
 
 include(cmake/config.cmake)
+
+if(EMSCRIPTEN)
+    include(cmake/emscripten.cmake)
+endif()
 include(cmake/gamespy.cmake)
 include(cmake/lzhl.cmake)
 include(cmake/stb.cmake)

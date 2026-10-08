@@ -162,6 +162,21 @@
             "displayName": "Unix 32bit VCPKG Release"
         },
         {
+            "name": "emscripten",
+            "displayName": "WebAssembly (Emscripten) Zero Hour Release",
+            "generator": "Ninja",
+            "hidden": false,
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_BUILD_TYPE": "Release",
+                "RTS_BUILD_GENERALS": "OFF",
+                "RTS_BUILD_CORE_TOOLS": "OFF",
+                "RTS_BUILD_ZEROHOUR_TOOLS": "OFF"
+            }
+        },
+        {
             "name": "mingw-w64-i686",
             "displayName": "MinGW-w64 32-bit (i686) Release",
             "generator": "Unix Makefiles",
@@ -272,6 +287,12 @@
             "displayName": "Build Unix 32bit VCPKG Release",
             "description": "Build Unix 32bit VCPKG Release",
             "configuration": "Release"
+        },
+        {
+            "name": "emscripten",
+            "configurePreset": "emscripten",
+            "displayName": "Build WebAssembly (Emscripten) Zero Hour Release",
+            "description": "Build WebAssembly (Emscripten) Zero Hour Release"
         },
         {
             "name": "mingw-w64-i686",
