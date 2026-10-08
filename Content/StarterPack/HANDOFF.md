@@ -15,6 +15,18 @@ For an AI coding agent or developer who has never seen the session that produced
   `Default/` (the main file is a stub), `WeaponSet` blocks on every object and `PhysicsBehavior` on every mover,
   default teams in `SkirmishScripts.scb` (`team<SkirmishSide>`), `EVERYONE` on the audio types, and the strings
   `GUI:StartingMoneyFormat` / `MAP:StarterCrossing`.
+* **Launcher, retail layouts.** Verified against the user's real folder listings (Zero Hour: `*ZH.big` + `Music.big` +
+  `generals.exe`, no base BIGs; base game: `INI.big`... + `maps.big` + `Music.big`). e2e (94 checks) has fixtures that mirror
+  both: ZH folder only, parent folder with both installs, and ZH then the optional add. `/generals` empty or missing is fine:
+  the engine mounts it empty (`WebStorage.cpp` creates it) and the starter pack already runs that way.
+* **Gameplay check (debug build, `starter_flow.mjs`)**: skirmish starts, bases and workers render with team colours and shadows,
+  the HQ trains workers (money drops, queue shows), a single selected worker shows the three construct buttons, placing the
+  power plant works (`Under construction: 39%`). Box-selecting two units shows only the common buttons (engine behaviour).
+  `starter_flow.mjs` steps `r:X1,Y1,X2,Y2` (drag box) and `R:X,Y` (right click) were added.
+  Added audio events for every fixed name the engine looks up (`PlaceBuilding`, `RallyPointSet`, `Beacon*`, `GUI*` fades ...).
+  Still asserting in a debug build (harmless in release): `VehicleCrashesInto*Weapon` missing, `Unexpected player template`
+  (LoadScreen.cpp hard codes the three original faction names), "unable to attack at all" filter, `UnderConstruction` audio
+  name, WebD3D8 `VertexCount` once at start.
 * **Browser scope: Chrome (Chromium) only** (user decision). Firefox and Safari are out of scope; the launcher may use
   `showDirectoryPicker`, OPFS `createSyncAccessHandle` and Keyboard Lock. Do not add fallbacks for other browsers; existing
   ones (the `<input webkitdirectory>` picker is what the tests drive) stay only because they cost nothing.
@@ -119,10 +131,33 @@ and collects what they `emit`. Paths are lowercased; a path emitted twice is an 
 `shell.html` is the page (it is baked into `z_generals.html` at link time: after editing it, relink the target). It shows
 two cards. `importer.js` does the work.
 
-1. **"Use my Zero Hour installation"** (unchanged flow): the user picks the Zero Hour folder (and the Generals folder);
-   `planImport` filters files (skips movies, `.exe` other than `generalszh.exe`, `.dll` ...), lower cases names and copies
-   them into OPFS (`/game`, `/generals`) with a manifest (`kind: "install"`). **The engine fingerprints
-   `generalszh.exe` at start up, so the importer keeps exactly that executable** (`TARGETS.game.engineExe`).
+1. **"Use my Zero Hour installation"**: one main action, "Select folder...". The user picks the Zero Hour folder or a folder
+   above it (a library holding both games); `detectInstall` finds Zero Hour by its `*ZH.big` archives and the base game by
+   `INI.big`/`W3D.big`/`Textures.big`/`Terrain.big` (never by exe name or `Music.big`: both retail installs have a
+   `generals.exe` and a `Music.big`). Zero Hour is imported; if the pick also holds the original game its archives are added
+   silently. Play is enabled after the Zero Hour import alone. After a Zero Hour import a small optional link
+   ("Add the original Generals files (optional, improves missing art)", `#pick-generals`) opens a second pick for the
+   original game; it never blocks. No other base game UI exists.
+   What is copied (`planImport`, lower-cased names, into OPFS `/game` and `/generals`, manifest `kind: "install"`):
+   * Zero Hour: every `*.big` at the top level, `Data/**` and any other sub folder, plus ONE executable stored as
+     `generalszh.exe` (the engine fingerprints it at start up, `GlobalData::generateExeCRC`; it only matters for network and
+     replay compatibility). `generalszh.exe` is preferred, else `generals.exe` (the retail name; the real binary is `game.dat`).
+     Skipped: all other top level files (`.dll`, `.sys`, `.dat`, `.bmp`, `WorldBuilder.exe`, the `00000000.016/.256`
+     fingerprint files, ...; the engine reads none of them), `MSS/` (Miles codecs, unused by the web audio), `UserData/` (user
+     data lives in OPFS `/userdata`), `Movies/`, `.bik`.
+   * Original Generals (`/generals`): only top level `*.big`, because `StdBIGFileSystem::init` loads nothing else from the
+     Generals install directory. Skipped: `maps.big` (original game maps, optional; `includeOptional` brings it back), any
+     archive with the same name and size as one already copied from Zero Hour (`Music.big` is in both installs), everything else.
+   * Sizes: depend on the install; Zero Hour was 936.6 MB / 126 files before this filter (now fewer: the loose top level files
+     and `MSS/` are gone). The base game costs roughly its archive total minus `maps.big` minus the duplicate `Music.big`.
+   * Quota errors name what is needed and what is available, explain that Chrome limits a site to a share of the free disk
+     space and that freeing disk space and retrying works (`importer.quotaMessage`). The check covers both installs of a
+     combined pick up front.
+   * **Import modes.** `runImport(plan)` dispatches on `plan.mode` (default `'copy'`, `copyIntoOpfs`). A copy-less "read in
+     place" mode (File System Access handles, FileReaderSync backed WasmFS backend) is added with
+     `registerImportMode(name, fn)`; `planImport` would set `plan.mode`, `writeManifest(plan)` records the target so the
+     status line keeps working. Not implemented here. The shell calls only `planImport`/`importPlan`/`runImport`.
+   * Browser scope: Chrome/Chromium only (see the status block).
 2. **"Play with free starter content"**: `downloadStarter` fetches `starterpack/manifest.json` (relative to the page),
    downloads every file listed (4 in parallel, sha256 checked, progress shown), clears `/game` and `/generals`, writes the
    files into OPFS `/game` and records a manifest with `kind: "starter"`. The UI says plainly that this is an original
@@ -256,6 +291,10 @@ Facts learned the hard way:
 * `generalszh.exe` must exist (checksum only).
 
 ## 9. Known gaps and TODO, ranked
+
+*Written before the engine ran the pack. Items A1 (display), A2 (text, now done by the font agent), B and most of C/D are resolved or
+verified by `starter_flow.mjs`; see the status block. Still open: cursors (A3), the load screen's hard coded faction names, balance
+(D12), animations (D13), AI behaviour over a full match, the score screen, and every debug-only assert listed in the status block.*
 
 **A. Blocks reaching the main menu (engine side, not content)**
 
