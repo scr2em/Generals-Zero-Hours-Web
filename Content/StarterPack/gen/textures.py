@@ -178,7 +178,10 @@ def shadow_texture():
             d = math.hypot(x - 31.5, y - 31.5) / 31.0
             a = clamp(1.0 - d, 0, 1)
             a = a ** 0.6
-            c.set(x, y, (0, 0, 0, int(200 * a)))
+            # SHADOW_DECAL is drawn with the multiplicative shader (dest *= texel): white leaves the ground alone,
+            # darker values shade it.  Black-with-alpha would paint an opaque black square.
+            v = int(255 - 150 * a)
+            c.set(x, y, (v, v, v, 255))
     return c
 
 
