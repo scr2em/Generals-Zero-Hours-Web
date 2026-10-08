@@ -433,7 +433,8 @@ static Bool runGame( Int &exitcode )
 	TheFramePacer->enableFramesPerSecondLimit(TRUE);
 	TheGameEngine = CreateGameEngine();
 	TheGameEngine->init();
-	DEBUG_LOG(("Game engine initialized, starting the frame loop"));
+	DEBUG_LOG(("Game engine initialized, starting the frame loop (fps limit %d, actual %d, enabled %d)",
+		TheFramePacer->getFramesPerSecondLimit(), TheFramePacer->getActualFramesPerSecondLimit(), (int)TheFramePacer->isActualFramesPerSecondLimitEnabled()));
 
 	if (!TheGlobalData->m_simulateReplays.empty())
 	{
@@ -473,6 +474,8 @@ int main( int argc, char **argv )
 	{
 		if( strcmp( argv[i], "-webframelog" ) == 0 )
 			s_logFrames = true;
+		if( strncmp( argv[i], "-webd3d8debug", 13 ) == 0 )
+			WebD3D8_SetDebug( argv[i][13] == '=' ? atoi( argv[i] + 14 ) | 1 : 1 );	// see WebD3D8.h
 	}
 
 	try {

@@ -87,8 +87,11 @@ void WebD3D8_SetPlatformHooks(const WebD3D8_PlatformHooks *hooks);
 /// every GL call is forwarded, slow but works with a thread that never yields).
 void WebD3D8_SetContextProxy(int mode);
 
-/// Enables extra GL error checking and a log of unsupported D3D features.
-void WebD3D8_SetDebug(int enable);
+/// Enables extra GL error checking, a log of unsupported D3D features and, every 120th frame, a
+/// log of the draw calls and of what the back buffer holds. Bit 0 is that switch; the higher bits
+/// force GL state off for every draw to find which state hides a picture: bit 1 culling,
+/// bit 2 blending, bit 3 the depth test (so 1 | 2 = 3 enables the log and disables culling).
+void WebD3D8_SetDebug(int flags);
 
 /// Releases the memory of the system-memory shadow copies of managed textures
 /// after they were uploaded, when enabled (default: disabled). Saves memory at

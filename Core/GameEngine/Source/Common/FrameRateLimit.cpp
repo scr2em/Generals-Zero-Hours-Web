@@ -32,6 +32,10 @@ FrameRateLimit::FrameRateLimit()
 
 Bool FrameRateLimit::isDue(UnsignedInt maxFps) const
 {
+	// No limit set: always due (and no division by zero below).
+	if (maxFps == 0)
+		return true;
+
 	LARGE_INTEGER tick;
 	QueryPerformanceCounter(&tick);
 	const double elapsedSeconds = static_cast<double>(tick.QuadPart - m_start) / m_freq;

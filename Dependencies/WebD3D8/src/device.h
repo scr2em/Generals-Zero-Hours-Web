@@ -330,6 +330,7 @@ public:
     D3DPRESENT_PARAMETERS m_pp = {};
     int m_glContext = 0;
     bool m_contextLost = false;
+    unsigned m_presentCounter = 0;	// Present calls, for the debug log
     bool m_explicitSwap = false;
     GLCaps m_glcaps;
     bool m_inScene = false;

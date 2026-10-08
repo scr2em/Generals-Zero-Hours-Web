@@ -166,7 +166,11 @@ void WebD3D8_SetPlatformHooks(const WebD3D8_PlatformHooks *hooks)
 void WebD3D8_SetPresentMode(int mode) { webd3d8::GetConfig().presentMode = mode; }
 void WebD3D8_SetDisableS3TC(int disable) { webd3d8::GetConfig().disableS3TC = disable != 0; }
 void WebD3D8_SetContextProxy(int mode) { webd3d8::GetConfig().contextProxy = mode; }
-void WebD3D8_SetDebug(int enable) { webd3d8::GetConfig().debug = enable != 0; }
+void WebD3D8_SetDebug(int flags)
+{
+    webd3d8::GetConfig().debug = (flags & 1) != 0;
+    webd3d8::GetConfig().debugForce = flags >> 1;
+}
 void WebD3D8_SetReleaseTextureShadows(int enable) { webd3d8::GetConfig().releaseTextureShadows = enable != 0; }
 
 } // extern "C"

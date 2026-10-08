@@ -271,6 +271,30 @@ def small_icon(kind):
         c.circle(8, 8, 4, WHITE)
     elif kind == "pip_empty":
         c.circle(8, 8, 4, (110, 110, 120), filled=False)
+    elif kind.startswith("bar_") and kind != "bar_slider":
+        # power bar pieces: bar_<colour>[_l|_r]
+        parts = kind.split("_")
+        col = {"green": (80, 200, 90), "red": (214, 70, 60), "yellow": (232, 200, 60)}[parts[1]]
+        c = Canvas(16, 12)
+        c.gradient_v(0, 0, 16, 12, shade(col, 1.25), shade(col, 0.7))
+        if len(parts) > 2:
+            for y in range(12):
+                inset = 3 if y in (0, 11) else (1 if y in (1, 10) else 0)
+                for x in range(0, inset + 1):
+                    px = x if parts[2] == "l" else 15 - x
+                    c.set(px, y, (0, 0, 0, 0))
+    elif kind == "bar_slider":
+        c = Canvas(6, 16)
+        c.rect(0, 0, 6, 16, WHITE)
+        c.frame(0, 0, 6, 16, (30, 30, 40))
+    elif kind.startswith("dot_"):
+        col = {"g": (80, 200, 90), "r": (214, 70, 60), "y": (232, 200, 60)}[kind[-1]]
+        c.circle(8, 8, 5, col)
+        c.circle(8, 8, 5, shade(col, 0.5), filled=False)
+    elif kind.startswith("medal_"):
+        col = {"bronze": (190, 120, 60), "silver": (190, 196, 206), "gold": (236, 190, 60), "red": (220, 70, 60)}[kind[6:]]
+        pts = [(8, 1), (10, 6), (15, 6), (11, 9), (13, 15), (8, 11), (3, 15), (5, 9), (1, 6), (6, 6)]
+        outline(c, pts, col, shade(col, 0.5))
     return c
 
 
@@ -376,6 +400,13 @@ SMALL = [
     ("SCVeter1", "chevron1"), ("SCVeter2", "chevron2"), ("SCVeter3", "chevron3"),
     ("SCPAmmoFull", "ammo_full"), ("SCPAmmoEmpty", "ammo_empty"),
     ("SCPPipFull", "pip_full"), ("SCPPipEmpty", "pip_empty"),
+    ("PowerBarGreen", "bar_green"), ("PowerBarGreenEndL", "bar_green_l"), ("PowerBarGreenEndR", "bar_green_r"),
+    ("PowerBarRed", "bar_red"), ("PowerBarRedEndL", "bar_red_l"), ("PowerBarRedEndR", "bar_red_r"),
+    ("PowerBarYellow", "bar_yellow"), ("PowerBarYellowEndL", "bar_yellow_l"), ("PowerBarYellowEndR", "bar_yellow_r"),
+    ("PowerBarSlider", "bar_slider"),
+    ("PowerPointG", "dot_g"), ("PowerPointR", "dot_r"), ("PowerPointY", "dot_y"),
+    ("Star-Bronze", "medal_bronze"), ("Star-Silver", "medal_silver"), ("Star-Gold", "medal_gold"),
+    ("RedYell_Star", "medal_red"),
 ]
 
 

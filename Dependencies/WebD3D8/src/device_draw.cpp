@@ -702,6 +702,10 @@ bool Device::PrepareDraw(GLenum mode)
     m_drawingPoints = mode == GL_POINTS;
     ++m_drawCounter;
     if (m_contextLost) return false;
+    if (GetConfig().debug && m_presentCounter % 120 == 0)
+        Log("draw #%u: mode 0x%x, fvf 0x%x, vs %u, alphablend %u, src %u dst %u, zenable %u, cull %u, tex0 %d, rt %ux%u", m_drawCounter, (unsigned)mode,
+            (unsigned)m_s.vertexShader, (unsigned)m_s.vertexShader, m_s.rs[D3DRS_ALPHABLENDENABLE], m_s.rs[D3DRS_SRCBLEND], m_s.rs[D3DRS_DESTBLEND],
+            m_s.rs[D3DRS_ZENABLE], m_s.rs[D3DRS_CULLMODE], m_s.textures[0] ? 1 : 0, m_rtWidth, m_rtHeight);
     GL_STAGE_CHECK("entry");
     if (!SelectProgram()) return false;
     GL_STAGE_CHECK("select program");
@@ -725,6 +729,13 @@ bool Device::PrepareDraw(GLenum mode)
     GL_STAGE_CHECK("uniforms");
     BindTextures();
     GL_STAGE_CHECK("textures");
+    if (GetConfig().debugForce)
+    {
+        if (GetConfig().debugForce & 1) glDisable(GL_CULL_FACE);
+        if (GetConfig().debugForce & 2) glDisable(GL_BLEND);
+        if (GetConfig().debugForce & 4) glDisable(GL_DEPTH_TEST);
+        m_applied.Invalidate();
+    }
     return true;
 }
 

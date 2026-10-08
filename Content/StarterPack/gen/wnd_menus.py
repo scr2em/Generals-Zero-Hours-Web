@@ -305,7 +305,7 @@ def score_screen():
 # --------------------------------------------------------------------------------------------------
 
 def replay_control():
-    root = panel("ReplayControl", (0, 0, 2, 2), fill=TRANSPARENT, border=TRANSPARENT, hidden=True, system="ReplayControlSystem")
+    root = panel("ParentReplayControl", (0, 0, 2, 2), fill=TRANSPARENT, border=TRANSPARENT, hidden=True, system="ReplayControlSystem")
     return write_wnd("ReplayControl.wnd", [root], RES)
 
 

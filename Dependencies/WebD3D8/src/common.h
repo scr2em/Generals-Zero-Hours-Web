@@ -52,6 +52,7 @@ struct Config
     int presentMode = WEBD3D8_PRESENT_EXPLICIT;
     WebD3D8_PlatformHooks hooks = {};
     bool debug = false;
+    int debugForce = 0;	// diagnosis: 1 = no culling, 2 = no blending, 4 = no depth test, for every draw
     bool releaseTextureShadows = false;
     bool disableS3TC = false;
     int contextProxy = 0;

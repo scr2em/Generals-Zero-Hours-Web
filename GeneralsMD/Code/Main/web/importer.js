@@ -26,6 +26,7 @@ export const TARGETS = {
 		// Archives that identify the folder; at least one must exist.
 		signature: ['inizh.big', 'w3dzh.big', 'textureszh.big', 'terrainzh.big'],
 		hint: 'Command & Conquer Generals - Zero Hour',
+		engineExe: 'generalszh.exe',
 	},
 	generals: {
 		label: 'Generals',
@@ -146,7 +147,10 @@ export function planImport(source, targetKey, options = {}) {
 		const name = file.segments[file.segments.length - 1].toLowerCase();
 		const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
 		const skipDir = dirs.some(d => SKIP_DIRECTORIES.has(d) && !(includeVideos && d === 'movies'));
-		const skipExt = SKIP_EXTENSIONS.has(ext) && !(includeVideos && (ext === 'bik' || ext === 'bk2'));
+		// The engine fingerprints its own executable at start up (GlobalData::generateExeCRC) and asserts when
+		// the file is missing, so the one executable the engine reads stays; it is never run.
+		const isEngineExe = dirs.length === 0 && target.engineExe === name;
+		const skipExt = SKIP_EXTENSIONS.has(ext) && !isEngineExe && !(includeVideos && (ext === 'bik' || ext === 'bk2'));
 		if (skipDir || skipExt) {
 			skipped++;
 			continue;

@@ -11,6 +11,7 @@
 //   --arg <game arg>      pass a command line argument to the game (repeatable), e.g. --arg -noshellmap
 //   --input               after the game runs, send mouse and key input and report the input log
 //   --reload-after <s>    reload the page after this long and start the game again (OPFS persistence)
+//   --stack               at the end, print the call stacks of the engine's worker threads (diagnoses hangs)
 //   --port <n>            server port (default 8931)
 //   --headful-gl          use the default GL instead of SwiftShader
 //
@@ -43,6 +44,7 @@ const opt = { page: "z_generals.html", shot: 'smoke.png', wait: 60, port: 8931, 
 			case '--arg': opt.args.push(a[++i]); break;
 			case '--input': opt.input = true; break;
 			case '--reload-after': opt.reloadAfter = Number(a[++i]); break;
+			case '--stack': opt.stack = true; break;
 			case '--port': opt.port = Number(a[++i]); break;
 			default: console.error('unknown option ' + a[i]); process.exit(2);
 		}
@@ -59,7 +61,7 @@ const exe = ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-brow
 const browser = await playwright.chromium.launch({
 	executablePath: exe,
 	args: ['--no-sandbox', '--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
-		'--enable-webgl', '--enable-features=SharedArrayBuffer'],
+		'--enable-webgl', '--enable-features=SharedArrayBuffer', ...(opt.stack ? ['--remote-debugging-port=9333'] : [])],
 });
 const context = await browser.newContext({ viewport: { width: 1100, height: 800 } });
 const page = await context.newPage();
@@ -121,6 +123,11 @@ if (opt.reloadAfter) {
 	console.log('after reload: state-game =', await page.textContent('#state-game'));
 	await play();
 	console.log('second run:', await waitForEnd(opt.wait));
+}
+
+if (opt.stack) {
+	const { dumpWorkerStacks } = await import('./cdpstack.mjs');
+	console.log(await dumpWorkerStacks(9333));
 }
 
 // The frame loop (WebMain.cpp) publishes its frame counter on the page about twice a second.

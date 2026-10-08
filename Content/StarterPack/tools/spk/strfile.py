@@ -66,7 +66,7 @@ class StringTable:
             lines.append('"%s"%s' % (escape_text(text), (" " + speech) if speech else ""))
             lines.append("END")
             lines.append("")
-        return "\r\n".join(lines).encode("latin-1")
+        return "\n".join(lines).encode("latin-1")
 
     def to_csf(self, language_id=0):
         out = bytearray()

@@ -51,6 +51,73 @@ def make_big(files):
 # matter for what is tested: empty INI files (comments only).
 EMPTY_INI = [
     'Data\\INI\\Default\\GameData.ini',
+    'Data\\INI\\GameLOD.ini',
+    'Data\\INI\\GameLODPresets.ini',
+    'Data\\INI\\Default\\Water.ini',
+    'Data\\INI\\Water.ini',
+    'Data\\INI\\Default\\Weather.ini',
+    'Data\\INI\\Weather.ini',
+    'Data\\INI\\Default\\Science.ini',
+    'Data\\INI\\Science.ini',
+    'Data\\INI\\Default\\Multiplayer.ini',
+    'Data\\INI\\Multiplayer.ini',
+    'Data\\INI\\Default\\Terrain.ini',
+    'Data\\INI\\Terrain.ini',
+    'Data\\INI\\Default\\Roads.ini',
+    'Data\\INI\\Roads.ini',
+    'Data\\english\\Language.ini',
+    'Data\\INI\\AudioSettings.ini',
+    'Data\\INI\\Default\\Music.ini',
+    'Data\\INI\\Music.ini',
+    'Data\\INI\\Default\\SoundEffects.ini',
+    'Data\\INI\\SoundEffects.ini',
+    'Data\\INI\\Default\\Speech.ini',
+    'Data\\INI\\Speech.ini',
+    'Data\\INI\\Default\\Voice.ini',
+    'Data\\INI\\Voice.ini',
+    'Data\\INI\\MiscAudio.ini',
+    'Data\\INI\\Rank.ini',
+    'Data\\INI\\Default\\PlayerTemplate.ini',
+    'Data\\INI\\PlayerTemplate.ini',
+    'Data\\INI\\ParticleSystem.ini',
+    'Data\\INI\\Default\\FXList.ini',
+    'Data\\INI\\FXList.ini',
+    'Data\\INI\\Weapon.ini',
+    'Data\\INI\\Default\\ObjectCreationList.ini',
+    'Data\\INI\\ObjectCreationList.ini',
+    'Data\\INI\\Locomotor.ini',
+    'Data\\INI\\Default\\SpecialPower.ini',
+    'Data\\INI\\SpecialPower.ini',
+    'Data\\INI\\DamageFX.ini',
+    'Data\\INI\\Armor.ini',
+    'Data\\INI\\Default\\Object.ini',
+    'Data\\INI\\Object.ini',
+    'Data\\INI\\Default\\Upgrade.ini',
+    'Data\\INI\\Upgrade.ini',
+    'Data\\INI\\DrawGroupInfo.ini',
+    'Data\\INI\\Animation2D.ini',
+    'Data\\INI\\Mouse.ini',
+    'Data\\english\\HeaderTemplate.ini',
+    'Data\\INI\\WindowTransitions.ini',
+    'Data\\INI\\Default\\ShellMenuScheme.ini',
+    'Data\\INI\\ShellMenuScheme.ini',
+    'Data\\INI\\InGameUI.ini',
+    'Data\\INI\\Default\\CommandButton.ini',
+    'Data\\INI\\CommandButton.ini',
+    'Data\\INI\\CommandSet.ini',
+    'Data\\INI\\Default\\ControlBarScheme.ini',
+    'Data\\INI\\ControlBarScheme.ini',
+    'Data\\INI\\ChallengeMode.ini',
+    'Data\\INI\\Default\\Video.ini',
+    'Data\\INI\\Video.ini',
+    'Data\\INI\\Campaign.ini',
+    'Data\\INI\\Eva.ini',
+    'Data\\INI\\Default\\AIData.ini',
+    'Data\\INI\\AIData.ini',
+    'Data\\INI\\Default\\Crate.ini',
+    'Data\\INI\\Crate.ini',
+    'Data\\english\\CommandMap.ini',
+    'Data\\INI\\CommandMap.ini',
 ]
 
 # Stage 1: the engine can open the archives and load GameData.ini.
@@ -61,7 +128,10 @@ GameData
   XResolution = 800
   YResolution = 600
   UseTrees = No
-  UseFPSLimit = No
+  UseFPSLimit = Yes
+  PlayIntro = No
+  ShellMapOn = No
+  FramesPerSecondLimit = 30
 End
 """
 
@@ -84,6 +154,72 @@ Weather
 End
 """
 
+
+# A window layout in the engine's .wnd text format: a screen filling window and two coloured
+# rectangles, so that the 2D renderer (Display -> W3D -> Direct3D 8 -> WebGL2) has something to draw.
+def draw_data(r, g, b, a):
+    one = 'IMAGE: NoImage, COLOR: %d %d %d %d, BORDERCOLOR: 255 255 255 255,' % (r, g, b, a)
+    return ' '.join([one] * 9).rstrip(',')
+
+
+def window(name, rect, color, children=''):
+    return """\
+WINDOW
+  WINDOWTYPE = USER;
+  SCREENRECT = UPPERLEFT: %d %d,
+               BOTTOMRIGHT: %d %d,
+               CREATIONRESOLUTION: 800 600;
+  NAME = "%s";
+  STATUS = ENABLED+IMAGE;
+  STYLE = USER;
+  SYSTEMCALLBACK = "[None]";
+  INPUTCALLBACK = "[None]";
+  TOOLTIPCALLBACK = "[None]";
+  DRAWCALLBACK = "[None]";
+  FONT = NAME: "Arial", SIZE: 12, BOLD: 0;
+  HEADERTEMPLATE = "[None]";
+  TOOLTIPDELAY = -1;
+  ENABLEDDRAWDATA = %s;
+  DISABLEDDRAWDATA = %s;
+  HILITEDRAWDATA = %s;
+%sEND
+""" % (rect + (name, draw_data(*color), draw_data(*color), draw_data(*color), children))
+
+
+def layout(root, init='[None]'):
+    return """\
+FILE_VERSION = 2;
+STARTLAYOUTBLOCK
+  LAYOUTINIT = %s;
+  LAYOUTUPDATE = [None];
+  LAYOUTSHUTDOWN = [None];
+ENDLAYOUTBLOCK
+""" % init + root
+
+
+# The real MainMenuInit (it also lifts the "movie is playing" render block that the intro leaves
+# behind) looks windows up by name, so this layout has the ones it dereferences without a check.
+# MainMenuInit reverses this group; the engine does not check that it exists (a null group would
+# run forever, as the null pointer is a valid address in WebAssembly).
+TRANSITIONS = """\
+; Synthetic test data. Not EA content.
+WindowTransition FadeWholeScreen
+  FireOnce = Yes
+End
+"""
+
+MAIN_MENU = layout(window('MainMenu.wnd:MainMenuParent', (0, 0, 800, 600), (30, 50, 110, 255),
+    '  CHILD\n' +
+    window('MainMenu.wnd:MapBorder', (0, 0, 10, 10), (0, 0, 0, 0)) +
+    window('MainMenu.wnd:MapBorder1', (0, 0, 10, 10), (0, 0, 0, 0)) +
+    window('MainMenu.wnd:MapBorder2', (0, 0, 10, 10), (0, 0, 0, 0)) +
+    window('MainMenu.wnd:MapBorder3', (0, 0, 10, 10), (0, 0, 0, 0)) +
+    window('MainMenu.wnd:MapBorder4', (0, 0, 10, 10), (0, 0, 0, 0)) +
+    window('MainMenu.wnd:Red', (100, 100, 400, 300), (200, 40, 40, 255)) +
+    window('MainMenu.wnd:Yellow', (450, 350, 700, 520), (230, 200, 30, 255)) + '  ENDALLCHILDREN\n'), init='MainMenuInit')
+
+BLANK_WINDOW = layout(window('BlankWindow.wnd:Root', (0, 0, 800, 600), (0, 0, 0, 255)))
+
 STAGES = {
     1: {
         'inizh': [('Data\\INI\\GameData.ini', GAME_DATA)] + [(p, '; empty\n') for p in EMPTY_INI],
@@ -91,6 +227,10 @@ STAGES = {
     },
     2: {
         'inizh': [('Data\\INI\\Weather.ini', WEATHER)],
+        'ini': [],
+    },
+    3: {
+        'inizh': [('Data\\INI\\WindowTransitions.ini', TRANSITIONS), ('Window\\Menus\\MainMenu.wnd', MAIN_MENU), ('Window\\Menus\\BlankWindow.wnd', BLANK_WINDOW)],
         'ini': [],
     },
 }

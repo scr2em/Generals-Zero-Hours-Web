@@ -417,7 +417,47 @@ void Device::PresentToCanvas()
 HRESULT Device::Present(const RECT *, const RECT *, HWND, const RGNDATA *)
 {
     if (m_contextLost) return D3DERR_DEVICELOST;
+    if (GetConfig().debug && m_presentCounter % 120 == 0)
+    {
+        // Sample the finished frame: a few pixels of the back buffer, as RGBA.
+        GLuint fbo = 0;
+        glGenFramebuffers(1, &fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_bbColor, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE)
+        {
+            const UINT w = m_pp.BackBufferWidth, h = m_pp.BackBufferHeight;
+            std::vector<uint8_t> px((size_t)w * h * 4);
+            glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+            size_t lit = 0;
+            UINT minX = w, minY = h, maxX = 0, maxY = 0;
+            const uint8_t *first = nullptr;
+            for (UINT y = 0; y < h; ++y)
+                for (UINT x = 0; x < w; ++x)
+                {
+                    const uint8_t *p = &px[((size_t)y * w + x) * 4];
+                    if (p[0] | p[1] | p[2])
+                    {
+                        if (!first) first = p;
+                        ++lit;
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            if (lit)
+                Log("back buffer %ux%u: %u non-black pixels in (%u,%u)-(%u,%u), first is %u,%u,%u,%u", w, h, (unsigned)lit, minX, minY, maxX, maxY, first[0], first[1], first[2], first[3]);
+            else
+                Log("back buffer %ux%u: all black", w, h);
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glDeleteFramebuffers(1, &fbo);
+        m_targetsDirty = true;
+    }
     PresentToCanvas();
+    if (GetConfig().debug && ++m_presentCounter % 120 == 1)
+        Log("present #%u, %u draw calls so far", m_presentCounter, (unsigned)m_drawCounter);
     return D3D_OK;
 }
 
@@ -449,6 +489,8 @@ HRESULT Device::TestCooperativeLevel()
 {
     if (emscripten_is_webgl_context_lost(m_glContext))
     {
+        if (!m_contextLost)
+            fprintf(stderr, "[WebD3D8] The WebGL context was lost (the graphics driver reset or ran out of memory)\n");
         m_contextLost = true;
         return D3DERR_DEVICELOST;
     }
