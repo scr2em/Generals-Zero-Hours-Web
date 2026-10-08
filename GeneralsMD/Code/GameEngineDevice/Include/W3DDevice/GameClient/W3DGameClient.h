@@ -46,6 +46,7 @@
 #include "W3DDevice/GameClient/W3DGameFont.h"
 #include "W3DDevice/GameClient/W3DDisplayStringManager.h"
 #ifdef __EMSCRIPTEN__
+#include "GameClient/VideoPlayer.h"
 #include "WebDevice/GameClient/WebKeyboard.h"
 #else
 #include "VideoDevice/Bink/BinkVideoPlayer.h"
