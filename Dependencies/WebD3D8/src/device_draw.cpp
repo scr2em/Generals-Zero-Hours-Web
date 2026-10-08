@@ -706,6 +706,14 @@ bool Device::PrepareDraw(GLenum mode)
         Log("draw #%u: mode 0x%x, fvf 0x%x, vs %u, alphablend %u, src %u dst %u, zenable %u, cull %u, tex0 %d, rt %ux%u", m_drawCounter, (unsigned)mode,
             (unsigned)m_s.vertexShader, (unsigned)m_s.vertexShader, m_s.rs[D3DRS_ALPHABLENDENABLE], m_s.rs[D3DRS_SRCBLEND], m_s.rs[D3DRS_DESTBLEND],
             m_s.rs[D3DRS_ZENABLE], m_s.rs[D3DRS_CULLMODE], m_s.textures[0] ? 1 : 0, m_rtWidth, m_rtHeight);
+    if (GetConfig().debug && m_presentCounter % 120 == 0)
+    {
+        const Mat4 &w = m_s.world[0], &v = m_s.view, &p = m_s.proj;
+        Log("  viewport %u,%u %ux%u z %.2f-%.2f", (unsigned)m_s.viewport.X, (unsigned)m_s.viewport.Y, (unsigned)m_s.viewport.Width, (unsigned)m_s.viewport.Height, m_s.viewport.MinZ, m_s.viewport.MaxZ);
+        Log("  world %g %g %g %g / %g %g %g %g / %g %g %g %g / %g %g %g %g", w.m[0], w.m[1], w.m[2], w.m[3], w.m[4], w.m[5], w.m[6], w.m[7], w.m[8], w.m[9], w.m[10], w.m[11], w.m[12], w.m[13], w.m[14], w.m[15]);
+        Log("  view  %g %g %g %g / %g %g %g %g / %g %g %g %g / %g %g %g %g", v.m[0], v.m[1], v.m[2], v.m[3], v.m[4], v.m[5], v.m[6], v.m[7], v.m[8], v.m[9], v.m[10], v.m[11], v.m[12], v.m[13], v.m[14], v.m[15]);
+        Log("  proj  %g %g %g %g / %g %g %g %g / %g %g %g %g / %g %g %g %g", p.m[0], p.m[1], p.m[2], p.m[3], p.m[4], p.m[5], p.m[6], p.m[7], p.m[8], p.m[9], p.m[10], p.m[11], p.m[12], p.m[13], p.m[14], p.m[15]);
+    }
     GL_STAGE_CHECK("entry");
     if (!SelectProgram()) return false;
     GL_STAGE_CHECK("select program");
