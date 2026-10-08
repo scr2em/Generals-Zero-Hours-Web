@@ -4,6 +4,9 @@ import { createRequire } from 'node:module';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
+import net from 'node:net';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const here = path.dirname(fileURLToPath(import.meta.url));
@@ -60,3 +63,50 @@ export async function startSignaling(extra = {}) {
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** A free TCP port (and, most of the time, the same UDP port). */
+export function freePort() {
+	return new Promise((resolve, reject) => {
+		const server = net.createServer();
+		server.listen(0, '127.0.0.1', () => { const { port } = server.address(); server.close(() => resolve(port)); });
+		server.on('error', reject);
+	});
+}
+
+/** Starts coturn on the loopback interface with the shared-secret ("TURN REST API") credentials that the
+ *  signaling server hands out, logging to a file. Resolves to {url, port, secret, realm, log(), stop()}. */
+export async function startCoturn({ secret = 'zh-test-secret', realm = 'zh.test', logFile } = {}) {
+	const port = await freePort();
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zh-coturn-'));
+	logFile ??= path.join(dir, 'turn.log');
+	const base = 20000 + Math.floor(Math.random() * 20000);
+	const child = spawn('turnserver', [
+		'--no-cli', '--no-tls', '--no-dtls', '-n', '--no-software-attribute',
+		'--listening-ip=127.0.0.1', `--listening-port=${port}`, '--relay-ip=127.0.0.1', `--min-port=${base}`, `--max-port=${base + 2000}`,
+		`--realm=${realm}`, '--use-auth-secret', `--static-auth-secret=${secret}`, '--fingerprint', '--no-stdout-log',
+		'--allow-loopback-peers',      // both players are on this machine
+		`--log-file=${logFile}`, '--verbose', `--pidfile=${path.join(dir, 'turn.pid')}`, '--simple-log',
+	], { stdio: 'ignore' });
+	let exited = false;
+	child.on('exit', () => { exited = true; });
+	// wait until it answers STUN binding requests
+	const dgram = await import('node:dgram');
+	const request = Buffer.alloc(20);
+	request.writeUInt16BE(0x0001, 0); request.writeUInt32BE(0x2112a442, 4); request.fill(7, 8);
+	for (let i = 0; i < 50; ++i) {
+		if (exited) throw new Error('turnserver exited (is coturn installed? apt-get install coturn)');
+		const ok = await new Promise((resolve) => {
+			const socket = dgram.createSocket('udp4');
+			const timer = setTimeout(() => { socket.close(); resolve(false); }, 150);
+			socket.on('message', () => { clearTimeout(timer); socket.close(); resolve(true); });
+			socket.send(request, port, '127.0.0.1');
+		});
+		if (ok) break;
+		await sleep(100);
+	}
+	return {
+		port, secret, realm, logFile, url: `turn:127.0.0.1:${port}`,
+		log: () => (fs.existsSync(logFile) ? fs.readFileSync(logFile, 'utf8') : ''),
+		stop: () => new Promise((resolve) => { if (exited) { resolve(); return; } child.once('exit', resolve); child.kill('SIGTERM'); setTimeout(resolve, 2000).unref(); }),
+	};
+}

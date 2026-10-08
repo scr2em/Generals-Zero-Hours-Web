@@ -54,7 +54,10 @@ test('two WebSocket clients: join, signal, relay, leave', async (t) => {
 	assert.deepEqual([...relayed.binary], [1, wb.id, 0x1f, 0x96, 0x1f, 0x96, 65, 66]);
 
 	const health = await (await fetch(`http://127.0.0.1:${s.port}/healthz`)).json();
-	assert.deepEqual(health, { ok: true, rooms: 1, players: 2 });
+	assert.equal(health.ok, true);
+	assert.equal(health.rooms, 1);
+	assert.equal(health.players, 2);
+	assert.equal(health.stats.relayedDatagrams, 1);
 
 	b.close();
 	assert.equal((await next(a, (m) => m.t === 'peer-left')).id, wb.id);

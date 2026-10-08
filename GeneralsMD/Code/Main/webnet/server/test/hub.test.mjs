@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
-import { Hub, buildIceServers, sanitizeName, normalizeRoomCode, ROOM_CODE_RE, FRAME_DATA, TO_ALL } from '../hub.mjs';
+import { Hub, buildIceServers, sanitizeName, normalizeRoomCode, generateRoomCode, ROOM_CODE_RE, FRAME_DATA, TO_ALL } from '../hub.mjs';
 
 const config = (extra = {}) => ({
 	subnet: '10.77.0', maxPlayers: 4, maxRooms: 3,
@@ -152,4 +152,177 @@ test('TURN credentials: fixed, and time limited from a shared secret (coturn RES
 	const ice = buildIceServers(config({ turn: ['turn:t:3478'], turnSecret: 's3cret', turnTtl: 3600 }), 'r-2', now).iceServers[1];
 	assert.equal(ice.username, `${1_700_000_000 + 3600}:r-2`);
 	assert.equal(ice.credential, createHmac('sha1', 's3cret').update(ice.username).digest('base64'));
+});
+
+// ---- hardening ---------------------------------------------------------------------------------
+
+test('names are unique in a room (the game refuses duplicates)', () => {
+	const hub = new Hub(config());
+	const a = join(hub, 'NAMES', 'Alice');
+	const b = join(hub, 'NAMES', 'alice');
+	const c = join(hub, 'NAMES', 'ALICE');
+	assert.equal(a.welcome.name, 'Alice');
+	assert.equal(b.welcome.name, 'alice 2');
+	assert.equal(c.welcome.name, 'ALICE 3');
+	const long = join(hub, 'NAMES2', 'x'.repeat(30));
+	const long2 = join(hub, 'NAMES2', 'x'.repeat(30));
+	assert.equal(long2.welcome.name.length, 24);
+	assert.notEqual(long.welcome.name, long2.welcome.name);
+});
+
+test('a client that reconnects can ask for its old address', () => {
+	const hub = new Hub(config());
+	const a = join(hub, 'KEEP', 'A');     // .2
+	const b = join(hub, 'KEEP', 'B');     // .3
+	hub.removePeer(a.peer);
+	const client = fakeClient();
+	const peer = hub.createPeer(client);
+	hub.handleText(peer, JSON.stringify({ t: 'join', room: 'KEEP', name: 'B2', want: 3 }));   // taken by b
+	assert.equal(client.last('welcome').id, 2, 'a taken address is not given away');
+	const again = fakeClient();
+	const peer2 = hub.createPeer(again);
+	hub.removePeer(b.peer);
+	hub.handleText(peer2, JSON.stringify({ t: 'join', room: 'KEEP', name: 'B', want: 3 }));
+	assert.equal(again.last('welcome').id, 3, 'a free address is given back');
+	for (const bad of [0, 1, 255, 1000, -4, 2.5, '3', null]) {
+		const c = fakeClient();
+		const p = hub.createPeer(c);
+		hub.handleText(p, JSON.stringify({ t: 'join', room: 'KEEP2', want: bad }));
+		assert.equal(c.last('welcome').id, 2, `want ${JSON.stringify(bad)} is ignored`);
+		hub.removePeer(p);
+	}
+	// beyond the room's size
+	const c = fakeClient();
+	hub.handleText(hub.createPeer(c), JSON.stringify({ t: 'join', room: 'KEEP3', want: 2 + 4 }));
+	assert.equal(c.last('welcome').id, 2);
+});
+
+test('signals are rebuilt from known fields and bounded', () => {
+	const hub = new Hub(config());
+	const a = join(hub, 'SIG2', 'A');
+	const b = join(hub, 'SIG2', 'B');
+	const send = (data) => hub.handleText(b.peer, JSON.stringify({ t: 'signal', to: 2, data }));
+	send({ sdp: { type: 'offer', sdp: 'v=0', evil: '<script>', __proto__: { x: 1 } }, extra: 1 });
+	assert.deepEqual(a.client.last('signal').data, { sdp: { type: 'offer', sdp: 'v=0' } });
+	send({ candidate: { candidate: 'candidate:1 1 udp 1 1.2.3.4 5 typ host', sdpMid: '0', sdpMLineIndex: 0, usernameFragment: 'abcd', evil: 1 } });
+	assert.deepEqual(a.client.last('signal').data, { candidate: { candidate: 'candidate:1 1 udp 1 1.2.3.4 5 typ host', sdpMid: '0', sdpMLineIndex: 0, usernameFragment: 'abcd' } });
+	const before = a.client.all('signal').length;
+	for (const bad of [null, 5, 'x', [], {}, { sdp: null }, { sdp: { type: 'rollback', sdp: '' } }, { sdp: { type: 'offer', sdp: 5 } },
+		{ sdp: { type: 'offer', sdp: 'x'.repeat(13000) } }, { candidate: 'x' }, { candidate: { candidate: 'x'.repeat(2000) } },
+		{ candidate: { candidate: 'x', sdpMLineIndex: 'a' } }, { candidate: { candidate: 'x', sdpMid: {} } }]) {
+		assert.equal(send(bad), true);
+		assert.equal(b.client.last('error').code, 'bad-message', JSON.stringify(bad).slice(0, 40));
+	}
+	assert.equal(a.client.all('signal').length, before, 'nothing invalid is forwarded');
+});
+
+test('oversized and rate limited control messages', () => {
+	const hub = new Hub(config({ controlBurst: 10, controlRate: 1 }));
+	assert.equal(hub.handleText(hub.createPeer(fakeClient()), ' '.repeat(20000)), false, 'too big: dropped');
+	const client = fakeClient();
+	const peer2 = hub.createPeer(client);
+	for (let i = 0; i < 30; ++i) hub.handleText(peer2, JSON.stringify({ t: 'ping', n: i }));
+	assert.equal(client.all('pong').length, 10, 'only the burst is answered');
+	assert.equal(client.last('error').code, 'rate-limit');
+	assert.equal(client.all('error').length, 1, 'one error per second, not one per message');
+	// sustained flooding gets the client disconnected
+	let keep = true;
+	for (let i = 0; i < 300 && keep; ++i) keep = hub.handleText(peer2, JSON.stringify({ t: 'ping' }));
+	assert.equal(keep, false);
+	assert.ok(hub.stats.rateLimitedControl >= 90);
+});
+
+test('the size of control messages is limited per second as well', () => {
+	const hub = new Hub(config({ controlBytesBurst: 5000, controlBytesRate: 1 }));
+	const a = join(hub, 'BYTES', 'A');
+	const b = join(hub, 'BYTES', 'B');
+	const big = JSON.stringify({ t: 'signal', to: 2, data: { sdp: { type: 'offer', sdp: 'x'.repeat(3000) } } });
+	hub.handleText(b.peer, big);
+	hub.handleText(b.peer, big);
+	assert.equal(a.client.all('signal').length, 1);
+});
+
+test('joins are limited per client address, and so are the rooms it opens', () => {
+	const hub = new Hub(config({ joinBurst: 10, joinRate: 0.0001, maxRooms: 50, maxRoomsPerIp: 2 }));
+	const attempt = (address, room) => {
+		const client = fakeClient();
+		const peer = hub.createPeer(client, address);
+		hub.handleText(peer, JSON.stringify({ t: 'join', room }));
+		return client.last('error')?.code ?? 'ok';
+	};
+	assert.equal(attempt('1.1.1.1', 'AAA'), 'ok');
+	assert.equal(attempt('1.1.1.1', 'BBB'), 'ok');
+	assert.equal(attempt('1.1.1.1', 'CCC'), 'rate-limit', 'a third room');
+	assert.equal(attempt('1.1.1.1', 'AAA'), 'ok', 'joining an existing room is fine');
+	assert.equal(attempt('2.2.2.2', 'CCC'), 'ok', 'other addresses are not affected');
+});
+
+test('join attempts: the bucket empties for a code guesser, others are not affected', () => {
+	const hub = new Hub(config({ joinBurst: 5, joinRate: 0.0001, maxRoomsPerIp: 100, maxRooms: 100 }));
+	const codes = [];
+	for (let i = 0; i < 20; ++i) {
+		const client = fakeClient();
+		const peer = hub.createPeer(client, '6.6.6.6');
+		hub.handleText(peer, JSON.stringify({ t: 'join', room: 'GUESS' + i }));
+		codes.push(client.last('error')?.code ?? 'ok');
+	}
+	assert.equal(codes.filter((c) => c === 'ok').length, 5);
+	const other = fakeClient();
+	hub.handleText(hub.createPeer(other, '7.7.7.7'), JSON.stringify({ t: 'join', room: 'FINE' }));
+	assert.equal(other.last('welcome').room, 'FINE');
+	hub.prune(Date.now() + 1e9);
+	assert.equal(hub.joinBuckets.size, 0, 'idle buckets are forgotten');
+});
+
+test('a broadcast costs the sender what the server sends out', () => {
+	const hub = new Hub(config({ maxPlayers: 8, byteBurst: 10000, byteRate: 1 }));
+	const peers = [];
+	for (let i = 0; i < 8; ++i) peers.push(join(hub, 'FAN', 'P' + i));
+	const frame = Buffer.concat([Buffer.from([FRAME_DATA, TO_ALL, 0, 1, 0, 2]), Buffer.alloc(94)]);   // 100 bytes x 7 receivers
+	for (let i = 0; i < 40; ++i) hub.handleBinary(peers[0].peer, frame);
+	const got = peers[1].client.inbox.filter((m) => m.binary).length;
+	assert.equal(got, Math.floor(10000 / 700), `${got} broadcasts of 100 bytes fit in the burst`);
+});
+
+test('room codes: 6 symbols without look-alikes, from a CSPRNG, and distinct', () => {
+	const seen = new Set();
+	for (let i = 0; i < 5000; ++i) {
+		const c = generateRoomCode();
+		assert.match(c, /^[ABCDEFGHJKMNPQRSTUVWXYZ2-9]{6}$/);
+		seen.add(c);
+	}
+	assert.ok(seen.size > 4990, 'no repeats in 5000 codes (31^6 = 887 million)');
+	const counts = new Map();
+	for (let i = 0; i < 31 * 600; ++i) for (const ch of generateRoomCode(1)) counts.set(ch, (counts.get(ch) ?? 0) + 1);
+	assert.equal(counts.size, 31);
+	for (const n of counts.values()) assert.ok(n > 400 && n < 800, 'letters are about equally likely');
+});
+
+test('text echoed back to a client is clipped and printable', () => {
+	const hub = new Hub(config());
+	const a = join(hub, 'ECHO', 'A');
+	hub.handleText(a.peer, JSON.stringify({ t: 'x'.repeat(5000) + '<script>' }));
+	assert.ok(a.client.last('error').message.length < 80);
+	hub.handleText(a.peer, JSON.stringify({ t: 'signal', to: '<img src=x onerror=1>\u0000'.repeat(50), data: {} }));
+	const m = a.client.last('error').message;
+	assert.ok(m.length < 80 && !/[\u0000-\u001f]/.test(m));
+	hub.handleText(a.peer, JSON.stringify({ t: 'ping', n: { huge: 'x'.repeat(10000) } }));
+	assert.deepEqual(a.client.last('pong'), { t: 'pong', n: 0 });
+	const b = fakeClient();
+	hub.handleText(hub.createPeer(b), JSON.stringify({ t: 'join', room: { $ne: 1 } }));
+	assert.equal(b.last('error').code, 'bad-room');
+});
+
+test('hostile names are kept as plain text (escaping is the page\'s job) but stripped of control characters', () => {
+	assert.equal(sanitizeName('<b onload=alert(1)>', 'x'), '<b onload=alert(1)>');
+	assert.equal(sanitizeName('a‮b​c\u0007d', 'x'), 'abcd', 'bidi overrides, zero width and bell characters are removed');
+	assert.equal(sanitizeName('  two   spaces  ', 'x'), 'two spaces');
+	assert.equal(sanitizeName('\u0001\u0002', 'Player9'), 'Player9');
+});
+
+test('TURN: relay only policy is sent with the credentials', () => {
+	const ice = buildIceServers(config({ turn: ['turn:t:3478'], turnSecret: 's', iceRelayOnly: true }), 'r-2');
+	assert.equal(ice.iceTransportPolicy, 'relay');
+	assert.equal(buildIceServers(config({ turn: [], iceRelayOnly: true }), 'r-2').iceTransportPolicy, undefined, 'never relay-only without TURN');
+	assert.equal(buildIceServers(config({ turn: ['turn:t:3478'], turnSecret: 's' }), 'r-2').iceTransportPolicy, undefined);
 });

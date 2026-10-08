@@ -1,0 +1,51 @@
+# systemd unit for the Zero Hour web network server.
+#
+#   sudo useradd --system --home-dir /srv/zhnet --shell /usr/sbin/nologin zhnet      # (or let DynamicUser do it)
+#   sudo cp -r GeneralsMD/Code/Main/webnet /srv/zhnet && sudo chown -R root:root /srv/zhnet
+#   (cd /srv/zhnet/server && sudo npm ci --omit=dev)
+#   sudo install -D -m 640 -g zhnet /srv/zhnet/deploy/zhnet.env.example /etc/zhnet/zhnet.env    # then edit it
+#   sudo cp /srv/zhnet/deploy/zhnet.service /etc/systemd/system/ && sudo systemctl daemon-reload
+#   sudo systemctl enable --now zhnet
+#   journalctl -u zhnet -f
+#
+# To serve the game build from the same process put it under /srv/zhnet-site (readable by the service) and set
+# ZHNET_STATIC=/srv/zhnet-site in /etc/zhnet/zhnet.env.
+[Unit]
+Description=Zero Hour web network server (rooms, signaling, relay)
+Documentation=file:///srv/zhnet/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=zhnet
+Group=zhnet
+EnvironmentFile=-/etc/zhnet/zhnet.env
+ExecStart=/usr/bin/node /srv/zhnet/server/server.mjs
+# A crash must not take the rooms down for long (players reconnect on their own).
+Restart=always
+RestartSec=1
+# Many players: one socket each.
+LimitNOFILE=65536
+# The server needs nothing but its port.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

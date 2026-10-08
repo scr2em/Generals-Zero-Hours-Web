@@ -1,0 +1,28 @@
+# nginx in front of the server (TLS certificates from certbot / your usual way). Start the server with
+# ZHNET_TRUST_PROXY=1 so that the per-address limits see the real client addresses.
+map $http_upgrade $zh_connection { default upgrade; '' close; }
+
+server {
+	listen 443 ssl http2;
+	server_name play.example.com;
+	ssl_certificate     /etc/letsencrypt/live/play.example.com/fullchain.pem;
+	ssl_certificate_key /etc/letsencrypt/live/play.example.com/privkey.pem;
+
+	# The game's files (and the cross-origin isolation headers) come from the server's --static mode ...
+	location / {
+		proxy_pass http://127.0.0.1:8787;
+		proxy_set_header X-Forwarded-For $remote_addr;      # overwrite what the client sent
+		proxy_set_header Host $host;
+	}
+	# ... the signaling WebSocket needs the upgrade headers and a long read timeout.
+	location /signal {
+		proxy_pass http://127.0.0.1:8787;
+		proxy_http_version 1.1;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $zh_connection;
+		proxy_set_header X-Forwarded-For $remote_addr;
+		proxy_set_header Host $host;
+		proxy_read_timeout 1h;
+		proxy_send_timeout 1h;
+	}
+}

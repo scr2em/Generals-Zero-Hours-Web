@@ -49,8 +49,8 @@ try {
 	await a.click('#net-create');
 	await a.waitForFunction(() => zhNet.state.status === 'online', null, { timeout: 10000 });
 	const code = await a.evaluate(() => zhNet.state.room);
-	check('New room gets a code from the server', /^[A-Z0-9]{5}$/.test(code), code);
-	check('the state line names the room and the address', /Room [A-Z0-9]{5} .* 10\.77\.0\.2 as .Alice/.test(await text(a, 'state-net')), await text(a, 'state-net'));
+	check('New room gets a code from the server', /^[A-Z0-9]{6}$/.test(code), code);
+	check('the state line names the room and the address', /Room [A-Z0-9]{6} .* 10\.77\.0\.2 as .Alice/.test(await text(a, 'state-net')), await text(a, 'state-net'));
 	check('the URL carries the room', new URL(a.url()).searchParams.get('room') === code);
 	check('the invite link has the room code', (await a.inputValue('#net-link')).includes('room=' + code), await a.inputValue('#net-link'));
 	check('the inputs are locked while in a room', await a.isDisabled('#net-room') && await a.isDisabled('#net-name'));
@@ -98,7 +98,20 @@ try {
 	await d.waitForFunction(() => zhNet.state.status === 'failed', null, { timeout: 10000 });
 	check('a bad room code is reported by the server', /3 to 16/.test(await text(d, 'state-net')), await text(d, 'state-net'));
 
-	check('no script errors on the pages', [a, b, c, d].every((p) => p.errors.length === 0), [a, b, c, d].flatMap((p) => p.errors).join(' | '));
+	// Hostile names and codes are text, never markup
+	const evil = await open(`signal=${signal}&room=EVIL1&name=${encodeURIComponent('<img src=x onerror=window.__pwned=1>')}`);
+	await evil.waitForFunction(() => zhNet.state.status === 'online', null, { timeout: 10000 });
+	const victim = await open(`signal=${signal}&room=EVIL1&name=Victim`);
+	await victim.waitForFunction(() => zhNet.state.status === 'online' && zhNet.state.peers.length === 1, null, { timeout: 10000 });
+	const shown = await text(victim, 'state-net');
+	check('a name with markup is shown as text', shown.includes('<img src=x onerror=window.__pwned=1>'), shown);
+	check('and nothing was injected into the page', (await victim.evaluate(() => !window.__pwned && !document.querySelector('#state-net img, #net-badge img'))), '');
+	check('the invite link and the badge are plain text, too', !(await victim.evaluate(() => document.getElementById('net-badge').innerHTML.includes('<'))));
+	const urlEvil = await open(`signal=${signal}&room=${encodeURIComponent('"><script>window.__pwned2=1</script>')}`);
+	await sleep(500);
+	check('a hostile room code in the URL is only text in the input, and is refused', !(await urlEvil.evaluate(() => window.__pwned2)) && /3 to 16/.test(await text(urlEvil, 'state-net')), await text(urlEvil, 'state-net'));
+
+	check('no script errors on the pages', [a, b, c, d, evil, victim].every((p) => p.errors.length === 0), [a, b, c, d, evil, victim].flatMap((p) => p.errors).join(' | '));
 } catch (e) {
 	console.log('ERROR ' + (e && e.stack || e));
 	failures++;

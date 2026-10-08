@@ -1,0 +1,6 @@
+# Caddy (automatic HTTPS) in front of the server started with ZHNET_STATIC and --trust-proxy.
+# The game page and the WebSocket (/signal) are the same site, so no CORS and no ?signal= are needed.
+play.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8787
+}
