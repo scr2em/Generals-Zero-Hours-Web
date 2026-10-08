@@ -26,18 +26,31 @@ export const TARGETS = {
 		// Archives that identify the folder; at least one must exist.
 		signature: ['inizh.big', 'w3dzh.big', 'textureszh.big', 'terrainzh.big'],
 		hint: 'Command & Conquer Generals - Zero Hour',
+		// The engine fingerprints one executable at start up (GlobalData::generateExeCRC) and asserts when it is missing.
+		// It is only read, never run, and the CRC only matters for network/replay compatibility, so whichever of these the
+		// install has is stored as engineExe. (Retail Zero Hour ships generals.exe; the real game binary is game.dat.)
 		engineExe: 'generalszh.exe',
+		engineExeSources: ['generalszh.exe', 'generals.exe'],
+		// At the top level of the folder only archives are used by the engine; Data/ and other sub folders are kept.
+		rootFiles: 'big',
 	},
 	generals: {
 		label: 'Generals',
 		dir: 'generals',
 		signature: ['ini.big', 'w3d.big', 'textures.big', 'terrain.big'],
 		hint: 'Command & Conquer Generals',
+		// Zero Hour only reads *.big files from the Generals install directory (StdBIGFileSystem::init), nothing else.
+		rootFiles: 'big',
+		bigOnly: true,
+		// Only used for the original game's own maps, which Zero Hour lists next to its own. Skipped to save space.
+		optionalBig: ['maps.big'],
 	},
 };
 
 // What is not needed to run the game in the browser.
-const SKIP_DIRECTORIES = new Set(['movies', 'redist', 'support', 'directx', '__macosx', '.git']);
+// mss: the Miles Sound System codecs (the web build plays audio through Web Audio); userdata: saves and options live in
+// the browser's own userdata/ folder, never in an install.
+const SKIP_DIRECTORIES = new Set(['movies', 'redist', 'support', 'directx', '__macosx', '.git', 'mss', 'userdata']);
 const SKIP_EXTENSIONS = new Set([
 	'exe', 'dll', 'ocx', 'sys', 'vxd', 'msi', 'cab', 'pdb', 'lib', 'bat', 'cmd', 'lnk', 'url',
 	'bik', 'bk2', 'tmp', 'log', 'dmp', 'ds_store',
@@ -182,31 +195,45 @@ export function subSource(source, prefix) {
 // Planning
 // ---------------------------------------------------------------------------------------------
 
+// options: includeVideos; includeOptional (base game: also take maps.big); skip: [{ name, size }] files that are already
+// in the browser from the other target (same name and size: not copied twice, e.g. Music.big is in both installs).
 export function planImport(source, targetKey, options = {}) {
 	const target = TARGETS[targetKey];
 	const includeVideos = !!options.includeVideos;
+	const optional = new Set(options.includeOptional ? [] : (target.optionalBig || []));
+	const already = new Set((options.skip || []).map((f) => f.name.toLowerCase() + ':' + f.size));
 	const names = new Set(source.files.filter(f => f.segments.length === 1).map(f => f.segments[0].toLowerCase()));
 	const looksRight = target.signature.some(n => names.has(n));
+	const exeSource = (target.engineExeSources || []).find((n) => names.has(n)) || null;
 
 	const files = [];
 	let skipped = 0;
+	let skippedBytes = 0;
 	for (const file of source.files) {
 		const dirs = file.segments.slice(0, -1).map(s => s.toLowerCase());
 		const name = file.segments[file.segments.length - 1].toLowerCase();
 		const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
+		const atRoot = dirs.length === 0;
 		const skipDir = dirs.some(d => SKIP_DIRECTORIES.has(d) && !(includeVideos && d === 'movies'));
-		// The engine fingerprints its own executable at start up (GlobalData::generateExeCRC) and asserts when
-		// the file is missing, so the one executable the engine reads stays; it is never run.
-		const isEngineExe = dirs.length === 0 && target.engineExe === name;
-		const skipExt = SKIP_EXTENSIONS.has(ext) && !isEngineExe && !(includeVideos && (ext === 'bik' || ext === 'bk2'));
-		if (skipDir || skipExt) {
+		const isEngineExe = atRoot && name === exeSource;
+		let skip = skipDir;
+		if (!skip && atRoot && target.rootFiles === 'big' && ext !== 'big' && !isEngineExe) skip = true;
+		if (!skip && target.bigOnly && !(atRoot && ext === 'big')) skip = true;
+		if (!skip && SKIP_EXTENSIONS.has(ext) && !isEngineExe && !(includeVideos && (ext === 'bik' || ext === 'bk2'))) skip = true;
+		if (!skip && atRoot && optional.has(name)) skip = true;
+		if (!skip && atRoot && already.has(name + ':' + file.size)) skip = true;
+		if (skip) {
 			skipped++;
+			skippedBytes += file.size;
 			continue;
 		}
-		files.push({ ...file, segments: dirs.concat(name) });
+		// The executable the engine reads is always stored under the one name it asks for.
+		files.push({ ...file, segments: isEngineExe ? [target.engineExe] : dirs.concat(name) });
 	}
 	const bytes = files.reduce((sum, f) => sum + f.size, 0);
-	return { targetKey, sourceName: source.name, looksRight, files, skipped, bytes };
+	// The archives at the top level, remembered in the manifest so that the other target can skip identical ones later.
+	const bigs = files.filter((f) => f.segments.length === 1 && f.segments[0].endsWith('.big')).map((f) => ({ name: f.segments[0], size: f.size }));
+	return { targetKey, sourceName: source.name, looksRight, files, skipped, skippedBytes, bytes, manifestExtra: { bigs } };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -292,88 +319,31 @@ export async function opfsRoot() {
 	return navigator.storage.getDirectory();
 }
 
-// Copies the planned files into OPFS. onProgress({ done, total, bytesDone, bytesTotal, path }).
-// Files already present with the same size are skipped, so an interrupted import resumes.
-// plan.prefetch (default 1) is how many files are requested ahead of the one being written,
-// which only matters when getFile() is slow (the starter download).
-export async function runImport(plan, { onProgress = () => {}, signal = null, forceWorker = false } = {}) {
+// Import modes. A plan says how it wants to be put in place with plan.mode (default 'copy': every file is copied into OPFS).
+// Another mode, for example reading the picked files in place through File System Access handles without copying them, is
+// added with registerImportMode(name, async (plan, options) => ({ copied, manifest })) and set by the code that builds the
+// plan; the launcher, the status line and the manifest do not change. A mode has to write <target.dir>.manifest.json
+// (use writeManifest) so that getStatus() sees the target.
+const importModes = new Map();
+export function registerImportMode(name, fn) {
+	importModes.set(name, fn);
+}
+
+export async function runImport(plan, options = {}) {
+	const mode = plan.mode || 'copy';
+	const fn = importModes.get(mode);
+	if (!fn) throw new Error('Unknown import mode ' + mode);
+	return fn(plan, options);
+}
+
+export async function writeManifest(plan, extra = {}) {
 	const root = await opfsRoot();
 	const target = TARGETS[plan.targetKey];
-	const base = await root.getDirectoryHandle(target.dir, { create: true });
-	const cache = new Map();
-	const useWorker = forceWorker || typeof FileSystemFileHandle.prototype.createWritable !== 'function';
-
-	let bytesDone = 0;
-	let lastReport = 0;
-	const report = (path, done, force) => {
-		const now = performance.now();
-		if (force || now - lastReport > 100) {
-			lastReport = now;
-			onProgress({ done, total: plan.files.length, bytesDone, bytesTotal: plan.bytes, path });
-		}
-	};
-
-	let copied = 0;
-	for (let i = 0; i < plan.files.length; i++) {
-		if (signal && signal.aborted) {
-			throw new DOMException('Import cancelled', 'AbortError');
-		}
-		const entry = plan.files[i];
-		const path = entry.segments.join('/');
-		const dirSegments = entry.segments.slice(0, -1);
-		const name = entry.segments[entry.segments.length - 1];
-		report(path, i, true);
-
-		const dir = await getDirectory(base, dirSegments, cache);
-		for (let ahead = i + 1; ahead <= i + (plan.prefetch || 1) && ahead < plan.files.length; ahead++) {
-			const next = plan.files[ahead];
-			if (!next.pending) {
-				next.pending = next.getFile();
-				next.pending.catch(() => {}); // reported when it is awaited
-			}
-		}
-		const file = await (entry.pending || entry.getFile());
-		entry.pending = null;
-
-		let existing = null;
-		try {
-			existing = await (await dir.getFileHandle(name)).getFile();
-		} catch (e) { /* not there yet */ }
-		if (existing && existing.size === file.size) {
-			bytesDone += file.size;
-			continue;
-		}
-
-		const onBytes = (n) => { bytesDone += n; report(path, i, false); };
-		if (useWorker) {
-			await writeWithWorker([target.dir].concat(dirSegments), name, file, onBytes);
-		} else {
-			const handle = await dir.getFileHandle(name, { create: true });
-			await writeWithWritable(handle, file, onBytes);
-		}
-		copied++;
-	}
-
-	const manifest = {
-		version: MANIFEST_VERSION,
-		kind: plan.kind || 'install',
-		source: plan.sourceName,
-		...(plan.manifestExtra || {}),
-		files: plan.files.length,
-		bytes: plan.bytes,
-		importedAt: new Date().toISOString(),
-	};
-	const manifestHandle = await root.getFileHandle(target.dir + '.manifest.json', { create: true });
-	const writable = await manifestHandle.createWritable().catch(() => null);
-	if (writable) {
-		await writable.write(JSON.stringify(manifest));
-		await writable.close();
-	} else {
-		await writeWithWorker([], target.dir + '.manifest.json', new Blob([JSON.stringify(manifest)]), () => {});
-	}
+	const manifest = await writeManifest(plan);
 	onProgress({ done: plan.files.length, total: plan.files.length, bytesDone: plan.bytes, bytesTotal: plan.bytes, path: '' });
 	return { copied, manifest };
 }
+registerImportMode('copy', copyIntoOpfs);
 
 // ---------------------------------------------------------------------------------------------
 // Free starter content
@@ -481,7 +451,7 @@ export async function downloadStarter({ onProgress = () => {}, signal = null, fo
 	const plan = planStarter(manifest, { signal });
 	const { usage, quota } = await storageEstimate();
 	if (quota && quota - usage < plan.bytes * 1.1) {
-		throw new Error('Not enough browser storage: need ' + formatBytes(plan.bytes) + ', ' + formatBytes(quota - usage) + ' available.');
+		throw new Error(quotaMessage(plan.bytes, quota - usage));
 	}
 	// Start clean: no leftovers of another install or an older pack, no half downloads.
 	await clearTarget('game');
@@ -551,6 +521,14 @@ export async function requestPersistence() {
 		}
 	} catch (e) { /* ignore */ }
 	return false;
+}
+
+// The message for a browser storage quota that is too small. Chrome gives a site a share of the free disk space, so the
+// number changes with the disk, and freeing space on the computer is the fix.
+export function quotaMessage(needed, available) {
+	return 'Not enough browser storage: this needs ' + formatBytes(needed) + ' but the browser allows only ' + formatBytes(Math.max(0, available)) +
+		' more. Chrome limits a site to a share of the free disk space on this computer, so freeing some disk space (about ' +
+		formatBytes(Math.max(0, needed - available)) + ' or more) and trying again usually fixes it.';
 }
 
 export function formatBytes(bytes) {

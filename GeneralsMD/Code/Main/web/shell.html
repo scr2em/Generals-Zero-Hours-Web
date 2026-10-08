@@ -94,6 +94,9 @@
 	}
 	.row.secondary { opacity: .92; }
 	button.secondary { background: transparent; }
+	.optional-line { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+	.optional-line button.link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+	.optional-line button.link:disabled { opacity: .5; cursor: default; }
 	.placeholder-note {
 		margin: 8px 0 6px;
 		padding: 8px 10px;
@@ -246,13 +249,10 @@
 				<button type="button" id="pick-game">Select folder&hellip;</button>
 				<div class="state" id="state-game">Checking&hellip;</div>
 			</div>
-			<div class="row secondary" id="row-generals" hidden>
-				<div class="name">Base game files</div>
-				<button type="button" id="pick-generals" class="secondary">Select base game folder&hellip;</button>
-				<div class="state" id="state-generals">Checking&hellip;</div>
-			</div>
-			<p class="fine" id="base-note" hidden>Zero Hour is an expansion and uses data files of the original game it was built on,
-				which were not found next to it. Select the folder of that game (the one with <code>INI.big</code>) so they can be copied too.</p>
+			<p class="optional-line" id="row-generals" hidden>
+				<span id="state-generals"></span>
+				<button type="button" id="pick-generals" class="link">Add the original Generals files (optional, improves missing art)</button>
+			</p>
 		</section>
 
 		<section class="choice" id="choice-starter" aria-labelledby="starter-title">
@@ -397,25 +397,22 @@ function setState(key, text, kind) {
 // 'starter', 'install' or null: what is in the browser's game/ folder right now.
 function currentMode() {
 	if (status.game && status.game.kind === 'starter') return 'starter';
-	if (status.game && status.generals) return 'install';
+	if (status.game) return 'install'; // the original Generals files are an optional extra
 	return null;
 }
 
 async function refreshStatus() {
 	status = await importer.getStatus();
 	const starter = status.game && status.game.kind === 'starter' ? status.game : null;
-	for (const key of Object.keys(importer.TARGETS)) {
-		const m = status[key];
-		if (m && m.kind !== 'starter') {
-			setState(key, 'Ready · ' + m.files.toLocaleString() + ' files · ' + importer.formatBytes(m.bytes), 'ok');
-		} else {
-			setState(key, starter ? 'Not imported (the starter content is installed instead)' : key === 'game' ? 'Not imported yet' : 'Not found yet');
-		}
-	}
-	// The base game files are asked for only when Zero Hour was imported and they were not found with it.
-	const needBase = !!(status.game && status.game.kind !== 'starter' && !status.generals);
-	$('row-generals').hidden = !needBase && !(status.generals && status.generals.kind !== 'starter');
-	$('base-note').hidden = !needBase;
+	const own = status.game && status.game.kind !== 'starter' ? status.game : null;
+	setState('game', own ? 'Ready \u00b7 ' + own.files.toLocaleString() + ' files \u00b7 ' + importer.formatBytes(own.bytes)
+		: starter ? 'Not imported (the starter content is installed instead)' : 'Not imported yet', own ? 'ok' : '');
+	// The original Generals files are an unobtrusive extra offered after a Zero Hour import (Play never waits for them).
+	const base = status.generals && status.generals.kind !== 'starter' ? status.generals : null;
+	$('row-generals').hidden = !own;
+	$('state-generals').textContent = base ? 'Original Generals files added \u00b7 ' + base.files.toLocaleString() + ' files \u00b7 ' + importer.formatBytes(base.bytes) + '. ' : '';
+	$('state-generals').className = 'state' + (base ? ' ok' : '');
+	$('pick-generals').textContent = base ? 'Add them again' : 'Add the original Generals files (optional, improves missing art)';
 	if (starter) {
 		setState('starter', 'Ready · ' + starter.files.toLocaleString() + ' files · ' + importer.formatBytes(starter.bytes) +
 			(starter.packVersion ? ' · version ' + starter.packVersion : ''), 'ok');
@@ -469,13 +466,13 @@ async function pickSource() {
 }
 
 // Copies one planned target; throws a message string for problems the user can act on.
-async function importPlan(plan, key, target) {
+async function importPlan(plan, key, target, totalBytes = plan.bytes) {
 	if (!plan.looksRight) {
 		throw 'That does not look like the ' + target.label + ' folder (' + target.signature[0].toUpperCase() + ' not found).';
 	}
 	const { quota, usage } = await importer.storageEstimate();
-	if (quota && quota - usage < plan.bytes) {
-		throw 'Not enough browser storage: need ' + importer.formatBytes(plan.bytes) + ', ' + importer.formatBytes(quota - usage) + ' available.';
+	if (quota && quota - usage < totalBytes) {
+		throw importer.quotaMessage(totalBytes, quota - usage);
 	}
 	await importer.requestPersistence();
 	if (status.game && status.game.kind === 'starter') {
@@ -489,13 +486,15 @@ async function importPlan(plan, key, target) {
 	status = await importer.getStatus();
 }
 
-// "Select folder" for Zero Hour: the picked folder is Zero Hour itself or holds it (and usually the base game, too).
+// "Select folder" for Zero Hour: the picked folder is Zero Hour itself or holds it (and perhaps the original game, too:
+// then those files are added silently). key 'generals' is the optional second pick for the original game's files.
 async function pickAndImport(key) {
 	if (busy) return;
 	let problem = null;
 	let problemKey = key;
 	busy = true;
 	updateButtons();
+	const noQuiet = (e) => { if (typeof e === 'string') { problem = e; return true; } throw e; };
 	try {
 		const source = await pickSource();
 		if (!source) return;
@@ -506,23 +505,30 @@ async function pickAndImport(key) {
 				problem = 'That folder does not look like Zero Hour, and none of its subfolders does either (INIZH.big not found).';
 				return;
 			}
+			const gamePlan = importer.planImport(importer.subSource(source, found.game), 'game', { includeVideos: false });
+			// Identical archives (Music.big is in both installs) are copied once, from Zero Hour.
+			const basePlan = found.base
+				? importer.planImport(importer.subSource(source, found.base), 'generals', { includeVideos: false, skip: gamePlan.manifestExtra.bigs })
+				: null;
+			const total = gamePlan.bytes + (basePlan ? basePlan.bytes : 0);
 			try {
-				await importPlan(importer.planImport(importer.subSource(source, found.game), 'game', { includeVideos: false }), 'game', importer.TARGETS.game);
-			} catch (e) { if (typeof e === 'string') { problem = e; return; } throw e; }
-			if (found.base) {
+				await importPlan(gamePlan, 'game', importer.TARGETS.game, total);
+			} catch (e) { if (noQuiet(e)) return; }
+			if (basePlan) {
 				problemKey = 'generals';
 				try {
-					await importPlan(importer.planImport(importer.subSource(source, found.base), 'generals', { includeVideos: false }), 'generals', importer.TARGETS.generals);
-				} catch (e) { if (typeof e === 'string') { problem = e; return; } throw e; }
+					await importPlan(basePlan, 'generals', importer.TARGETS.generals);
+				} catch (e) { if (noQuiet(e)) return; }
 			}
 		} else {
-			// The secondary prompt: the folder of the base game (or one above it).
-			let sub = found.base ? importer.subSource(source, found.base) : source;
+			// The optional second pick: the folder of the original game (or one above it).
+			const sub = found.base ? importer.subSource(source, found.base) : source;
+			const own = status.game && status.game.bigs || [];
 			try {
-				await importPlan(importer.planImport(sub, 'generals', { includeVideos: false }), 'generals', importer.TARGETS.generals);
+				await importPlan(importer.planImport(sub, 'generals', { includeVideos: false, skip: own }), 'generals', importer.TARGETS.generals);
 			} catch (e) {
-				if (typeof e === 'string') { problem = 'That does not look like the base game folder (INI.big not found).'; return; }
-				throw e;
+				if (typeof e === 'string' && /does not look like/.test(e)) { problem = 'That does not look like the original Generals folder (INI.big not found).'; return; }
+				if (noQuiet(e)) return;
 			}
 		}
 	} catch (e) {
@@ -535,8 +541,8 @@ async function pickAndImport(key) {
 		$('progress').hidden = true;
 		await refreshStatus();
 		if (problem) {
-			if (problemKey === 'generals') $('row-generals').hidden = false;
 			setState(problemKey, problem, 'err');
+			if (problemKey === 'generals') $('row-generals').hidden = false;
 		}
 	}
 }
