@@ -71,7 +71,7 @@ const browser = await chromium.launch({
 async function importFolder(page, button, stateId, dir) {
 	const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click(button)]);
 	await chooser.setFiles(dir);
-	await page.waitForFunction((id) => /^(Ready|That does not|That folder|Import failed|Not enough)/.test(document.getElementById(id).textContent), stateId, { timeout: 60000 });
+	await page.waitForFunction((id) => /^(Ready|.*added|That does not|That folder|Import failed|Not enough)/.test(document.getElementById(id).textContent), stateId, { timeout: 60000 });
 	return page.textContent('#' + stateId);
 }
 
@@ -101,12 +101,13 @@ async function session(label, query) {
 	const gameState = await importFolder(page, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
 	check('zero hour imported', /Ready/.test(gameState), gameState);
 	check('videos/exe skipped, engine exe kept (4 files expected)', /4 files/.test(gameState), gameState);
-	check('play still disabled without the base game files', await page.isDisabled('#play'));
-	check('secondary prompt asks for the base game', await page.isVisible('#row-generals') && await page.isVisible('#base-note'));
+	check('play is enabled without the original Generals files', !(await page.isDisabled('#play')));
+	check('an optional link offers the original Generals files', await page.isVisible('#row-generals') && /optional/.test(await page.textContent('#pick-generals')));
 	const wrongBase = await importFolder(page, '#pick-generals', 'state-generals', path.join(fake, 'ZeroHour'));
-	check('the base game prompt rejects a Zero Hour folder', /does not look like the base game/.test(wrongBase), wrongBase);
+	check('the optional pick rejects a Zero Hour folder', /does not look like the original Generals/.test(wrongBase), wrongBase);
+	check('a rejected optional pick leaves play enabled', !(await page.isDisabled('#play')));
 	const generalsState = await importFolder(page, '#pick-generals', 'state-generals', path.join(fake, 'Generals'));
-	check('generals imported', /Ready/.test(generalsState), generalsState);
+	check('generals imported', /added/.test(generalsState), generalsState);
 	await page.screenshot({ path: path.join(out, '2-imported.png') });
 	check('play enabled', !(await page.isDisabled('#play')));
 
@@ -214,10 +215,103 @@ async function session(label, query) {
 	const state = await importFolder(page, '#pick-game', 'state-game', fake);
 	check('parent folder: Zero Hour found inside', /Ready · 4 files/.test(state), state);
 	await page.waitForFunction(() => /Ready/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
-	check('parent folder: the base game was found in the same pick', /Ready/.test(await page.textContent('#state-generals')));
-	check('parent folder: no secondary prompt', await page.isHidden('#base-note'));
+	check('parent folder: the base game was found in the same pick', /added/.test(await page.textContent('#state-generals')));
 	check('parent folder: play enabled after one pick', !(await page.isDisabled('#play')));
 	await s.context.close();
+}
+
+// ---- 1c. retail layouts (small stand-ins with the real file names) -------------------------------------------
+{
+	const put = (dir, rel, size) => {
+		const file = path.join(dir, rel);
+		mkdirSync(path.dirname(file), { recursive: true });
+		writeFileSync(file, Buffer.alloc(size, 0x41));
+	};
+	const zhRoot = path.join(out, 'retail', 'Command and Conquer Generals Zero Hour');
+	const baseRoot = path.join(out, 'retail', 'Command and Conquer Generals');
+	const zhOnly = path.join(out, 'retail-zh-only', 'Command and Conquer Generals Zero Hour');
+	rmSync(path.join(out, 'retail'), { recursive: true, force: true });
+	rmSync(path.join(out, 'retail-zh-only'), { recursive: true, force: true });
+	const bigs = (dir, names, size0) => names.forEach((n, i) => put(dir, n, size0 + i * 1000));
+	const layoutZh = (dir) => {
+		bigs(dir, ['AudioEnglishZH.big', 'AudioZH.big', 'EnglishZH.big', 'GensecZH.big', 'INIZH.big', 'MapsZH.big', 'MusicZH.big', 'PatchZH.big',
+			'ShadersZH.big', 'SpeechEnglishZH.big', 'SpeechZH.big', 'TerrainZH.big', 'TexturesZH.big', 'W3DEnglishZH.big', 'W3DZH.big', 'WindowZH.big'], 5000);
+		put(dir, 'Music.big', 7777);
+		for (const f of ['generals.exe', 'WorldBuilder.exe', 'game.dat', 'Generals.dat', 'langdata.dat', 'Install_Final.bmp', 'launcher.bmp',
+			'binkw32.dll', 'BrowserEngine.dll', 'mss32.dll', 'SECDRV.SYS', '00000000.016', '00000000.256']) put(dir, f, 300);
+		put(dir, 'Data/INI/Default/Object.ini', 40);
+		put(dir, 'Data/Scripts/Scripts.ini', 40);
+		put(dir, 'MSS/mp3dec.asi', 100);
+		put(dir, 'UserData/Options.ini', 10);
+	};
+	const layoutBase = (dir) => {
+		bigs(dir, ['Audio.big', 'AudioEnglish.big', 'English.big', 'gensec.big', 'INI.big', 'maps.big', 'Patch.big', 'shaders.big', 'Speech.big',
+			'SpeechEnglish.big', 'Terrain.big', 'Textures.big', 'W3D.big', 'Window.big'], 9000);
+		put(dir, 'Music.big', 7777);   // the same archive as Zero Hour's (same size)
+		for (const f of ['generals.exe', 'WorldBuilder.exe', 'BrowserEngine.dll', 'SECDRV.SYS', '00000000.016', '00000000.256']) put(dir, f, 300);
+		put(dir, 'Data/Scripts/Scripts.ini', 40);
+		put(dir, 'MSS/mp3dec.asi', 100);
+		put(dir, 'UserData/Options.ini', 10);
+	};
+	layoutZh(zhRoot);
+	layoutBase(baseRoot);
+	layoutZh(zhOnly);
+	const opfsFiles = (page) => page.evaluate(async () => {
+		const result = [];
+		async function walk(dir, prefix) {
+			for await (const [name, handle] of dir.entries()) {
+				if (handle.kind === 'directory') await walk(handle, prefix + name + '/');
+				else result.push(prefix + name);
+			}
+		}
+		await walk(await navigator.storage.getDirectory(), '');
+		return result.sort();
+	});
+
+	// A. the Zero Hour folder only (no base game anywhere)
+	{
+		const s = await session('retail-zh');
+		const { page } = s;
+		await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+		await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+		const state = await importFolder(page, '#pick-game', 'state-game', zhOnly);
+		check('retail ZH only: recognised and imported (17 archives + engine exe + 2 data files)', /Ready · 20 files/.test(state), state);
+		check('retail ZH only: Play is enabled, nothing blocks', !(await page.isDisabled('#play')));
+		check('retail ZH only: the optional link is offered, no prompt', await page.isVisible('#pick-generals') && !/need|must|required/i.test(await page.textContent('#row-generals')));
+		const files = await opfsFiles(page);
+		check('retail ZH only: Music.big and the Zero Hour archives are copied', files.includes('game/music.big') && files.includes('game/inizh.big') && files.includes('game/musiczh.big'));
+		check('retail ZH only: the engine exe is stored as generalszh.exe, no other exe', files.includes('game/generalszh.exe') && !files.some((f) => /\.exe$/.test(f) && f !== 'game/generalszh.exe'), files.filter((f) => /exe/.test(f)).join(','));
+		check('retail ZH only: dll, sys, dat, bmp, MSS, UserData and fingerprint files are skipped',
+			!files.some((f) => /\.(dll|sys|dat|bmp|asi|016|256)$/.test(f)) && !files.some((f) => /\/(mss|userdata)\//.test(f)), files.join(','));
+		check('retail ZH only: Data/ is kept', files.includes('game/data/ini/default/object.ini') && files.includes('game/data/scripts/scripts.ini'));
+		check('retail ZH only: nothing in generals/', !files.some((f) => f.startsWith('generals/')));
+		await page.screenshot({ path: path.join(out, '7-retail-zh.png') });
+
+		// C. then the optional second pick: the original Generals folder
+		const base = await importFolder(page, '#pick-generals', 'state-generals', baseRoot);
+		check('optional add: the original Generals files are added (13 archives: no maps.big, no duplicate Music.big)', /added · 13 files/.test(base), base);
+		const after = await opfsFiles(page);
+		check('optional add: only archives from the original game', after.filter((f) => f.startsWith('generals/')).every((f) => /^generals\/[^/]+\.big$/.test(f)), after.filter((f) => f.startsWith('generals/')).join(','));
+		check('optional add: maps.big and the duplicate Music.big are not copied', !after.includes('generals/maps.big') && !after.includes('generals/music.big') && after.includes('generals/ini.big'));
+		check('optional add: Play still enabled', !(await page.isDisabled('#play')));
+		await s.context.close();
+	}
+
+	// B. the parent folder with both installs side by side
+	{
+		const s = await session('retail-both');
+		const { page } = s;
+		await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+		await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+		const state = await importFolder(page, '#pick-game', 'state-game', path.join(out, 'retail'));
+		check('retail parent folder: Zero Hour recognised by its ZH archives, not by generals.exe', /Ready · 20 files/.test(state), state);
+		await page.waitForFunction(() => /added/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
+		check('retail parent folder: the original game is added silently (13 archives)', /added · 13 files/.test(await page.textContent('#state-generals')), await page.textContent('#state-generals'));
+		const files = await opfsFiles(page);
+		check('retail parent folder: no duplicates, no extras', !files.includes('generals/music.big') && !files.includes('generals/maps.big') && !files.some((f) => /^generals\/(data|mss|userdata)/.test(f)));
+		check('retail parent folder: Play enabled', !(await page.isDisabled('#play')));
+		await s.context.close();
+	}
 }
 
 // ---- 2. a second visit in a fresh context with the worker writer ------------------------------
@@ -227,9 +321,9 @@ async function session(label, query) {
 	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&writer=worker`);
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 	await importFolder(page, '#pick-game', 'state-game', fake);
-	await page.waitForFunction(() => /Ready/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
+	await page.waitForFunction(() => /added/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
 	const st = await page.textContent('#state-generals');
-	check('import through the sync-access-handle worker', /Ready/.test(st), st);
+	check('import through the sync-access-handle worker', /added/.test(st), st);
 	const sizes = await page.evaluate(async () => {
 		const root = await navigator.storage.getDirectory();
 		const dir = await root.getDirectoryHandle('generals');
@@ -253,7 +347,7 @@ async function session(label, query) {
 	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 	await importFolder(page, '#pick-game', 'state-game', fake);
-	await page.waitForFunction(() => /Ready/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
+	await page.waitForFunction(() => /added/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
 	for (let run = 1; run <= 2; run++) {
 		await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
 		await page.waitForFunction(() => /Ready/.test(document.getElementById('state-game').textContent));
