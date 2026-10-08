@@ -395,10 +395,13 @@ static void gameFrame( void * )
 
 		++s_frameCount;
 		if( s_frameCount == 1 )
+		{
 			DEBUG_LOG(("First frame done"));
+			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFirstFrameAt = Date.now(); } );
+		}
 		if( s_frameCount % 30 == 0 )
 		{
-			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; }, s_frameCount );
+			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; }, s_frameCount, (unsigned)emscripten_get_heap_size() );
 			if( s_logFrames && s_frameCount % 300 == 0 )
 				printf( "frame %u\n", s_frameCount );
 		}

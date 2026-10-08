@@ -89,9 +89,11 @@ async function importData() {
 	}
 }
 
+let playClickedAt = 0;
 async function play() {
 	await page.waitForFunction(() => !document.getElementById('play').disabled, null, { timeout: 30000 });
 	logs.push(stamp() + ' --- Play ---');
+	playClickedAt = Date.now();
 	await page.click('#play');
 }
 
@@ -162,6 +164,9 @@ if (opt.stack) {
 	await page.waitForTimeout(3000);
 	const f2 = await frames();
 	console.log(`frames: ${f1} -> ${f2} in 3 s (${((f2 - f1) / 3).toFixed(1)} fps)`);
+	const info = await page.evaluate(() => ({ first: window.__zhFirstFrameAt || 0, heap: window.__zhHeapBytes || 0 })).catch(() => ({ first: 0, heap: 0 }));
+	if (info.first) console.log(`startup: first frame ${((info.first - playClickedAt) / 1000).toFixed(1)} s after Play (includes module download from localhost, compile and engine init)`);
+	if (info.heap) console.log(`wasm heap: ${(info.heap / 1048576).toFixed(0)} MB`);
 }
 
 const panel = await page.evaluate(() => ({
