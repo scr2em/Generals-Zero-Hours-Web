@@ -165,7 +165,7 @@ void Device::ResetState()
     m_s.viewport.MaxZ = 1.0f;
     m_keyDirty = true;
     m_derivedDirty = true;
-    ++m_verTransform; ++m_verLights; ++m_verMaterial; ++m_verMisc; ++m_verVsConst; ++m_verPsConst;
+    DirtyAllUniforms();
     m_pipelineValid = false;
     m_targetsDirty = true;
     m_attribSig = 0;
@@ -189,14 +189,27 @@ static Mat4 *TransformSlot(DeviceState &s, D3DTRANSFORMSTATETYPE t)
     return nullptr;
 }
 
+/// Bumps the uniform groups that depend on a transform.
+void Device::TransformChanged(D3DTRANSFORMSTATETYPE state)
+{
+    const int v = (int)state;
+    if (v == D3DTS_VIEW) { Dirty(G_XFORM); Dirty(G_LIGHTS); m_derivedDirty = true; }
+    else if (v == D3DTS_PROJECTION) { Dirty(G_XFORM); m_derivedDirty = true; }
+    else if (v >= D3DTS_TEXTURE0 && v <= D3DTS_TEXTURE7) Dirty(G_TEXMAT);
+    else if (v == D3DTS_WORLD) { Dirty(G_XFORM); m_derivedDirty = true; }
+    // World matrices 1..3 only matter for vertex blending, which is not implemented.
+}
+
 HRESULT Device::SetTransform(D3DTRANSFORMSTATETYPE state, const D3DMATRIX *m)
 {
     if (!m) return D3DERR_INVALIDCALL;
     Mat4 *slot = TransformSlot(m_s, state);
     if (!slot) return D3DERR_INVALIDCALL;
-    *slot = Mat4::FromD3D(*m);
-    ++m_verTransform;
-    m_derivedDirty = true;
+    ++g_d3d.setTransform;
+    const Mat4 nm = Mat4::FromD3D(*m);
+    if (memcmp(nm.m, slot->m, sizeof nm.m) == 0) return D3D_OK;
+    *slot = nm;
+    TransformChanged(state);
     return D3D_OK;
 }
 
@@ -215,8 +228,7 @@ HRESULT Device::MultiplyTransform(D3DTRANSFORMSTATETYPE state, const D3DMATRIX *
     Mat4 *slot = TransformSlot(m_s, state);
     if (!slot) return D3DERR_INVALIDCALL;
     *slot = Mat4::FromD3D(*m) * *slot;
-    ++m_verTransform;
-    m_derivedDirty = true;
+    TransformChanged(state);
     return D3D_OK;
 }
 
@@ -226,7 +238,8 @@ HRESULT Device::SetViewport(const D3DVIEWPORT8 *vp)
     if (vp->X + vp->Width > m_rtWidth || vp->Y + vp->Height > m_rtHeight || !vp->Width || !vp->Height)
         return D3DERR_INVALIDCALL;
     m_s.viewport = *vp;
-    ++m_verTransform;
+    Dirty(G_VIEWPORT);
+    Dirty(G_POINT);
     return D3D_OK;
 }
 
@@ -241,7 +254,7 @@ HRESULT Device::SetMaterial(const D3DMATERIAL8 *m)
 {
     if (!m) return D3DERR_INVALIDCALL;
     m_s.material = *m;
-    ++m_verMaterial;
+    Dirty(G_MATERIAL);
     return D3D_OK;
 }
 
@@ -259,7 +272,7 @@ HRESULT Device::SetLight(DWORD index, const D3DLIGHT8 *l)
     if (m_s.lights.size() <= index) m_s.lights.resize(index + 1);
     m_s.lights[index].defined = true;
     m_s.lights[index].light = *l;
-    ++m_verLights;
+    Dirty(G_LIGHTS);
     m_keyDirty = true;
     return D3D_OK;
 }
@@ -286,7 +299,7 @@ HRESULT Device::LightEnable(DWORD index, BOOL enable)
         ls.light.Direction.z = 1.0f;
     }
     ls.enabled = enable != 0;
-    ++m_verLights;
+    Dirty(G_LIGHTS);
     m_keyDirty = true;
     return D3D_OK;
 }
@@ -302,7 +315,7 @@ HRESULT Device::SetClipPlane(DWORD index, const float *plane)
 {
     if (!plane || index >= MAX_CLIP_PLANES) return D3DERR_INVALIDCALL;
     memcpy(m_s.clipPlanes[index], plane, 4 * sizeof(float));
-    ++m_verTransform;
+    Dirty(G_CLIP);
     return D3D_OK;
 }
 
@@ -319,6 +332,7 @@ HRESULT Device::GetClipPlane(DWORD index, float *plane)
 HRESULT Device::SetRenderState(D3DRENDERSTATETYPE state, DWORD value)
 {
     if ((unsigned)state >= RS_COUNT) return D3DERR_INVALIDCALL;
+    ++g_d3d.setRenderState;
     DWORD &slot = m_s.rs[state];
     if (slot == value) return D3D_OK;
     slot = value;
@@ -332,13 +346,17 @@ HRESULT Device::SetRenderState(D3DRENDERSTATETYPE state, DWORD value)
     case D3DRS_ALPHAFUNC: case D3DRS_CLIPPLANEENABLE: case D3DRS_POINTSPRITEENABLE: case D3DRS_POINTSCALEENABLE:
     case D3DRS_SHADEMODE:
         m_keyDirty = true;
-        ++m_verMisc;
         break;
     // States that are shader uniforms.
-    case D3DRS_FOGSTART: case D3DRS_FOGEND: case D3DRS_FOGDENSITY: case D3DRS_FOGCOLOR: case D3DRS_TEXTUREFACTOR:
-    case D3DRS_ALPHAREF: case D3DRS_AMBIENT: case D3DRS_POINTSIZE: case D3DRS_POINTSIZE_MIN: case D3DRS_POINTSIZE_MAX:
+    case D3DRS_FOGSTART: case D3DRS_FOGEND: case D3DRS_FOGDENSITY: case D3DRS_FOGCOLOR:
+        Dirty(G_FOG);
+        break;
+    case D3DRS_TEXTUREFACTOR: Dirty(G_TFACTOR); break;
+    case D3DRS_ALPHAREF: Dirty(G_ALPHAREF); break;
+    case D3DRS_AMBIENT: Dirty(G_AMBIENT); break;
+    case D3DRS_POINTSIZE: case D3DRS_POINTSIZE_MIN: case D3DRS_POINTSIZE_MAX:
     case D3DRS_POINTSCALE_A: case D3DRS_POINTSCALE_B: case D3DRS_POINTSCALE_C:
-        ++m_verMisc;
+        Dirty(G_POINT);
         break;
     default: break;
     }
@@ -355,8 +373,10 @@ HRESULT Device::GetRenderState(D3DRENDERSTATETYPE state, DWORD *value)
 HRESULT Device::SetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value)
 {
     if (stage >= MAX_STAGES || (unsigned)type >= TSS_COUNT) return D3DERR_INVALIDCALL;
+    ++g_d3d.setTextureStageState;
     DWORD &slot = m_s.tss[stage][type];
     if (slot == value) return D3D_OK;
+    const DWORD old = slot;
     slot = value;
     switch (type)
     {
@@ -365,13 +385,20 @@ HRESULT Device::SetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE type,
     case D3DTSS_RESULTARG: case D3DTSS_TEXCOORDINDEX: case D3DTSS_TEXTURETRANSFORMFLAGS:
         m_keyDirty = true;
         break;
+    case D3DTSS_ADDRESSU: case D3DTSS_ADDRESSV: case D3DTSS_ADDRESSW:
+        // BORDER addressing is emulated in the shader, so it is part of the program key.
+        if (old == D3DTADDRESS_BORDER || value == D3DTADDRESS_BORDER) m_keyDirty = true;
+        break;
+    case D3DTSS_BORDERCOLOR:
+        Dirty(G_BORDER);
+        break;
     case D3DTSS_MIPMAPLODBIAS:
         m_keyDirty = true;
-        ++m_verMisc;
+        Dirty(G_LOD);
         break;
     case D3DTSS_BUMPENVMAT00: case D3DTSS_BUMPENVMAT01: case D3DTSS_BUMPENVMAT10: case D3DTSS_BUMPENVMAT11:
     case D3DTSS_BUMPENVLSCALE: case D3DTSS_BUMPENVLOFFSET:
-        ++m_verMisc;
+        Dirty(G_BUMP);
         break;
     default: break;
     }
@@ -389,6 +416,7 @@ HRESULT Device::GetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE type,
 HRESULT Device::SetTexture(DWORD stage, IDirect3DBaseTexture8 *tex)
 {
     if (stage >= MAX_STAGES) return D3DERR_INVALIDCALL;
+    ++g_d3d.setTexture;
     if (m_s.textures[stage].get() == tex) return D3D_OK;
     m_s.textures[stage] = tex;
     m_keyDirty = true;
@@ -444,7 +472,7 @@ HRESULT Device::ApplyStateBlock(DWORD token)
     m_keyDirty = true;
     m_derivedDirty = true;
     m_samplerDirtyMask = 0xFF;
-    ++m_verTransform; ++m_verLights; ++m_verMaterial; ++m_verMisc; ++m_verVsConst; ++m_verPsConst;
+    DirtyAllUniforms();
     m_attribSig = 0;
     return D3D_OK;
 }
@@ -543,7 +571,7 @@ HRESULT Device::SetVertexShader(DWORD handle)
     {
         // `def` and D3DVSD_CONST constants are loaded into the register file when the shader is set.
         for (int i = 0; i < VS_CONSTANTS; ++i)
-            if (vs->defMask[i]) { memcpy(m_s.vsConst[i], vs->defConstants[i], 16); ++m_verVsConst; }
+            if (vs->defMask[i]) { memcpy(m_s.vsConst[i], vs->defConstants[i], 16); Dirty(G_VSC); }
     }
     return D3D_OK;
 }
@@ -579,8 +607,9 @@ HRESULT Device::DeleteVertexShader(DWORD handle)
 HRESULT Device::SetVertexShaderConstant(DWORD reg, const void *data, DWORD count)
 {
     if (!data || reg + count > VS_CONSTANTS) return D3DERR_INVALIDCALL;
+    ++g_d3d.setShaderConstant;
     memcpy(m_s.vsConst[reg], data, count * 16);
-    ++m_verVsConst;
+    Dirty(G_VSC);
     return D3D_OK;
 }
 
@@ -663,8 +692,9 @@ HRESULT Device::DeletePixelShader(DWORD handle)
 HRESULT Device::SetPixelShaderConstant(DWORD reg, const void *data, DWORD count)
 {
     if (!data || reg + count > PS_CONSTANTS) return D3DERR_INVALIDCALL;
+    ++g_d3d.setShaderConstant;
     memcpy(m_s.psConst[reg], data, count * 16);
-    ++m_verPsConst;
+    Dirty(G_PSC);
     return D3D_OK;
 }
 

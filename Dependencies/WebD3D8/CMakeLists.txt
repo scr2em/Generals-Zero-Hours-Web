@@ -42,3 +42,26 @@ target_link_options(web_d3d8_test PRIVATE
     -sINITIAL_MEMORY=64MB -sEXIT_RUNTIME=0 -sASSERTIONS=1
     --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/tests/shell.html
 )
+
+# Feature tests: checked scenes for the features of the device (border colors, provoking vertex, the ps.1.x
+# texture instructions, context loss, multisampling, D3DX filters, state caching) and the game's own
+# shader sources. Not part of the normal build:
+#   ninja -C build/em-d3d8 web_d3d8_features
+# and run it with tests/run_features.mjs.
+add_executable(web_d3d8_features EXCLUDE_FROM_ALL tests/web_d3d8_features.cpp)
+target_include_directories(web_d3d8_features PRIVATE ${dx8_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_features(web_d3d8_features PRIVATE cxx_std_20)
+target_compile_definitions(web_d3d8_features PRIVATE BUILD_WITH_D3D8)
+target_compile_options(web_d3d8_features PRIVATE -fshort-wchar -fms-extensions -fdeclspec
+    -Wno-microsoft -Wno-c++11-narrowing -Wno-register -Wno-deprecated-declarations
+    -Wno-nonportable-include-path -Wno-ignored-attributes -Wno-unknown-pragmas)
+target_link_libraries(web_d3d8_features PRIVATE web_d3d8)
+set_target_properties(web_d3d8_features PROPERTIES SUFFIX ".html")
+target_link_options(web_d3d8_features PRIVATE
+    -sPROXY_TO_PTHREAD=1 -sOFFSCREENCANVAS_SUPPORT=1 -sJSPI=1 -sALLOW_MEMORY_GROWTH=1
+    -sINITIAL_MEMORY=64MB -sEXIT_RUNTIME=0 -sASSERTIONS=1
+    "SHELL:--embed-file ${CMAKE_SOURCE_DIR}/GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/Shaders@/shaders"
+    "SHELL:--embed-file ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/W3DDevice/GameClient/Water/wave.nvp@/shaders/wave.nvp"
+    "SHELL:--embed-file ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/W3DDevice/GameClient/Water/wave.nvv@/shaders/wave.nvv"
+    --shell-file ${CMAKE_CURRENT_SOURCE_DIR}/tests/shell.html
+)

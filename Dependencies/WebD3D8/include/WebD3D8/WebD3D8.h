@@ -102,6 +102,49 @@ void WebD3D8_SetReleaseTextureShadows(int enable);
 /// decoded on the CPU (for testing that path).
 void WebD3D8_SetDisableS3TC(int disable);
 
+/// Counters of the last completed frame (valid after the first Present()).
+typedef struct WebD3D8_Stats {
+    unsigned frames;                ///< Present() calls so far
+    unsigned draws, drawsIndexed, drawsUserPointer, primitives;
+    unsigned glCalls, glDraw, glState, glBind, glUniform, glUpload, glAttrib, glOther, glSync;
+    unsigned uploadBytes;           ///< bytes handed to glBufferData/SubData and glTex(Sub)Image
+    unsigned setRenderState, setTextureStageState, setTexture, setTransform, setShaderConstant, locks;
+    unsigned programSwitches, pipelineChanges, uniformUploads, programsCreated;
+    unsigned contextLosses, contextRestores;
+} WebD3D8_Stats;
+void WebD3D8_GetStats(WebD3D8_Stats *out);
+
+/// Turns on the diagnostics report: every `seconds` seconds the library prints, to the console,
+/// the per-frame draw/WebGL call counts and a table of every unsupported or approximated Direct3D 8
+/// feature the game hit (render state values, texture formats, shader opcodes, failed creations,
+/// context losses). 0 switches it off (default; nothing is counted or formatted while off).
+/// -webd3d8report[=seconds] on the command line (the page URL's ?arg=) does the same.
+void WebD3D8_SetReport(int seconds);
+/// Prints the report now (when enabled).
+void WebD3D8_PrintReport(void);
+
+/// Test aid: after `frames` presented frames the WebGL context is dropped with WEBGL_lose_context
+/// and restored `restoreAfterFrames` frames later, which exercises the game's device-lost path
+/// (-webd3d8loseafter=N[,M] on the command line). 0 disables.
+void WebD3D8_LoseContextAfterFrames(int frames, int restoreAfterFrames);
+/// Test aid: drops the WebGL context now (WEBGL_lose_context.loseContext()); restoreContext() is
+/// called after the library notices the loss and `restoreAfterFrames` Present()s went by.
+void WebD3D8_LoseContextNow(int restoreAfterFrames);
+
+/// Test aid: pretends that optional WebGL extensions are missing, to exercise the fallbacks. Bits:
+/// 1 = WEBGL_provoking_vertex, 2 = WEBGL_draw_instanced_base_vertex_base_instance,
+/// 4 = WEBGL_polygon_mode, 8 = multisampling. Call before CreateDevice().
+void WebD3D8_SetFeatureOverrides(int disabledMask);
+
+/// Test aid: number of times the feature hits whose description contains `substring` were recorded
+/// (the diagnostics of WebD3D8_SetReport; recording only happens while the report is on).
+unsigned WebD3D8_GetHitCount(const char *substring);
+
+/// Parses the -webd3d8* options out of an argument vector (the library also reads the C runtime's
+/// __argv by itself when a device is created). Options: -webd3d8report[=s], -webd3d8shaders
+/// (advertise vs.1.1/ps.1.4 so the game uses its shader paths), -webd3d8loseafter=N[,M].
+void WebD3D8_ParseArguments(int argc, char **argv);
+
 /// Resolves the entry points the game looks up with GetProcAddress() on
 /// "D3D8.DLL" ("Direct3DCreate8"). Returns null for unknown names. The
 /// Win32 compatibility layer's LoadLibrary("D3D8.DLL") can be backed by this.

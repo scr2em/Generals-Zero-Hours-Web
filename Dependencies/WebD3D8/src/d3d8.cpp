@@ -255,10 +255,17 @@ public:
         }
     }
 
-    HRESULT STDMETHODCALLTYPE CheckDeviceMultiSampleType(UINT adapter, D3DDEVTYPE, D3DFORMAT, BOOL, D3DMULTISAMPLE_TYPE type) override
+    HRESULT STDMETHODCALLTYPE CheckDeviceMultiSampleType(UINT adapter, D3DDEVTYPE, D3DFORMAT format, BOOL, D3DMULTISAMPLE_TYPE type) override
     {
         if (adapter != 0) return D3DERR_INVALIDCALL;
-        return type == D3DMULTISAMPLE_NONE ? D3D_OK : D3DERR_NOTAVAILABLE;
+        if (type == D3DMULTISAMPLE_NONE) return D3D_OK;
+        // Answered before a device (and thus a WebGL context) exists, so this is the common ground of
+        // WebGL2 implementations: 2, 4 and 8 samples on formats that renderbuffers support. The device
+        // clamps the count to GL_MAX_SAMPLES when it creates the multisampled buffers.
+        const FormatInfo *info = GetFormatInfo(format);
+        if (!info || !(info->renderTarget || info->depth)) return D3DERR_NOTAVAILABLE;
+        if (type == D3DMULTISAMPLE_2_SAMPLES || type == D3DMULTISAMPLE_4_SAMPLES || type == D3DMULTISAMPLE_8_SAMPLES) return D3D_OK;
+        return D3DERR_NOTAVAILABLE;
     }
 
     HRESULT STDMETHODCALLTYPE CheckDepthStencilMatch(UINT adapter, D3DDEVTYPE, D3DFORMAT, D3DFORMAT, D3DFORMAT depth) override
@@ -294,7 +301,11 @@ public:
 
 } // namespace
 
-IDirect3D8 *CreateDirect3D8() { return new Direct3D8(); }
+IDirect3D8 *CreateDirect3D8()
+{
+    ParseCommandLineOnce(); // -webd3d8* options (caps depend on them)
+    return new Direct3D8();
+}
 
 } // namespace webd3d8
 

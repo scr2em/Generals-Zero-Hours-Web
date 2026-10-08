@@ -25,8 +25,85 @@
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
+#include <emscripten/html5_webgl.h>
+
+// Canvas event listeners for context loss. The default action of webglcontextlost has to be
+// prevented or the browser never restores the context. The flag is a plain int in the device
+// object: 1 = lost, 2 = restored (the listeners run on the thread that owns the context).
+EM_JS(void, webd3d8_install_context_listeners, (int ctx, int flagPtr), {
+    var c = GL.contexts[ctx];
+    if (!c || !c.GLctx) return;
+    var gl = c.GLctx;
+    var canvas = gl.canvas;
+    if (!canvas || !canvas.addEventListener) return;
+    Module['webd3d8LoseExt'] = gl.getExtension('WEBGL_lose_context');
+    canvas.addEventListener('webglcontextlost', function(e) {
+        e.preventDefault();
+        Atomics.store(HEAP32, flagPtr >> 2, 1);
+    }, false);
+    canvas.addEventListener('webglcontextrestored', function(e) {
+        Atomics.store(HEAP32, flagPtr >> 2, 2);
+    }, false);
+});
+
+// WEBGL_lose_context.loseContext(): the test aid behind WebD3D8_LoseContextNow().
+EM_JS(int, webd3d8_lose_context, (), {
+    var ext = Module['webd3d8LoseExt'];
+    if (!ext) return 0;
+    ext.loseContext();
+    return 1;
+});
+
+EM_JS(int, webd3d8_restore_context, (), {
+    var ext = Module['webd3d8LoseExt'];
+    if (!ext) return 0;
+    try { ext.restoreContext(); } catch (e) { return 0; }
+    return 1;
+});
+
+// D3D flat shading takes the colour of a triangle's first vertex, WebGL's default is the last.
+EM_JS(int, webd3d8_provoking_first, (int ctx), {
+    var c = GL.contexts[ctx];
+    if (!c || !c.GLctx) return 0;
+    var ext = c.GLctx.getExtension('WEBGL_provoking_vertex');
+    if (!ext) return 0;
+    ext.provokingVertexWEBGL(0x8E4D /* FIRST_VERTEX_CONVENTION_WEBGL */);
+    return 1;
+});
 
 namespace webd3d8 {
+
+/// The (single) device, for the test aids of the C interface.
+static Device *g_primaryDevice = nullptr;
+
+//------------------------------------------------------------------------------
+// GLObject registry
+//------------------------------------------------------------------------------
+GLObject::GLObject(Device *dev) : m_glDevice(dev)
+{
+    if (dev) dev->RegisterGL(this);
+}
+
+GLObject::~GLObject()
+{
+    if (m_glDevice) m_glDevice->UnregisterGL(this);
+}
+
+void Device::RegisterGL(GLObject *o)
+{
+    o->m_glPrev = nullptr;
+    o->m_glNext = m_glObjects;
+    if (m_glObjects) m_glObjects->m_glPrev = o;
+    m_glObjects = o;
+}
+
+void Device::UnregisterGL(GLObject *o)
+{
+    if (o->m_glPrev) o->m_glPrev->m_glNext = o->m_glNext;
+    else if (m_glObjects == o) m_glObjects = o->m_glNext;
+    if (o->m_glNext) o->m_glNext->m_glPrev = o->m_glPrev;
+    o->m_glPrev = o->m_glNext = nullptr;
+}
 
 #ifndef GL_UNMASKED_RENDERER_WEBGL
 #define GL_UNMASKED_RENDERER_WEBGL 0x9246
@@ -93,6 +170,7 @@ bool Device::CreateContext(const D3DPRESENT_PARAMETERS &pp)
     if (ctx <= 0)
     {
         Log("could not create a WebGL2 context on '%s' (error %d)", cfg.canvas.c_str(), (int)ctx);
+        WD3D_HIT(Failed, "WebGL2 context creation failed (error %d)", (int)ctx);
         return false;
     }
     if (emscripten_webgl_make_context_current(ctx) != EMSCRIPTEN_RESULT_SUCCESS)
@@ -102,10 +180,25 @@ bool Device::CreateContext(const D3DPRESENT_PARAMETERS &pp)
         return false;
     }
     m_glContext = (int)ctx;
-    emscripten_webgl_enable_extension(ctx, "WEBGL_compressed_texture_s3tc");
-    emscripten_webgl_enable_extension(ctx, "EXT_texture_filter_anisotropic");
-    emscripten_webgl_enable_extension(ctx, "WEBGL_debug_renderer_info");
+    InstallContextListeners();
     return true;
+}
+
+void Device::InstallContextListeners()
+{
+    m_ctxEvent = 0;
+    webd3d8_install_context_listeners(m_glContext, (int)(intptr_t)&m_ctxEvent);
+}
+
+/// Extensions have to be requested again on a restored context.
+void Device::EnableExtensions()
+{
+    emscripten_webgl_enable_extension(m_glContext, "WEBGL_compressed_texture_s3tc");
+    emscripten_webgl_enable_extension(m_glContext, "EXT_texture_filter_anisotropic");
+    emscripten_webgl_enable_extension(m_glContext, "WEBGL_debug_renderer_info");
+    const int off = GetConfig().featureOverrides;
+    m_glcaps.provokingVertex = !(off & 1) && webd3d8_provoking_first(m_glContext) != 0;
+    m_glcaps.baseVertex = !(off & 2) && emscripten_webgl_enable_WEBGL_draw_instanced_base_vertex_base_instance(m_glContext);
 }
 
 void Device::QueryGLCaps()
@@ -116,11 +209,14 @@ void Device::QueryGLCaps()
     glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &m_glcaps.maxVertexAttribs);
     glGetIntegerv(GL_MAX_VERTEX_UNIFORM_VECTORS, &m_glcaps.maxVertexUniformVectors);
     glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &m_glcaps.maxTextureUnits);
+    glGetIntegerv(GL_MAX_SAMPLES, &m_glcaps.maxSamples);
+    if (GetConfig().featureOverrides & 8) m_glcaps.maxSamples = 1;
     GLfloat range[2] = {1, 1};
     glGetFloatv(GL_ALIASED_POINT_SIZE_RANGE, range);
     m_glcaps.maxPointSize = range[1];
 
     // Extensions are queried through the Emscripten helper (works on workers too).
+    EnableExtensions();
     m_glcaps.s3tc = emscripten_webgl_enable_extension(m_glContext, "WEBGL_compressed_texture_s3tc") != 0;
     if (GetConfig().disableS3TC) m_glcaps.s3tc = false;
     m_glcaps.anisotropic = emscripten_webgl_enable_extension(m_glContext, "EXT_texture_filter_anisotropic") != 0;
@@ -144,14 +240,75 @@ void Device::QueryGLCaps()
     m_glcaps.renderer = r ? r : "WebGL2";
     m_glcaps.vendor = ven ? ven : "WebGL";
     SetRendererString("WebGL2: " + m_glcaps.renderer);
-    Log("WebGL2 renderer: %s / %s (%s), S3TC %s, max texture %d, anisotropy %.0f", m_glcaps.vendor.c_str(),
+    DiagSetGpu(m_glcaps.vendor + " / " + m_glcaps.renderer + " (" + m_glcaps.version + "), S3TC " + (m_glcaps.s3tc ? "yes" : "no") +
+               ", max texture " + std::to_string(m_glcaps.maxTextureSize) + ", MSAA up to " + std::to_string(m_glcaps.maxSamples) +
+               "x, provoking vertex ext " + (m_glcaps.provokingVertex ? "yes" : "no") + ", base vertex ext " + (m_glcaps.baseVertex ? "yes" : "no"));
+    Log("WebGL2 renderer: %s / %s (%s), S3TC %s, max texture %d, anisotropy %.0f, max samples %d, provoking vertex %s, base vertex %s", m_glcaps.vendor.c_str(),
         m_glcaps.renderer.c_str(), m_glcaps.version.c_str(), m_glcaps.s3tc ? "yes" : "no (decoded on the CPU)",
-        m_glcaps.maxTextureSize, m_glcaps.maxAnisotropy);
+        m_glcaps.maxTextureSize, m_glcaps.maxAnisotropy, m_glcaps.maxSamples, m_glcaps.provokingVertex ? "yes" : "no",
+        m_glcaps.baseVertex ? "yes" : "no");
+}
+
+/// The objects every draw depends on; recreated after the context was lost.
+void Device::CreateGLBaseObjects()
+{
+    glGenFramebuffers(1, &m_fbo);
+    glGenFramebuffers(1, &m_scratchFbo);
+    glGenVertexArrays(1, &m_vao);
+    glBindVertexArray(m_vao);
+
+    // Neutral defaults for all attributes (0,0,0,1) so that unbound inputs read what D3D expects.
+    for (int i = 0; i < 16 && i < m_glcaps.maxVertexAttribs; ++i) glVertexAttrib4f(i, 0, 0, 0, 1);
+
+    // 1x1 white textures bound for stages without a texture.
+    const uint8_t white[4] = {255, 255, 255, 255};
+    const uint8_t white6[6][4] = {{255, 255, 255, 255}, {255, 255, 255, 255}, {255, 255, 255, 255},
+                                  {255, 255, 255, 255}, {255, 255, 255, 255}, {255, 255, 255, 255}};
+    glGenTextures(3, m_whiteTex);
+    glActiveTexture(GL_TEXTURE0 + UPLOAD_UNIT);
+    glBindTexture(GL_TEXTURE_2D, m_whiteTex[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, m_whiteTex[1]);
+    for (int f = 0; f < 6; ++f)
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white6[f]);
+    glBindTexture(GL_TEXTURE_3D, m_whiteTex[2]);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, 1, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+    m_activeUnit = UPLOAD_UNIT;
+    for (int i = 0; i < 3; ++i) m_boundTex[UPLOAD_UNIT][i] = m_whiteTex[i];
+}
+
+/// Clears every cached piece of GL state knowledge (fresh or restored context).
+void Device::ResetGLCaches()
+{
+    memset(m_boundTex, 0, sizeof m_boundTex);
+    memset(m_boundSampler, 0, sizeof m_boundSampler);
+    memset(m_stageSampler, 0, sizeof m_stageSampler);
+    m_activeUnit = -1;
+    m_applied.Invalidate();
+    m_pipelineValid = false;
+    m_boundProgram = 0xFFFFFFFF;
+    m_boundArrayBuffer = 0xFFFFFFFF;
+    m_boundElementBuffer = 0xFFFFFFFF;
+    m_enabledAttribs = 0;
+    m_attribSig = 0;
+    m_curVao = nullptr;
+    m_boundFbo = 0xFFFFFFFF;
+    m_fboColorKey = m_fboDepthKey = 0;
+    m_targetsDirty = true;
+    m_samplerDirtyMask = 0xFF;
+    m_attachedColorTex = 0;
+    m_whiteSampler = 0;
+    m_curProgram = nullptr;
+    m_keyDirty = true;
+    m_presentGammaValue = -1.0f;
+    m_clearColorValid = m_clearDepthValid = m_clearStencilValid = false;
 }
 
 bool Device::Initialize(IDirect3D8 *d3d, UINT adapter, D3DDEVTYPE type, HWND focus, DWORD behavior,
                         D3DPRESENT_PARAMETERS *pp)
 {
+    ParseCommandLineOnce();
+    g_primaryDevice = this;
     m_d3d = d3d;
     m_d3d->AddRef();
     m_creation.AdapterOrdinal = adapter;
@@ -163,40 +320,19 @@ bool Device::Initialize(IDirect3D8 *d3d, UINT adapter, D3DDEVTYPE type, HWND foc
     if (!CreateContext(params)) return false;
     QueryGLCaps();
 
-    memset(m_boundTex, 0, sizeof m_boundTex);
-    memset(m_boundSampler, 0, sizeof m_boundSampler);
-    m_applied.Invalidate();
-
-    glGenFramebuffers(1, &m_fbo);
-    glGenFramebuffers(1, &m_scratchFbo);
-    glGenVertexArrays(1, &m_vao);
-    glBindVertexArray(m_vao);
-
-    // Neutral defaults for all attributes (0,0,0,1) so that unbound inputs read what D3D expects.
-    for (int i = 0; i < 16 && i < m_glcaps.maxVertexAttribs; ++i) glVertexAttrib4f(i, 0, 0, 0, 1);
-
-    // 1x1 white textures bound for stages without a texture.
-    {
-        const uint8_t white[4] = {255, 255, 255, 255};
-        const uint8_t white6[6][4] = {{255, 255, 255, 255}, {255, 255, 255, 255}, {255, 255, 255, 255},
-                                      {255, 255, 255, 255}, {255, 255, 255, 255}, {255, 255, 255, 255}};
-        glGenTextures(3, m_whiteTex);
-        glActiveTexture(GL_TEXTURE0 + UPLOAD_UNIT);
-        glBindTexture(GL_TEXTURE_2D, m_whiteTex[0]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, m_whiteTex[1]);
-        for (int f = 0; f < 6; ++f)
-            glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, GL_RGBA8, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white6[f]);
-        glBindTexture(GL_TEXTURE_3D, m_whiteTex[2]);
-        glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, 1, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
-        m_activeUnit = UPLOAD_UNIT;
-        for (int i = 0; i < 3; ++i) m_boundTex[UPLOAD_UNIT][i] = m_whiteTex[i];
-    }
+    ResetGLCaches();
+    CreateGLBaseObjects();
 
     m_pp = params;
     if (!CreateBackBuffer(params)) return false;
     CreatePresentProgram();
     ResetState();
+
+    if (GetConfig().loseAfterFrames > 0)
+    {
+        m_loseCountdown = GetConfig().loseAfterFrames;
+        m_loseArmed = true;
+    }
 
     // Persist the corrected parameters for the caller.
     *pp = m_pp;
@@ -218,9 +354,26 @@ void Device::OnZeroRefs()
     m_curDS = nullptr;
     m_s = DeviceState();
     DestroyBackBuffer();
+    if (g_diagOn) DiagPrintReport("device released");
     if (m_glContext)
     {
+        DestroyGLBaseObjects(true);
+        emscripten_webgl_make_context_current(0);
+        emscripten_webgl_destroy_context(m_glContext);
+        m_glContext = 0;
+    }
+    if (g_primaryDevice == this) g_primaryDevice = nullptr;
+    if (m_d3d) { m_d3d->Release(); m_d3d = nullptr; }
+    delete this;
+}
+
+void Device::DestroyGLBaseObjects(bool contextAlive)
+{
+    ClearVaoCache(contextAlive);
+    if (contextAlive)
+    {
         for (auto &s : m_samplers) glDeleteSamplers(1, &s.second);
+        if (m_whiteSampler) glDeleteSamplers(1, &m_whiteSampler);
         glDeleteFramebuffers(1, &m_fbo);
         glDeleteFramebuffers(1, &m_scratchFbo);
         glDeleteVertexArrays(1, &m_vao);
@@ -228,13 +381,23 @@ void Device::OnZeroRefs()
         if (m_streamVB) glDeleteBuffers(1, &m_streamVB);
         if (m_streamIB) glDeleteBuffers(1, &m_streamIB);
         if (m_presentProgram) glDeleteProgram(m_presentProgram);
+        if (m_presentVao) glDeleteVertexArrays(1, &m_presentVao);
         if (m_gammaTex) glDeleteTextures(1, &m_gammaTex);
-        emscripten_webgl_make_context_current(0);
-        emscripten_webgl_destroy_context(m_glContext);
-        m_glContext = 0;
+        for (SubDepth &d : m_subDepth) glDeleteRenderbuffers(1, &d.rb);
+        if (m_resolveRead) glDeleteFramebuffers(1, &m_resolveRead);
+        if (m_resolveDraw) glDeleteFramebuffers(1, &m_resolveDraw);
     }
-    if (m_d3d) { m_d3d->Release(); m_d3d = nullptr; }
-    delete this;
+    m_samplers.clear();
+    m_whiteSampler = 0;
+    m_fbo = m_scratchFbo = m_vao = 0;
+    memset(m_whiteTex, 0, sizeof m_whiteTex);
+    m_streamVB = m_streamIB = 0;
+    m_streamVBSize = m_streamIBSize = m_streamVBPos = m_streamIBPos = 0;
+    m_presentProgram = 0;
+    m_presentVao = 0;
+    m_gammaTex = 0;
+    m_subDepth.clear();
+    m_resolveRead = m_resolveDraw = 0;
 }
 
 //------------------------------------------------------------------------------
@@ -254,13 +417,33 @@ bool Device::CreateBackBuffer(const D3DPRESENT_PARAMETERS &pp)
     m_pp.BackBufferHeight = h;
     if (m_pp.BackBufferFormat == D3DFMT_UNKNOWN) m_pp.BackBufferFormat = D3DFMT_X8R8G8B8;
     if (m_pp.BackBufferCount == 0) m_pp.BackBufferCount = 1;
-    m_pp.MultiSampleType = D3DMULTISAMPLE_NONE;
+
+    // Multisampling: D3D asks for a sample count (2..16); WebGL2 gives what the GPU offers, at most
+    // GL_MAX_SAMPLES. The report of the actually used type goes back to the application.
+    m_samples = 0;
+    if (pp.MultiSampleType >= 2 && pp.SwapEffect == D3DSWAPEFFECT_DISCARD && m_glcaps.maxSamples >= 2)
+        m_samples = (int)Min<GLint>((GLint)pp.MultiSampleType, m_glcaps.maxSamples);
+    m_pp.MultiSampleType = m_samples ? (D3DMULTISAMPLE_TYPE)m_samples : D3DMULTISAMPLE_NONE;
+    if (pp.MultiSampleType >= 2 && !m_samples) WD3D_HIT(Unsupported, "multisample back buffer requested (%d) but not available", (int)pp.MultiSampleType);
+    else if (m_samples && (int)pp.MultiSampleType != m_samples) WD3D_HIT(Approximated, "multisample back buffer %dx clamped to %dx", (int)pp.MultiSampleType, m_samples);
     emscripten_set_canvas_element_size(GetConfig().canvas.c_str(), (int)w, (int)h);
     if (GetConfig().hooks.OnClientSize) GetConfig().hooks.OnClientSize(w, h);
 
     glGenTextures(1, &m_bbColor);
     BindForUpload(GL_TEXTURE_2D, m_bbColor);
     glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, w, h);
+    // Sampled by the present pass without a sampler object.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (m_samples)
+    {
+        glGenRenderbuffers(1, &m_bbMsRb);
+        glBindRenderbuffer(GL_RENDERBUFFER, m_bbMsRb);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, m_samples, GL_RGBA8, w, h);
+    }
+    m_bbDirty = false;
 
     // The device owns one reference of its default surfaces.
     m_backBuffer = new Surface(this, Surface::BackBuffer, w, h, m_pp.BackBufferFormat);
@@ -272,7 +455,7 @@ bool Device::CreateBackBuffer(const D3DPRESENT_PARAMETERS &pp)
         D3DFORMAT zf = m_pp.AutoDepthStencilFormat;
         const FormatInfo *zi = GetFormatInfo(zf);
         if (!zi || !zi->depth) { zf = D3DFMT_D24S8; m_pp.AutoDepthStencilFormat = zf; }
-        m_defaultDepth = new Surface(this, Surface::DepthStencil, w, h, zf);
+        m_defaultDepth = new Surface(this, Surface::DepthStencil, w, h, zf, m_samples);
         m_defaultDepth->DropDeviceRef();
         m_curDS = m_defaultDepth;
     }
@@ -296,7 +479,37 @@ void Device::DestroyBackBuffer()
         glDeleteTextures(1, &m_bbColor);
         m_bbColor = 0;
     }
+    if (m_bbMsRb)
+    {
+        glDeleteRenderbuffers(1, &m_bbMsRb);
+        m_bbMsRb = 0;
+    }
+    m_samples = 0;
     m_targetsDirty = true;
+}
+
+/// Copies the multisampled back buffer into the texture that Present() and the read-backs use.
+void Device::ResolveBackBuffer()
+{
+    if (!m_samples || !m_bbDirty || !m_bbMsRb || m_contextLost) return;
+    if (!m_resolveRead) glGenFramebuffers(1, &m_resolveRead);
+    if (!m_resolveDraw) glGenFramebuffers(1, &m_resolveDraw);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_resolveRead);
+    glFramebufferRenderbuffer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, m_bbMsRb);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_resolveDraw);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_bbColor, 0);
+    const GLint w = (GLint)m_pp.BackBufferWidth, h = (GLint)m_pp.BackBufferHeight;
+    // The blit is affected by the scissor test and the colour mask.
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    m_applied.colorMask = 0xF;
+    m_applied.scissor = false;
+    glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    m_boundFbo = 0xFFFFFFFF; // the draw binding changed
+    m_targetsDirty = true;
+    m_bbDirty = false;
 }
 
 //------------------------------------------------------------------------------
@@ -342,6 +555,7 @@ void Device::CreatePresentProgram()
 
 void Device::PresentToCanvas()
 {
+    ResolveBackBuffer();
     // Gamma LUT texture.
     if (m_gammaActive && m_gammaDirty)
     {
@@ -354,71 +568,69 @@ void Device::PresentToCanvas()
             lut[i * 4 + 3] = 255;
         }
         if (!m_gammaTex) glGenTextures(1, &m_gammaTex);
-        glActiveTexture(GL_TEXTURE0 + UPLOAD_UNIT);
-        glBindTexture(GL_TEXTURE_2D, m_gammaTex);
+        BindForUpload(GL_TEXTURE_2D, m_gammaTex);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 256, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, lut);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        m_boundTex[UPLOAD_UNIT][0] = m_gammaTex;
         m_gammaDirty = false;
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, m_pp.BackBufferWidth, m_pp.BackBufferHeight);
-    glDisable(GL_BLEND);
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_STENCIL_TEST);
-    glDisable(GL_SCISSOR_TEST);
-    glDisable(GL_POLYGON_OFFSET_FILL);
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glDepthMask(GL_TRUE);
+    // State the present pass needs, issued only where the cached pipeline state differs.
+    if (m_boundFbo != 0) { glBindFramebuffer(GL_FRAMEBUFFER, 0); m_boundFbo = 0; }
+    m_targetsDirty = true;
+    const bool known = m_pipelineValid;
+    auto off = [&](GLenum cap, bool &state) { if (!known || state) glDisable(cap); state = false; };
+    off(GL_BLEND, m_applied.blend);
+    off(GL_DEPTH_TEST, m_applied.depthTest);
+    off(GL_CULL_FACE, m_applied.cull);
+    off(GL_STENCIL_TEST, m_applied.stencilTest);
+    off(GL_SCISSOR_TEST, m_applied.scissor);
+    off(GL_POLYGON_OFFSET_FILL, m_applied.polyOffset);
+    if (!known || m_applied.colorMask != 0xF) glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    m_applied.colorMask = 0xF;
+    if (!known || !m_applied.depthMask) glDepthMask(GL_TRUE);
+    m_applied.depthMask = true;
+    const GLint vp[4] = {0, 0, (GLint)m_pp.BackBufferWidth, (GLint)m_pp.BackBufferHeight};
+    if (!known || memcmp(m_applied.vp, vp, sizeof vp) != 0) glViewport(vp[0], vp[1], vp[2], vp[3]);
+    memcpy(m_applied.vp, vp, sizeof vp);
+
     glBindVertexArray(m_presentVao);
-    glUseProgram(m_presentProgram);
-    glUniform1f(m_presentGammaLoc, m_gammaActive ? 1.0f : 0.0f);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_bbColor);
-    glBindSampler(0, 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (m_boundProgram != m_presentProgram) { glUseProgram(m_presentProgram); m_boundProgram = m_presentProgram; }
+    const float gamma = m_gammaActive ? 1.0f : 0.0f;
+    if (gamma != m_presentGammaValue) { glUniform1f(m_presentGammaLoc, gamma); m_presentGammaValue = gamma; }
+    if (m_activeUnit != 0) { glActiveTexture(GL_TEXTURE0); m_activeUnit = 0; }
+    if (m_boundTex[0][0] != m_bbColor) { glBindTexture(GL_TEXTURE_2D, m_bbColor); m_boundTex[0][0] = m_bbColor; }
+    if (m_boundSampler[0] != 0) { glBindSampler(0, 0); m_boundSampler[0] = 0; }
     if (m_gammaActive)
     {
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, m_gammaTex);
-        glBindSampler(1, 0);
+        m_activeUnit = 1;
+        if (m_boundTex[1][0] != m_gammaTex) { glBindTexture(GL_TEXTURE_2D, m_gammaTex); m_boundTex[1][0] = m_gammaTex; }
+        if (m_boundSampler[1] != 0) { glBindSampler(1, 0); m_boundSampler[1] = 0; }
     }
     glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    // Everything the main draw path caches has been disturbed.
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    memset(m_boundTex, 0, sizeof m_boundTex);
-    memset(m_boundSampler, 0, sizeof m_boundSampler);
-    m_activeUnit = 1;
+    // Back to the vertex array of the draw path; its program binding and attribute state are unchanged.
     glBindVertexArray(m_vao);
-    m_boundProgram = 0xFFFFFFFF;
-    m_boundArrayBuffer = 0xFFFFFFFF;
-    m_attribSig = 0;
-    m_pipelineValid = false;
-    m_targetsDirty = true;
-    m_applied.Invalidate();
-
-    if (m_explicitSwap)
-        emscripten_webgl_commit_frame();
-    if (GetConfig().hooks.OnFramePresented) GetConfig().hooks.OnFramePresented();
+    m_curVao = nullptr;
 }
 
 HRESULT Device::Present(const RECT *, const RECT *, HWND, const RGNDATA *)
 {
-    if (m_contextLost) return D3DERR_DEVICELOST;
+    TickTestContextLoss();
+    if (!CheckContext())
+    {
+        // Lost (or restored but not Reset yet). The application polls TestCooperativeLevel(); give the
+        // browser a chance to run the events that restore the context.
+        DiagEndFrame();
+        if (GetConfig().hooks.OnFramePresented) GetConfig().hooks.OnFramePresented();
+        return D3DERR_DEVICELOST;
+    }
     if (GetConfig().debug && m_presentCounter % 120 == 0)
     {
+        ResolveBackBuffer();
         // Sample the finished frame: a few pixels of the back buffer, as RGBA.
         GLuint fbo = 0;
         glGenFramebuffers(1, &fbo);
@@ -453,11 +665,17 @@ HRESULT Device::Present(const RECT *, const RECT *, HWND, const RGNDATA *)
         }
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDeleteFramebuffers(1, &fbo);
+        m_boundFbo = 0;
         m_targetsDirty = true;
     }
     PresentToCanvas();
     if (GetConfig().debug && ++m_presentCounter % 120 == 1)
         Log("present #%u, %u draw calls so far", m_presentCounter, (unsigned)m_drawCounter);
+    DiagEndFrame();
+    if (m_vaoSeen.size() > 16384) m_vaoSeen.clear();
+    if (m_explicitSwap)
+        emscripten_webgl_commit_frame();
+    if (GetConfig().hooks.OnFramePresented) GetConfig().hooks.OnFramePresented();
     return D3D_OK;
 }
 
@@ -485,14 +703,91 @@ void Device::GetGammaRamp(D3DGAMMARAMP *pRamp)
 //------------------------------------------------------------------------------
 // Device level queries
 //------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+// Context loss
+//
+// The WebGL context can be lost at any time (GPU process crash, driver reset, a
+// GPU switch, the browser reclaiming it). The device then behaves like a
+// Direct3D 8 device that was lost: Present()/Clear()/TestCooperativeLevel()
+// report D3DERR_DEVICELOST and drawing is skipped. Once the browser has
+// restored the context, TestCooperativeLevel() returns D3DERR_DEVICENOTRESET;
+// the application (WW3D2's DX8Wrapper::Reset_Device) releases its
+// non-managed resources and calls Reset(), which creates every WebGL object
+// again from the system memory copies the resources keep (RestoreContext()).
+//------------------------------------------------------------------------------
+void Device::OnContextLostInternal()
+{
+    m_contextLost = true;
+    m_needsReset = false;
+    m_inScene = false;
+    ++g_totals.contextLosses;
+    fprintf(stderr, "[WebD3D8] The WebGL context was lost (graphics driver reset or the browser reclaimed the GPU); the game will reset the device when it is back\n");
+    WD3D_HIT(Event, "WebGL context lost");
+    for (GLObject *o = m_glObjects; o; o = o->m_glNext) o->OnContextLost();
+    if (m_loseArmed && m_restoreCountdown <= 0) m_restoreCountdown = GetConfig().loseRestoreFrames;
+}
+
+bool Device::CheckContext()
+{
+    const int ev = m_ctxEvent;
+    m_ctxEvent = 0;
+    (void)ev;
+    const bool lostNow = emscripten_is_webgl_context_lost(m_glContext);
+    if (lostNow && !m_contextLost) OnContextLostInternal();
+    else if (!lostNow && m_contextLost)
+    {
+        // The browser restored the context: all GL names are gone, so the device wants a Reset().
+        m_contextLost = false;
+        m_needsReset = true;
+        ++g_totals.contextRestores;
+        fprintf(stderr, "[WebD3D8] The WebGL context was restored; waiting for the application to Reset() the device\n");
+        WD3D_HIT(Event, "WebGL context restored");
+    }
+    return !m_contextLost && !m_needsReset;
+}
+
+/// Test aid behind -webd3d8loseafter=N[,M]: drops the context after N presented frames and asks the
+/// browser to restore it M presented frames later.
+void Device::TickTestContextLoss()
+{
+    if (!m_loseArmed) return;
+    if (m_loseCountdown > 0)
+    {
+        if (--m_loseCountdown == 0)
+        {
+            if (webd3d8_lose_context())
+                fprintf(stderr, "[WebD3D8] test: WEBGL_lose_context.loseContext() called\n");
+            else
+            {
+                fprintf(stderr, "[WebD3D8] test: WEBGL_lose_context is not available\n");
+                m_loseArmed = false;
+            }
+            m_restoreCountdown = GetConfig().loseRestoreFrames;
+        }
+        return;
+    }
+    if (m_restoreCountdown > 0 && --m_restoreCountdown == 0)
+    {
+        fprintf(stderr, "[WebD3D8] test: WEBGL_lose_context.restoreContext() called\n");
+        webd3d8_restore_context();
+        m_loseArmed = false;
+    }
+}
+
 HRESULT Device::TestCooperativeLevel()
 {
-    if (emscripten_is_webgl_context_lost(m_glContext))
+    if (!CheckContext())
     {
-        if (!m_contextLost)
-            fprintf(stderr, "[WebD3D8] The WebGL context was lost (the graphics driver reset or ran out of memory)\n");
-        m_contextLost = true;
-        return D3DERR_DEVICELOST;
+        if (m_contextLost)
+        {
+            // While the context is lost the application polls here once per frame and may not reach
+            // Present() at all (WW3D::Begin_Render gives up). Give the browser the chance to run the
+            // events that restore the context, and let the test aid count the frames.
+            TickTestContextLoss();
+            if (GetConfig().hooks.OnFramePresented) GetConfig().hooks.OnFramePresented();
+            return D3DERR_DEVICELOST;
+        }
+        return D3DERR_DEVICENOTRESET;
     }
     return D3D_OK;
 }
@@ -565,7 +860,9 @@ HRESULT Device::GetRasterStatus(D3DRASTER_STATUS *s)
 HRESULT Device::Reset(D3DPRESENT_PARAMETERS *pp)
 {
     if (!pp) return D3DERR_INVALIDCALL;
-    if (emscripten_is_webgl_context_lost(m_glContext)) return D3DERR_DEVICELOST;
+    CheckContext();
+    if (m_contextLost) return D3DERR_DEVICELOST;
+    if (m_needsReset && !RestoreContext()) return D3DERR_DEVICELOST;
     D3DPRESENT_PARAMETERS params = *pp;
     m_curRT = nullptr;
     m_curDS = nullptr;
@@ -575,6 +872,32 @@ HRESULT Device::Reset(D3DPRESENT_PARAMETERS *pp)
     ResetState();
     *pp = m_pp;
     return D3D_OK;
+}
+
+/// Creates every WebGL object again on the new context.
+bool Device::RestoreContext()
+{
+    if (emscripten_webgl_make_context_current(m_glContext) != EMSCRIPTEN_RESULT_SUCCESS)
+    {
+        Log("could not make the restored WebGL2 context current");
+        return false;
+    }
+    // Programs and sampler objects belong to the dead context.
+    for (auto &p : m_programs) { p.second->id = 0; delete p.second; }
+    m_programs.clear();
+    m_curProgram = nullptr;
+    DestroyGLBaseObjects(false);
+    m_bbColor = 0;
+    m_bbMsRb = 0;
+    QueryGLCaps();
+    ResetGLCaches();
+    CreateGLBaseObjects();
+    CreatePresentProgram();
+    m_gammaDirty = true;
+    for (GLObject *o = m_glObjects; o; o = o->m_glNext) o->OnContextRestored();
+    m_needsReset = false;
+    fprintf(stderr, "[WebD3D8] The device was restored on the new WebGL context\n");
+    return true;
 }
 
 HRESULT Device::GetBackBuffer(UINT index, D3DBACKBUFFER_TYPE, IDirect3DSurface8 **pp)
@@ -638,13 +961,19 @@ HRESULT Device::CreateTexture(UINT w, UINT h, UINT levels, DWORD usage, D3DFORMA
     if (!pp) return D3DERR_INVALIDCALL;
     *pp = nullptr;
     const FormatInfo *info = GetFormatInfo(fmt);
-    if (!info || !info->texture) return D3DERR_INVALIDCALL;
+    if (!info || !info->texture)
+    {
+        WD3D_HIT(Failed, "CreateTexture format %s not supported", info ? info->name : "unknown");
+        return D3DERR_INVALIDCALL;
+    }
     Texture2D *t = new Texture2D(this, w, h, levels, usage, fmt, pool);
     if (!t->Valid())
     {
+        WD3D_HIT(Failed, "CreateTexture %ux%u %s pool %d usage 0x%x failed", w, h, info->name, (int)pool, (unsigned)usage);
         t->Release();
         return D3DERR_INVALIDCALL;
     }
+    if (g_diagOn && t->m_decode) DiagHit(Hit::Perf, "DXT texture decoded on the CPU (no WEBGL_compressed_texture_s3tc)");
     *pp = t;
     return D3D_OK;
 }
@@ -656,6 +985,7 @@ HRESULT Device::CreateCubeTexture(UINT edge, UINT levels, DWORD usage, D3DFORMAT
     CubeTexture *t = new CubeTexture(this, edge, levels, usage, fmt, pool);
     if (!t->Valid())
     {
+        WD3D_HIT(Failed, "CreateCubeTexture %u format %d failed", edge, (int)fmt);
         t->Release();
         return D3DERR_INVALIDCALL;
     }
@@ -670,6 +1000,7 @@ HRESULT Device::CreateVolumeTexture(UINT w, UINT h, UINT d, UINT levels, DWORD u
     VolumeTexture *t = new VolumeTexture(this, w, h, d, levels, usage, fmt, pool);
     if (!t->Valid())
     {
+        WD3D_HIT(Failed, "CreateVolumeTexture %ux%ux%u format %d failed", w, h, d, (int)fmt);
         t->Release();
         return D3DERR_INVALIDCALL;
     }
@@ -692,21 +1023,41 @@ HRESULT Device::CreateIndexBuffer(UINT length, DWORD usage, D3DFORMAT fmt, D3DPO
     return D3D_OK;
 }
 
-HRESULT Device::CreateRenderTarget(UINT w, UINT h, D3DFORMAT fmt, D3DMULTISAMPLE_TYPE, BOOL, IDirect3DSurface8 **pp)
+HRESULT Device::CreateRenderTarget(UINT w, UINT h, D3DFORMAT fmt, D3DMULTISAMPLE_TYPE ms, BOOL, IDirect3DSurface8 **pp)
 {
     if (!pp) return D3DERR_INVALIDCALL;
+    *pp = nullptr;
     const FormatInfo *info = GetFormatInfo(fmt);
-    if (!info || !info->renderTarget) return D3DERR_INVALIDCALL;
-    *pp = new Surface(this, Surface::RenderTarget, w, h, fmt);
+    if (!info || !info->renderTarget || !w || !h)
+    {
+        WD3D_HIT(Failed, "CreateRenderTarget %ux%u format %s failed", w, h, info ? info->name : "?");
+        return D3DERR_INVALIDCALL;
+    }
+    if (ms >= 2 && m_glcaps.maxSamples < 2)
+    {
+        WD3D_HIT(Failed, "CreateRenderTarget with %d samples (not available)", (int)ms);
+        return D3DERR_NOTAVAILABLE;
+    }
+    *pp = new Surface(this, Surface::RenderTarget, w, h, fmt, ms >= 2 ? (int)ms : 0);
     return D3D_OK;
 }
 
-HRESULT Device::CreateDepthStencilSurface(UINT w, UINT h, D3DFORMAT fmt, D3DMULTISAMPLE_TYPE, IDirect3DSurface8 **pp)
+HRESULT Device::CreateDepthStencilSurface(UINT w, UINT h, D3DFORMAT fmt, D3DMULTISAMPLE_TYPE ms, IDirect3DSurface8 **pp)
 {
     if (!pp) return D3DERR_INVALIDCALL;
+    *pp = nullptr;
     const FormatInfo *info = GetFormatInfo(fmt);
-    if (!info || !info->depth) return D3DERR_INVALIDCALL;
-    *pp = new Surface(this, Surface::DepthStencil, w, h, fmt);
+    if (!info || !info->depth || !w || !h)
+    {
+        WD3D_HIT(Failed, "CreateDepthStencilSurface %ux%u format %s failed", w, h, info ? info->name : "?");
+        return D3DERR_INVALIDCALL;
+    }
+    if (ms >= 2 && m_glcaps.maxSamples < 2)
+    {
+        WD3D_HIT(Failed, "CreateDepthStencilSurface with %d samples (not available)", (int)ms);
+        return D3DERR_NOTAVAILABLE;
+    }
+    *pp = new Surface(this, Surface::DepthStencil, w, h, fmt, ms >= 2 ? (int)ms : 0);
     return D3D_OK;
 }
 
@@ -714,7 +1065,11 @@ HRESULT Device::CreateImageSurface(UINT w, UINT h, D3DFORMAT fmt, IDirect3DSurfa
 {
     if (!pp || !w || !h) return D3DERR_INVALIDCALL;
     const FormatInfo *info = GetFormatInfo(fmt);
-    if (!info || info->depth) return D3DERR_INVALIDCALL;
+    if (!info || info->depth)
+    {
+        WD3D_HIT(Failed, "CreateImageSurface format %d failed", (int)fmt);
+        return D3DERR_INVALIDCALL;
+    }
     *pp = new Surface(this, Surface::Image, w, h, fmt);
     return D3D_OK;
 }
@@ -810,7 +1165,9 @@ HRESULT Device::SetRenderTarget(IDirect3DSurface8 *rt, IDirect3DSurface8 *zs)
         m_s.viewport.Width = s->Width(); m_s.viewport.Height = s->Height();
         m_s.viewport.MinZ = 0.0f; m_s.viewport.MaxZ = 1.0f;
         m_rtWidth = s->Width(); m_rtHeight = s->Height();
-        ++m_verTransform;
+        Dirty(G_VIEWPORT);
+        Dirty(G_POINT);
+        ++g_d3d.rtSwitches;
     }
     if (zs)
     {
@@ -841,18 +1198,55 @@ HRESULT Device::GetDepthStencilSurface(IDirect3DSurface8 **pp)
 void Device::ApplyRenderTargets()
 {
     if (!m_targetsDirty) return;
-    glBindFramebuffer(GL_FRAMEBUFFER, m_fbo);
+    if (m_boundFbo != m_fbo) { glBindFramebuffer(GL_FRAMEBUFFER, m_fbo); m_boundFbo = m_fbo; }
     Surface *rt = static_cast<Surface *>(m_curRT.get());
-    if (rt) rt->AttachColor();
+    if (rt) m_fboColorKey = rt->AttachColor(m_fboColorKey);
     bool stencil = false;
     Surface *ds = static_cast<Surface *>(m_curDS.get());
-    if (ds)
-        ds->AttachDepth(stencil);
+    uint64_t depthKey = m_fboDepthKey;
+    if (ds && rt && (ds->Samples() != rt->Samples() || ds->Width() != rt->Width() || ds->Height() != rt->Height()))
+    {
+        // Direct3D 8 accepts a depth buffer that is larger than the render target (the game renders the
+        // water reflection into a small texture with the back buffer's depth buffer) and refuses one
+        // whose multisampling differs (the game then disables its render-to-texture effects). WebGL
+        // attaches neither (FRAMEBUFFER_INCOMPLETE_DIMENSIONS / _MULTISAMPLE), so the target gets a
+        // private depth buffer of its own sample count and size; callers clear it before use.
+        const FormatInfo *di = GetFormatInfo(ds->Format());
+        stencil = di && di->stencil;
+        const int samples = rt->Samples();
+        GLuint rb = 0;
+        for (SubDepth &d : m_subDepth)
+            if (d.w == rt->Width() && d.h == rt->Height() && d.samples == samples && d.stencil == stencil) { rb = d.rb; break; }
+        if (!rb)
+        {
+            glGenRenderbuffers(1, &rb);
+            glBindRenderbuffer(GL_RENDERBUFFER, rb);
+            const GLenum fmt = stencil ? GL_DEPTH24_STENCIL8 : GL_DEPTH_COMPONENT24;
+            if (samples) glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, fmt, rt->Width(), rt->Height());
+            else glRenderbufferStorage(GL_RENDERBUFFER, fmt, rt->Width(), rt->Height());
+            m_subDepth.push_back({rb, rt->Width(), rt->Height(), samples, stencil});
+            WD3D_HIT(Approximated, "depth buffer substituted for a size/multisample mismatch (%ux%u, %d samples)", rt->Width(), rt->Height(), samples);
+        }
+        depthKey = (7ull << 60) | rb;
+        if (depthKey != m_fboDepthKey)
+        {
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, stencil ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rb);
+            if (stencil) glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+            else glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
+        }
+    }
+    else if (ds)
+        depthKey = ds->AttachDepth(stencil, m_fboDepthKey);
     else
     {
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+        depthKey = 0;
+        if (m_fboDepthKey != 0)
+        {
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
+        }
     }
+    m_fboDepthKey = depthKey;
     if (GetConfig().debug)
     {
         GLenum st = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -886,6 +1280,7 @@ void Device::ForgetTexture(GLuint tex)
         for (GLuint &t : unit)
             if (t == tex) t = 0;
     m_targetsDirty = true;
+    m_fboColorKey = m_fboDepthKey = 0; // the framebuffer may have referenced it
 }
 
 void Device::ForgetBuffer(GLuint buf)
@@ -893,12 +1288,40 @@ void Device::ForgetBuffer(GLuint buf)
     if (m_boundArrayBuffer == buf) m_boundArrayBuffer = 0xFFFFFFFF;
     if (m_boundElementBuffer == buf) m_boundElementBuffer = 0xFFFFFFFF;
     m_attribSig = 0;
+    // Vertex array objects that use the buffer would keep it alive.
+    for (auto it = m_vaoCache.begin(); it != m_vaoCache.end();)
+    {
+        VaoEntry *e = it->second;
+        bool uses = e->element == buf;
+        for (int i = 0; i < VAO_KEY_STREAMS; ++i) uses = uses || (e->key.buf[i] == buf);
+        if (!uses) { ++it; continue; }
+        if (m_curVao == e) { glBindVertexArray(m_vao); m_curVao = nullptr; }
+        if (e->vao) glDeleteVertexArrays(1, &e->vao);
+        delete e;
+        it = m_vaoCache.erase(it);
+    }
+}
+
+/// Drops every cached vertex array object (`contextAlive` false: their names died with the context).
+void Device::ClearVaoCache(bool contextAlive)
+{
+    for (auto &kv : m_vaoCache)
+    {
+        if (contextAlive && kv.second->vao) glDeleteVertexArrays(1, &kv.second->vao);
+        delete kv.second;
+    }
+    m_vaoCache.clear();
+    m_vaoSeen.clear();
+    m_curVao = nullptr;
+    m_attribSig = 0;
 }
 
 bool Device::ReadTextureLevel(GLuint tex, GLenum target, GLenum faceTarget, int level, uint32_t, uint32_t,
                               const RECT &rc, uint8_t *rgbaOut)
 {
     if (target == GL_TEXTURE_3D) return false;
+    if (tex == m_bbColor) ResolveBackBuffer();
+    if (g_diagOn) DiagHit(Hit::Perf, "GPU read-back of a texture or the back buffer (glReadPixels)");
     glBindFramebuffer(GL_READ_FRAMEBUFFER, m_scratchFbo);
     glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, faceTarget, tex, level);
     bool ok = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
@@ -915,6 +1338,7 @@ bool Device::ReadTextureLevel(GLuint tex, GLenum target, GLenum faceTarget, int 
 
 bool Device::ReadRenderbuffer(GLuint rb, uint32_t, uint32_t, const RECT &rc, uint8_t *rgbaOut)
 {
+    if (g_diagOn) DiagHit(Hit::Perf, "GPU read-back of a render target surface (glReadPixels)");
     glBindFramebuffer(GL_READ_FRAMEBUFFER, m_scratchFbo);
     glFramebufferRenderbuffer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, rb);
     bool ok = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
@@ -930,3 +1354,21 @@ bool Device::ReadRenderbuffer(GLuint rb, uint32_t, uint32_t, const RECT &rc, uin
 }
 
 } // namespace webd3d8
+
+extern "C" {
+
+void WebD3D8_LoseContextAfterFrames(int frames, int restoreAfterFrames)
+{
+    webd3d8::GetConfig().loseAfterFrames = frames;
+    webd3d8::GetConfig().loseRestoreFrames = restoreAfterFrames > 0 ? restoreAfterFrames : 120;
+}
+
+void WebD3D8_LoseContextNow(int restoreAfterFrames)
+{
+    webd3d8::Device *dev = webd3d8::g_primaryDevice;
+    if (!dev) return;
+    webd3d8::GetConfig().loseRestoreFrames = restoreAfterFrames > 0 ? restoreAfterFrames : 1;
+    dev->StartTestContextLoss();
+}
+
+} // extern "C"

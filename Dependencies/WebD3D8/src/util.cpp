@@ -18,6 +18,7 @@
 ** WebAssembly port: configuration, logging and matrix helpers.
 */
 #include "common.h"
+#include "diag.h"
 
 #include <cstdarg>
 #include <set>
@@ -42,6 +43,7 @@ void Log(const char *fmt, ...)
 
 void LogUnsupported(const char *what)
 {
+    if (g_diagOn) DiagHitf(Hit::Unsupported, "%s", what);
     static std::set<std::string> reported;
     if (reported.insert(what).second)
         Log("unsupported: %s", what);

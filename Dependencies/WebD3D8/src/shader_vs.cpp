@@ -245,6 +245,7 @@ bool CreateVertexShaderObject(const DWORD *declaration, const DWORD *function, V
         if ((version & 0xFFFF0000) != 0xFFFE0000 || ((version >> 8) & 0xFF) != 1)
         {
             Log("CreateVertexShader: unsupported shader version 0x%08x", (unsigned)version);
+            WD3D_HIT(Unsupported, "vertex shader version 0x%08x", (unsigned)version);
             delete vs;
             return false;
         }
@@ -260,6 +261,7 @@ bool CreateVertexShaderObject(const DWORD *declaration, const DWORD *function, V
         if (!tr.Run(vs->bytecode.data(), vs->bytecode.size()))
         {
             Log("CreateVertexShader: %s", tr.error.c_str());
+            WD3D_HIT(Unsupported, "vertex shader: %s", tr.error.c_str());
             delete vs;
             return false;
         }
@@ -276,7 +278,8 @@ std::string BuildTranslatedVertexShader(const VertexShaderObject &vs, const Prog
 {
     std::string s;
     s += "#version 300 es\nprecision highp float;\nprecision highp int;\n";
-    s += "uniform vec4 c[96];\nuniform vec2 u_pix;\nuniform vec4 u_point;\nuniform vec4 u_clip[6];\n";
+    s += PackedUniformDeclarations();
+    s += "uniform vec4 c[96];\n";
     for (int i = 0; i < 16; ++i)
         if (vs.inputMask & (1u << i)) s += Fmt("layout(location=%d) in vec4 in_v%d;\n", i, i);
     s += VaryingDeclarations(key, true, true);
@@ -299,8 +302,11 @@ std::string BuildTranslatedVertexShader(const VertexShaderObject &vs, const Prog
         s += Fmt("    v_t%d = oT%d;\n", i, i);
     for (int i = 0; i < MAX_CLIP_PLANES; ++i)
         if (key.clipMask & (1u << i)) s += Fmt("    v_clip%d = dot(u_clip[%d], oPos);\n", i, i);
-    if (vs.writesPointSize) s += "    gl_PointSize = clamp(oPts.x, u_point.y, u_point.z);\n";
-    else s += "    gl_PointSize = clamp(u_point.x, u_point.y, u_point.z);\n";
+    if (key.points)
+    {
+        if (vs.writesPointSize) s += "    gl_PointSize = clamp(oPts.x, u_point.y, u_point.z);\n";
+        else s += "    gl_PointSize = clamp(u_point.x, u_point.y, u_point.z);\n";
+    }
     s += "}\n";
     return s;
 }

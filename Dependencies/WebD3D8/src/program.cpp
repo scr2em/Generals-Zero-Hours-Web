@@ -22,12 +22,31 @@
 namespace webd3d8 {
 
 static const char *const kUniformNames[U_COUNT] = {
-    "u_wvp", "u_wv", "u_world", "u_nm", "u_tm[0]", "u_pix", "u_vp", "u_clip[0]", "u_point", "u_pointatt",
-    "u_matE", "u_matA", "u_matD", "u_matS", "u_matP",
-    "u_lpos[0]", "u_ldir[0]", "u_ldiff[0]", "u_lspec[0]", "u_lamb[0]", "u_latt[0]", "u_lspot[0]",
-    "u_ambient", "u_fog", "u_fogColor", "u_tfactor", "u_alphaRef", "u_lod[0]", "u_bump[0]", "u_bumpl[0]",
-    "c[0]", "pc[0]",
+    "u_xf[0]", "u_tm[0]", "u_view[0]", "u_clip[0]", "u_pt[0]", "u_mat[0]", "u_lt[0]", "u_ambient", "u_fogp[0]",
+    "u_tfactor", "u_alphaRef", "u_lod[0]", "u_bump[0]", "u_bumpl[0]", "c[0]", "pc[0]", "u_border[0]",
 };
+
+/// Which group each uniform belongs to.
+static const uint8_t kUniformGroup[U_COUNT] = {
+    G_XFORM, G_TEXMAT, G_VIEWPORT, G_CLIP, G_POINT, G_MATERIAL, G_LIGHTS, G_AMBIENT, G_FOG,
+    G_TFACTOR, G_ALPHAREF, G_LOD, G_BUMP, G_BUMP, G_VSC, G_PSC, G_BORDER,
+};
+
+/// True when `name` occurs in `src` as a whole identifier.
+static bool UsesIdentifier(const std::string &src, const char *name)
+{
+    const size_t n = strlen(name);
+    // Only the code after the declarations counts (the macros that define the names mention them all).
+    size_t from = src.find("// end of uniforms\n");
+    from = from == std::string::npos ? 0 : from;
+    for (size_t at = src.find(name, from); at != std::string::npos; at = src.find(name, at + 1))
+    {
+        const char after = at + n < src.size() ? src[at + n] : ' ';
+        const char before = at ? src[at - 1] : ' ';
+        if (!(isalnum((unsigned char)after) || after == '_') && !(isalnum((unsigned char)before) || before == '_')) return true;
+    }
+    return false;
+}
 
 Program::~Program()
 {
@@ -49,6 +68,7 @@ static GLuint CompileShader(GLenum type, const std::string &src)
         glGetShaderInfoLog(sh, sizeof log - 1, &n, log);
         log[n] = 0;
         Log("%s shader compile error: %s", type == GL_VERTEX_SHADER ? "vertex" : "fragment", log);
+        WD3D_HIT(Failed, "GLSL %s shader failed to compile", type == GL_VERTEX_SHADER ? "vertex" : "fragment");
         if (GetConfig().debug) Log("source:\n%s", src.c_str());
         glDeleteShader(sh);
         return 0;
@@ -60,6 +80,7 @@ Program *CreateProgram(Device *, const ProgramKey &key, const std::string &vsSrc
 {
     Program *prog = new Program();
     prog->key = key;
+    ++g_d3d.programsCreated;
     GLuint vs = CompileShader(GL_VERTEX_SHADER, vsSrc);
     GLuint fs = CompileShader(GL_FRAGMENT_SHADER, fsSrc);
     if (!vs || !fs)
@@ -84,13 +105,23 @@ Program *CreateProgram(Device *, const ProgramKey &key, const std::string &vsSrc
         glGetProgramInfoLog(prog->id, sizeof log - 1, &n, log);
         log[n] = 0;
         Log("program link error: %s", log);
+        WD3D_HIT(Failed, "GLSL program failed to link");
         glDeleteProgram(prog->id);
         prog->id = 0;
         for (GLint &l : prog->loc) l = -1;
         return prog;
     }
     for (int i = 0; i < U_COUNT; ++i)
+    {
         prog->loc[i] = glGetUniformLocation(prog->id, kUniformNames[i]);
+        if (prog->loc[i] >= 0) prog->usedGroups |= 1u << kUniformGroup[i];
+    }
+
+    // How much of the packed transform block the program reads.
+    {
+        const bool wv = UsesIdentifier(vsSrc, "u_wv"), nm = UsesIdentifier(vsSrc, "u_nm"), world = UsesIdentifier(vsSrc, "u_world");
+        prog->xfCount = world ? 15 : (wv || nm ? 11 : 4);
+    }
 
     // Samplers are fixed: stage N always samples texture unit N.
     glUseProgram(prog->id);

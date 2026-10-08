@@ -30,6 +30,7 @@
 #pragma once
 
 #include "common.h"
+#include "diag.h"
 #include "format.h"
 
 namespace webd3d8 {
@@ -56,6 +57,49 @@ enum
     UPLOAD_UNIT = 8, ///< texture unit used for resource uploads (stages use 0..7)
 };
 
+/// Base of everything that owns WebGL objects. The device keeps a list of them so that, when the
+/// WebGL context is lost and a new one is created, every buffer, texture and renderbuffer can be
+/// recreated from its system memory copy (see Device::RestoreContext()).
+class GLObject
+{
+public:
+    explicit GLObject(Device *dev);
+    virtual ~GLObject();
+    /// The context is gone: forget the GL names (the objects are invalid).
+    virtual void OnContextLost() {}
+    /// A new context is current: create the GL objects again and re-upload what is known.
+    virtual void OnContextRestored() = 0;
+
+private:
+    friend class Device;
+    Device *m_glDevice;
+    GLObject *m_glPrev = nullptr, *m_glNext = nullptr;
+};
+
+/// Groups of uniforms that change together. The device keeps one version counter per group and
+/// every program remembers the version it last received, so a state change re-uploads only the
+/// uniforms that depend on it, and only into the programs that use them.
+enum UniformGroup
+{
+    G_XFORM,    ///< world/view/projection derived matrices (wvp, wv, world, normal matrix)
+    G_TEXMAT,   ///< texture transforms
+    G_VIEWPORT, ///< pixel size, viewport, depth range
+    G_CLIP,     ///< user clip planes
+    G_LIGHTS,   ///< light parameters (view space)
+    G_MATERIAL,
+    G_AMBIENT,
+    G_FOG,
+    G_TFACTOR,
+    G_ALPHAREF,
+    G_POINT,    ///< point size parameters
+    G_LOD,      ///< mip LOD biases
+    G_BUMP,     ///< bump environment matrices and luminance scale/offset
+    G_BORDER,   ///< texture border colors
+    G_VSC,      ///< vertex shader constants
+    G_PSC,      ///< pixel shader constants
+    G_COUNT
+};
+
 /// Capabilities of the GL implementation.
 struct GLCaps
 {
@@ -67,8 +111,12 @@ struct GLCaps
     GLint maxTextureUnits = 16;
     float maxAnisotropy = 1.0f;
     float maxPointSize = 1.0f;
+    GLint maxSamples = 1;
+    GLint uniformAlignment = 256;
     bool s3tc = false;
     bool anisotropic = false;
+    bool provokingVertex = false;   ///< WEBGL_provoking_vertex
+    bool baseVertex = false;        ///< WEBGL_draw_instanced_base_vertex_base_instance
     std::string renderer = "WebGL2";
     std::string vendor = "WebGL";
     std::string version;
@@ -138,6 +186,26 @@ struct DeviceState
     float vsConst[VS_CONSTANTS][4];
     float psConst[PS_CONSTANTS][4];
     DeviceState();
+};
+
+/// Vertex array objects are cached by layout, buffers and strides (not by the base vertex, see
+/// Device::BindAttributes).
+enum { VAO_KEY_STREAMS = 4, VAO_CACHE_LIMIT = 384 };
+struct VaoKey
+{
+    uint32_t layout;
+    uint32_t pointerBase;
+    uint32_t buf[VAO_KEY_STREAMS];
+    uint16_t stride[VAO_KEY_STREAMS];
+    uint8_t stream[VAO_KEY_STREAMS];
+};
+struct VaoEntry
+{
+    VaoKey key;
+    GLuint vao = 0;
+    GLuint element = 0xFFFFFFFF; ///< element array buffer bound in this vertex array
+    uint32_t enabled = 0;
+    uint64_t lastUse = 0;
 };
 
 /// The GL pipeline state derived from the D3D render states.
@@ -260,6 +328,18 @@ public:
 
     //-- Services for the resource classes ----------------------------------------
     const GLCaps &Caps() const { return m_glcaps; }
+    /// True while the WebGL context is lost (all GL calls are no-ops).
+    bool IsContextLost() const { return m_contextLost; }
+    /// Polls the context state (cheap); sets the lost / needs-reset state. Returns true when usable.
+    bool CheckContext();
+    void RegisterGL(GLObject *o);
+    void UnregisterGL(GLObject *o);
+    /// Sample count of the back buffer (0 = no multisampling).
+    int BackBufferSamples() const { return m_samples; }
+    GLuint BackBufferRenderbuffer() const { return m_bbMsRb; }
+    /// Resolves the multisampled back buffer into BackBufferTexture() when it was drawn to.
+    void ResolveBackBuffer();
+    void MarkBackBufferDirty() { m_bbDirty = true; }
     /// Binds a texture to the dedicated upload unit.
     void BindForUpload(GLenum target, GLuint tex);
     /// Must be called before deleting a GL texture so cached bindings are dropped.
@@ -273,7 +353,8 @@ public:
     /// Binds a buffer to ARRAY_BUFFER / ELEMENT_ARRAY_BUFFER through the state cache.
     void BindBuffer(GLenum target, GLuint buf)
     {
-        GLuint &cached = target == GL_ARRAY_BUFFER ? m_boundArrayBuffer : m_boundElementBuffer;
+        // The element array binding belongs to the vertex array object that is bound.
+        GLuint &cached = target == GL_ARRAY_BUFFER ? m_boundArrayBuffer : (m_curVao ? m_curVao->element : m_boundElementBuffer);
         if (cached != buf) { glBindBuffer(target, buf); cached = buf; }
     }
     Surface *BackBufferSurface() const { return m_backBuffer; }
@@ -292,21 +373,39 @@ private:
     // device.cpp
     bool CreateContext(const D3DPRESENT_PARAMETERS &pp);
     void QueryGLCaps();
+    void EnableExtensions();
+    void CreateGLBaseObjects();
+    void DestroyGLBaseObjects(bool contextAlive);
     bool CreateBackBuffer(const D3DPRESENT_PARAMETERS &pp);
     void DestroyBackBuffer();
     void ResetState();
     void PresentToCanvas();
     void CreatePresentProgram();
+    void InstallContextListeners();
+    void OnContextLostInternal();
+    bool RestoreContext();
+    void ResetGLCaches();
+    void TickTestContextLoss();
+public:
+    /// Arms the test aid so that the next Present() drops the context (see WebD3D8_LoseContextNow).
+    void StartTestContextLoss() { m_loseCountdown = 1; m_loseArmed = true; }
+private:
 
     // state application (device_draw.cpp)
     bool PrepareDraw(GLenum mode);
+    void DiagCheckDrawState(GLenum mode);
     void ApplyRenderTargets();
     void ApplyPipeline();
     void BindTextures();
-    bool BindAttributes(UINT baseVertex, GLuint userBuffer, size_t userOffset, UINT userStride);
+    bool BindAttributes(UINT pointerBase, bool userData, UINT userStride);
+    void SetAttributePointers(const VertexLayout *layout, const GLuint *bufs, const UINT *strides, UINT pointerBase,
+                              uint32_t oldEnabled, uint32_t *newEnabled);
+    void EvictVao();
+    void DeleteVao(uint64_t hash, struct VaoEntry *e);
+    void ClearVaoCache(bool contextAlive);
     bool SelectProgram();
     void UploadUniforms();
-    uint32_t UploadStream(const void *data, size_t size, bool index);
+    size_t UploadStream(const void *data, size_t size, bool index, size_t align);
     PipelineState DerivePipeline() const;
     void FlushBuffers();
     GLuint SamplerFor(int stage, TextureBase *tex);
@@ -316,6 +415,7 @@ private:
 
     // transforms/lights/derived data
     void UpdateDerivedMatrices();
+    void TransformChanged(D3DTRANSFORMSTATETYPE state);
 
     friend class Surface;
     friend class TextureBase;
@@ -330,6 +430,17 @@ public:
     D3DPRESENT_PARAMETERS m_pp = {};
     int m_glContext = 0;
     bool m_contextLost = false;
+    bool m_needsReset = false;          ///< a new context exists; the application has to Reset() the device
+    volatile int m_ctxEvent = 0;        ///< set by the canvas event listeners: 1 = lost, 2 = restored
+    GLObject *m_glObjects = nullptr;    ///< every object that owns WebGL names (see GLObject)
+    int m_loseCountdown = 0, m_restoreCountdown = 0; ///< test aid (WebD3D8_LoseContextAfterFrames)
+    bool m_loseArmed = false;
+    int m_samples = 0;                  ///< multisampling of the back buffer (0 = off)
+    GLuint m_bbMsRb = 0;                ///< multisampled colour renderbuffer (when m_samples)
+    GLuint m_resolveRead = 0, m_resolveDraw = 0;
+    bool m_bbDirty = false;
+    struct SubDepth { GLuint rb; uint32_t w, h; int samples; bool stencil; };
+    std::vector<SubDepth> m_subDepth;   ///< depth buffers standing in for ones whose sample count mismatches the target
     unsigned m_presentCounter = 0;	// Present calls, for the debug log
     bool m_explicitSwap = false;
     GLCaps m_glcaps;
@@ -347,7 +458,8 @@ public:
     GLuint m_bbColor = 0;
     GLuint m_fbo = 0, m_scratchFbo = 0;
     bool m_targetsDirty = true;
-    uint32_t m_attachedColorId = 0, m_attachedDepthId = 0;
+    uint64_t m_fboColorKey = 0, m_fboDepthKey = 0;   ///< what m_fbo currently has attached (see Surface::AttachColor)
+    GLuint m_boundFbo = 0xFFFFFFFF;                  ///< framebuffer bound for drawing
     uint32_t m_rtWidth = 0, m_rtHeight = 0;
 
     // Present
@@ -358,7 +470,11 @@ public:
     bool m_gammaDirty = false;
 
     // GL state caches.
-    GLuint m_vao = 0;
+    GLuint m_vao = 0;               ///< scratch vertex array (uncached draws)
+    std::unordered_multimap<uint64_t, VaoEntry *> m_vaoCache;
+    VaoEntry *m_curVao = nullptr;   ///< bound cached vertex array, null when the scratch one is bound
+    std::unordered_map<uint64_t, uint32_t> m_vaoSeen; ///< keys with a base vertex seen once (promoted on the second sighting)
+    uint64_t m_vaoClock = 0;
     GLuint m_boundProgram = 0xFFFFFFFF;
     GLuint m_boundArrayBuffer = 0xFFFFFFFF;
     GLuint m_boundElementBuffer = 0xFFFFFFFF;
@@ -366,7 +482,7 @@ public:
     GLuint m_boundSampler[MAX_STAGES];
     int m_activeUnit = -1;
     GLuint m_whiteTex[3] = {};
-    uint32_t m_enabledAttribs = 0;
+    uint32_t m_enabledAttribs = 0;  ///< arrays enabled in the scratch vertex array
     PipelineState m_applied;
     bool m_pipelineValid = false;
     uint64_t m_attribSig = 0;
@@ -377,8 +493,11 @@ public:
     bool m_keyDirty = true;
     std::unordered_map<std::string, GLuint> m_samplers;
 
-    // Versions for uniform groups.
-    uint32_t m_verTransform = 1, m_verLights = 1, m_verMaterial = 1, m_verMisc = 1, m_verVsConst = 1, m_verPsConst = 1;
+    // Versions of the uniform groups (see UniformGroup); a program re-uploads a group when its own
+    // copy of the version differs.
+    uint32_t m_ver[G_COUNT] = {};
+    void Dirty(UniformGroup g) { ++m_ver[g]; }
+    void DirtyAllUniforms() { for (uint32_t &v : m_ver) ++v; }
 
     // Derived per-draw data.
     Mat4 m_wv, m_wvp, m_normalMat3Src;
@@ -408,6 +527,11 @@ public:
     bool m_curProgramPoints = false;
     GLuint m_attachedColorTex = 0;
     GLuint m_whiteSampler = 0;
+    float m_presentGammaValue = -1.0f;
+    float m_clearColor[4] = {};
+    float m_clearDepth = 0;
+    GLint m_clearStencil = 0;
+    bool m_clearColorValid = false, m_clearDepthValid = false, m_clearStencilValid = false;
     unsigned m_drawCounter = 0;
 };
 

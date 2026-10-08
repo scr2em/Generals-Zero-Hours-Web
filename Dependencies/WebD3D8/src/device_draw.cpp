@@ -210,6 +210,7 @@ void Device::ApplyPipeline()
     if (all || memcmp(want.vp, have.vp, sizeof want.vp) != 0) glViewport(want.vp[0], want.vp[1], want.vp[2], want.vp[3]);
     if (all || want.scissor != have.scissor) enable(GL_SCISSOR_TEST, want.scissor);
 
+    if (all || memcmp(&want, &have, sizeof want) != 0) ++g_d3d.pipelineChanges;
     have = want;
     m_pipelineValid = true;
 }
@@ -295,6 +296,7 @@ void Device::BuildProgramKey(ProgramKey &key)
     key.alphaTest = rs[D3DRS_ALPHATESTENABLE] != 0;
     key.alphaFunc = (uint8_t)rs[D3DRS_ALPHAFUNC];
     key.clipMask = (uint8_t)(rs[D3DRS_CLIPPLANEENABLE] & 0x3F);
+    key.points = m_drawingPoints ? 1 : 0;
     key.pointSprite = m_drawingPoints && rs[D3DRS_POINTSPRITEENABLE];
     key.pointScale = rs[D3DRS_POINTSCALEENABLE] != 0;
     key.flatShade = rs[D3DRS_SHADEMODE] == D3DSHADE_FLAT;
@@ -337,6 +339,8 @@ void Device::BuildProgramKey(ProgramKey &key)
         st.xformCount = (uint8_t)Min<DWORD>(ttf & 0xFF, 4u);
         st.projected = (ttf & D3DTTFF_PROJECTED) != 0;
         st.lodBias = DwordToFloat(t[D3DTSS_MIPMAPLODBIAS]) != 0.0f;
+        st.borderMask = (uint8_t)((t[D3DTSS_ADDRESSU] == D3DTADDRESS_BORDER ? 1 : 0) | (t[D3DTSS_ADDRESSV] == D3DTADDRESS_BORDER ? 2 : 0) |
+                                  (t[D3DTSS_ADDRESSW] == D3DTADDRESS_BORDER && st.texType == 3 ? 4 : 0));
         const bool needsTexture = pso ? ((pso->textureStageMask >> s) & 1) : st.texType != 0;
         if (needsTexture && st.texType)
         {
@@ -396,137 +400,183 @@ void Device::UpdateDerivedMatrices()
 void Device::UploadUniforms()
 {
     Program *p = m_curProgram;
-    UpdateDerivedMatrices();
     const ProgramKey &key = p->key;
     const GLint *loc = p->loc;
 
-    if (p->verTransform != m_verTransform)
+    // Only the groups some uniform of this program belongs to, and only when a state of the group
+    // changed since this program last received it.
+    uint32_t pending = 0;
+    for (int g = 0; g < G_COUNT; ++g)
+        if ((p->usedGroups & (1u << g)) && p->ver[g] != m_ver[g]) pending |= 1u << g;
+    if (!pending) return;
+
+    for (int g = 0; g < G_COUNT; ++g)
     {
-        p->verTransform = m_verTransform;
-        if (loc[U_WVP] >= 0) glUniformMatrix4fv(loc[U_WVP], 1, GL_FALSE, m_wvp.m);
-        if (loc[U_WV] >= 0) glUniformMatrix4fv(loc[U_WV], 1, GL_FALSE, m_wv.m);
-        if (loc[U_WORLD] >= 0) glUniformMatrix4fv(loc[U_WORLD], 1, GL_FALSE, m_s.world[0].m);
-        if (loc[U_NM] >= 0) glUniformMatrix3fv(loc[U_NM], 1, GL_FALSE, m_nm);
-        if (loc[U_TM] >= 0)
+        if (!(pending & (1u << g))) continue;
+        p->ver[g] = m_ver[g];
+        ++g_d3d.uniformUploads;
+        ++g_d3d.groupUploads[g];
+        switch (g)
+        {
+        case G_XFORM:
+        {
+            UpdateDerivedMatrices();
+            // wvp, wv, normal matrix (3 columns), world: the program reads a prefix of this block.
+            float xf[15 * 4];
+            memcpy(xf, m_wvp.m, 64);
+            if (p->xfCount > 4)
+            {
+                memcpy(xf + 16, m_wv.m, 64);
+                for (int c = 0; c < 3; ++c) { memcpy(xf + 32 + c * 4, m_nm + c * 3, 12); xf[32 + c * 4 + 3] = 0.0f; }
+                memcpy(xf + 44, m_s.world[0].m, 64);
+            }
+            glUniform4fv(loc[U_XF], p->xfCount, xf);
+            break;
+        }
+        case G_TEXMAT:
         {
             float tm[8 * 16];
             for (int i = 0; i < 8; ++i) memcpy(tm + i * 16, m_s.tex[i].m, sizeof(float) * 16);
             glUniformMatrix4fv(loc[U_TM], 8, GL_FALSE, tm);
+            break;
         }
-        const float vw = Max<float>(1.0f, (float)m_s.viewport.Width), vh = Max<float>(1.0f, (float)m_s.viewport.Height);
-        if (loc[U_PIX] >= 0) glUniform2f(loc[U_PIX], 1.0f / vw, 1.0f / vh);
-        if (loc[U_VP] >= 0) glUniform4f(loc[U_VP], (float)m_s.viewport.X, (float)m_s.viewport.Y, vw, vh);
-        if (loc[U_CLIP] >= 0) glUniform4fv(loc[U_CLIP], MAX_CLIP_PLANES, &m_s.clipPlanes[0][0]);
-    }
-
-    if (key.lighting && key.lightCount && p->verLights != m_verLights + (m_verTransform << 16))
-    {
-        p->verLights = m_verLights + (m_verTransform << 16);
-        float pos[8][3] = {}, dir[8][3] = {}, diff[8][3] = {}, spec[8][3] = {}, amb[8][3] = {}, att[8][4] = {}, spot[8][4] = {};
-        int n = 0;
-        const Mat4 &v = m_s.view;
-        for (const LightState &ls : m_s.lights)
+        case G_VIEWPORT:
         {
-            if (!ls.defined || !ls.enabled) continue;
-            if (n >= key.lightCount) break;
-            const D3DLIGHT8 &l = ls.light;
-            // World -> view (row vectors).
-            pos[n][0] = l.Position.x * v.m[0] + l.Position.y * v.m[4] + l.Position.z * v.m[8] + v.m[12];
-            pos[n][1] = l.Position.x * v.m[1] + l.Position.y * v.m[5] + l.Position.z * v.m[9] + v.m[13];
-            pos[n][2] = l.Position.x * v.m[2] + l.Position.y * v.m[6] + l.Position.z * v.m[10] + v.m[14];
-            float d[3] = {l.Direction.x * v.m[0] + l.Direction.y * v.m[4] + l.Direction.z * v.m[8],
-                          l.Direction.x * v.m[1] + l.Direction.y * v.m[5] + l.Direction.z * v.m[9],
-                          l.Direction.x * v.m[2] + l.Direction.y * v.m[6] + l.Direction.z * v.m[10]};
-            float len = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-            if (len > 0) { d[0] /= len; d[1] /= len; d[2] /= len; }
-            memcpy(dir[n], d, sizeof d);
-            diff[n][0] = l.Diffuse.r; diff[n][1] = l.Diffuse.g; diff[n][2] = l.Diffuse.b;
-            spec[n][0] = l.Specular.r; spec[n][1] = l.Specular.g; spec[n][2] = l.Specular.b;
-            amb[n][0] = l.Ambient.r; amb[n][1] = l.Ambient.g; amb[n][2] = l.Ambient.b;
-            att[n][0] = l.Attenuation0; att[n][1] = l.Attenuation1; att[n][2] = l.Attenuation2;
-            att[n][3] = Min(l.Range, 3.0e38f);
-            const float ct = std::cos(l.Theta * 0.5f), cp = std::cos(l.Phi * 0.5f);
-            spot[n][0] = ct; spot[n][1] = cp; spot[n][2] = l.Falloff;
-            spot[n][3] = (ct - cp) != 0.0f ? 1.0f / (ct - cp) : 1.0f;
-            ++n;
+            const float vw = Max<float>(1.0f, (float)m_s.viewport.Width), vh = Max<float>(1.0f, (float)m_s.viewport.Height);
+            const float v[8] = {1.0f / vw, 1.0f / vh, m_s.viewport.MinZ, m_s.viewport.MaxZ - m_s.viewport.MinZ,
+                                (float)m_s.viewport.X, (float)m_s.viewport.Y, vw, vh};
+            glUniform4fv(loc[U_VIEW], 2, v);
+            break;
         }
-        if (loc[U_LPOS] >= 0) glUniform3fv(loc[U_LPOS], 8, &pos[0][0]);
-        if (loc[U_LDIR] >= 0) glUniform3fv(loc[U_LDIR], 8, &dir[0][0]);
-        if (loc[U_LDIFF] >= 0) glUniform3fv(loc[U_LDIFF], 8, &diff[0][0]);
-        if (loc[U_LSPEC] >= 0) glUniform3fv(loc[U_LSPEC], 8, &spec[0][0]);
-        if (loc[U_LAMB] >= 0) glUniform3fv(loc[U_LAMB], 8, &amb[0][0]);
-        if (loc[U_LATT] >= 0) glUniform4fv(loc[U_LATT], 8, &att[0][0]);
-        if (loc[U_LSPOT] >= 0) glUniform4fv(loc[U_LSPOT], 8, &spot[0][0]);
-    }
-
-    if (p->verMaterial != m_verMaterial)
-    {
-        p->verMaterial = m_verMaterial;
-        const D3DMATERIAL8 &m = m_s.material;
-        if (loc[U_MAT_E] >= 0) glUniform4f(loc[U_MAT_E], m.Emissive.r, m.Emissive.g, m.Emissive.b, m.Emissive.a);
-        if (loc[U_MAT_A] >= 0) glUniform4f(loc[U_MAT_A], m.Ambient.r, m.Ambient.g, m.Ambient.b, m.Ambient.a);
-        if (loc[U_MAT_D] >= 0) glUniform4f(loc[U_MAT_D], m.Diffuse.r, m.Diffuse.g, m.Diffuse.b, m.Diffuse.a);
-        if (loc[U_MAT_S] >= 0) glUniform4f(loc[U_MAT_S], m.Specular.r, m.Specular.g, m.Specular.b, m.Specular.a);
-        if (loc[U_MAT_P] >= 0) glUniform1f(loc[U_MAT_P], m.Power);
-    }
-
-    if (p->verMisc != m_verMisc)
-    {
-        p->verMisc = m_verMisc;
-        const DWORD *rs = m_s.rs;
-        float c[4];
-        if (loc[U_AMBIENT] >= 0) { ColorToVec4(rs[D3DRS_AMBIENT], c); glUniform4fv(loc[U_AMBIENT], 1, c); }
-        if (loc[U_FOG] >= 0)
+        case G_CLIP:
+            glUniform4fv(loc[U_CLIP], MAX_CLIP_PLANES, &m_s.clipPlanes[0][0]);
+            break;
+        case G_LIGHTS:
         {
-            float start = DwordToFloat(rs[D3DRS_FOGSTART]), end = DwordToFloat(rs[D3DRS_FOGEND]);
-            float range = end - start;
-            glUniform4f(loc[U_FOG], start, end, DwordToFloat(rs[D3DRS_FOGDENSITY]), range != 0.0f ? 1.0f / range : 1.0f);
+            if (!(key.lighting && key.lightCount)) break;
+            float lt[8 * 7][4] = {};
+            int n = 0;
+            const Mat4 &v = m_s.view;
+            for (const LightState &ls : m_s.lights)
+            {
+                if (!ls.defined || !ls.enabled) continue;
+                if (n >= key.lightCount) break;
+                const D3DLIGHT8 &l = ls.light;
+                float (*o)[4] = lt + n * 7;
+                // World -> view (row vectors).
+                o[0][0] = l.Position.x * v.m[0] + l.Position.y * v.m[4] + l.Position.z * v.m[8] + v.m[12];
+                o[0][1] = l.Position.x * v.m[1] + l.Position.y * v.m[5] + l.Position.z * v.m[9] + v.m[13];
+                o[0][2] = l.Position.x * v.m[2] + l.Position.y * v.m[6] + l.Position.z * v.m[10] + v.m[14];
+                float d[3] = {l.Direction.x * v.m[0] + l.Direction.y * v.m[4] + l.Direction.z * v.m[8],
+                              l.Direction.x * v.m[1] + l.Direction.y * v.m[5] + l.Direction.z * v.m[9],
+                              l.Direction.x * v.m[2] + l.Direction.y * v.m[6] + l.Direction.z * v.m[10]};
+                float len = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+                if (len > 0) { d[0] /= len; d[1] /= len; d[2] /= len; }
+                memcpy(o[1], d, sizeof d);
+                o[2][0] = l.Diffuse.r; o[2][1] = l.Diffuse.g; o[2][2] = l.Diffuse.b;
+                o[3][0] = l.Specular.r; o[3][1] = l.Specular.g; o[3][2] = l.Specular.b;
+                o[4][0] = l.Ambient.r; o[4][1] = l.Ambient.g; o[4][2] = l.Ambient.b;
+                o[5][0] = l.Attenuation0; o[5][1] = l.Attenuation1; o[5][2] = l.Attenuation2;
+                o[5][3] = Min(l.Range, 3.0e38f);
+                const float ct = std::cos(l.Theta * 0.5f), cp = std::cos(l.Phi * 0.5f);
+                o[6][0] = ct; o[6][1] = cp; o[6][2] = l.Falloff;
+                o[6][3] = (ct - cp) != 0.0f ? 1.0f / (ct - cp) : 1.0f;
+                ++n;
+            }
+            // Only the lights the program was generated for are sent.
+            glUniform4fv(loc[U_LT], key.lightCount * 7, &lt[0][0]);
+            break;
         }
-        if (loc[U_FOGCOLOR] >= 0) { ColorToVec4(rs[D3DRS_FOGCOLOR], c); glUniform3fv(loc[U_FOGCOLOR], 1, c); }
-        if (loc[U_TFACTOR] >= 0) { ColorToVec4(rs[D3DRS_TEXTUREFACTOR], c); glUniform4fv(loc[U_TFACTOR], 1, c); }
-        if (loc[U_ALPHAREF] >= 0) glUniform1f(loc[U_ALPHAREF], (float)(rs[D3DRS_ALPHAREF] & 0xFF));
-        if (loc[U_POINT] >= 0)
+        case G_MATERIAL:
         {
+            const D3DMATERIAL8 &m = m_s.material;
+            const float mat[5][4] = {{m.Emissive.r, m.Emissive.g, m.Emissive.b, m.Emissive.a},
+                                     {m.Ambient.r, m.Ambient.g, m.Ambient.b, m.Ambient.a},
+                                     {m.Diffuse.r, m.Diffuse.g, m.Diffuse.b, m.Diffuse.a},
+                                     {m.Specular.r, m.Specular.g, m.Specular.b, m.Specular.a},
+                                     {m.Power, 0, 0, 0}};
+            glUniform4fv(loc[U_MAT], 5, &mat[0][0]);
+            break;
+        }
+        case G_AMBIENT:
+        {
+            float c[4];
+            ColorToVec4(m_s.rs[D3DRS_AMBIENT], c);
+            glUniform4fv(loc[U_AMBIENT], 1, c);
+            break;
+        }
+        case G_FOG:
+        {
+            const DWORD *rs = m_s.rs;
+            const float start = DwordToFloat(rs[D3DRS_FOGSTART]), end = DwordToFloat(rs[D3DRS_FOGEND]);
+            const float range = end - start;
+            float f[8] = {start, end, DwordToFloat(rs[D3DRS_FOGDENSITY]), range != 0.0f ? 1.0f / range : 1.0f, 0, 0, 0, 0};
+            ColorToVec4(rs[D3DRS_FOGCOLOR], f + 4);
+            glUniform4fv(loc[U_FOGP], 2, f);
+            break;
+        }
+        case G_TFACTOR:
+        {
+            float c[4];
+            ColorToVec4(m_s.rs[D3DRS_TEXTUREFACTOR], c);
+            glUniform4fv(loc[U_TFACTOR], 1, c);
+            break;
+        }
+        case G_ALPHAREF:
+            glUniform1f(loc[U_ALPHAREF], (float)(m_s.rs[D3DRS_ALPHAREF] & 0xFF));
+            break;
+        case G_POINT:
+        {
+            const DWORD *rs = m_s.rs;
             const float maxSize = Min(DwordToFloat(rs[D3DRS_POINTSIZE_MAX]), m_glcaps.maxPointSize);
-            glUniform4f(loc[U_POINT], DwordToFloat(rs[D3DRS_POINTSIZE]), Min(DwordToFloat(rs[D3DRS_POINTSIZE_MIN]), maxSize),
-                        maxSize, (float)m_s.viewport.Height);
+            const float pt[8] = {DwordToFloat(rs[D3DRS_POINTSIZE]), Min(DwordToFloat(rs[D3DRS_POINTSIZE_MIN]), maxSize), maxSize,
+                                 (float)m_s.viewport.Height,
+                                 DwordToFloat(rs[D3DRS_POINTSCALE_A]), DwordToFloat(rs[D3DRS_POINTSCALE_B]), DwordToFloat(rs[D3DRS_POINTSCALE_C]), 0};
+            glUniform4fv(loc[U_PT], 2, pt);
+            break;
         }
-        if (loc[U_POINTATT] >= 0)
-            glUniform3f(loc[U_POINTATT], DwordToFloat(rs[D3DRS_POINTSCALE_A]), DwordToFloat(rs[D3DRS_POINTSCALE_B]), DwordToFloat(rs[D3DRS_POINTSCALE_C]));
-        if (loc[U_LOD] >= 0)
+        case G_LOD:
         {
             float lod[8];
             for (int i = 0; i < 8; ++i) lod[i] = DwordToFloat(m_s.tss[i][D3DTSS_MIPMAPLODBIAS]);
             glUniform1fv(loc[U_LOD], 8, lod);
+            break;
         }
-        if (loc[U_BUMP] >= 0)
+        case G_BUMP:
         {
-            float bump[8][4];
-            for (int i = 0; i < 8; ++i)
-                for (int k = 0; k < 4; ++k) bump[i][k] = DwordToFloat(m_s.tss[i][D3DTSS_BUMPENVMAT00 + k]);
-            glUniform4fv(loc[U_BUMP], 8, &bump[0][0]);
-        }
-        if (loc[U_BUMPL] >= 0)
-        {
-            float bl[8][2];
-            for (int i = 0; i < 8; ++i)
+            if (loc[U_BUMP] >= 0)
             {
-                bl[i][0] = DwordToFloat(m_s.tss[i][D3DTSS_BUMPENVLSCALE]);
-                bl[i][1] = DwordToFloat(m_s.tss[i][D3DTSS_BUMPENVLOFFSET]);
+                float bump[8][4];
+                for (int i = 0; i < 8; ++i)
+                    for (int k = 0; k < 4; ++k) bump[i][k] = DwordToFloat(m_s.tss[i][D3DTSS_BUMPENVMAT00 + k]);
+                glUniform4fv(loc[U_BUMP], 8, &bump[0][0]);
             }
-            glUniform2fv(loc[U_BUMPL], 8, &bl[0][0]);
+            if (loc[U_BUMPL] >= 0)
+            {
+                float bl[8][2];
+                for (int i = 0; i < 8; ++i)
+                {
+                    bl[i][0] = DwordToFloat(m_s.tss[i][D3DTSS_BUMPENVLSCALE]);
+                    bl[i][1] = DwordToFloat(m_s.tss[i][D3DTSS_BUMPENVLOFFSET]);
+                }
+                glUniform2fv(loc[U_BUMPL], 8, &bl[0][0]);
+            }
+            break;
         }
-    }
-
-    if (loc[U_VSC] >= 0 && p->verVsConst != m_verVsConst)
-    {
-        p->verVsConst = m_verVsConst;
-        glUniform4fv(loc[U_VSC], VS_CONSTANTS, &m_s.vsConst[0][0]);
-    }
-    if (loc[U_PSC] >= 0 && p->verPsConst != m_verPsConst)
-    {
-        p->verPsConst = m_verPsConst;
-        glUniform4fv(loc[U_PSC], 8, &m_s.psConst[0][0]);
+        case G_BORDER:
+        {
+            float b[8][4];
+            for (int i = 0; i < 8; ++i) ColorToVec4(m_s.tss[i][D3DTSS_BORDERCOLOR], b[i]);
+            glUniform4fv(loc[U_BORDER], 8, &b[0][0]);
+            break;
+        }
+        case G_VSC:
+            glUniform4fv(loc[U_VSC], VS_CONSTANTS, &m_s.vsConst[0][0]);
+            break;
+        case G_PSC:
+            glUniform4fv(loc[U_PSC], 8, &m_s.psConst[0][0]);
+            break;
+        }
     }
 }
 
@@ -579,7 +629,7 @@ void Device::BindTextures()
         if (id && id == m_attachedColorTex) id = m_whiteTex[slot];
         if (!id) id = m_whiteTex[slot];
         if (m_activeUnit != s) { glActiveTexture(GL_TEXTURE0 + s); m_activeUnit = s; }
-        if (m_boundTex[s][slot] != id) { glBindTexture(target, id); m_boundTex[s][slot] = id; }
+        if (m_boundTex[s][slot] != id) { glBindTexture(target, id); m_boundTex[s][slot] = id; ++g_d3d.textureBinds; }
         if (tb && id == tb->m_tex)
         {
             if (m_samplerDirtyMask & (1u << s))
@@ -622,26 +672,34 @@ void Device::FlushBuffers()
         if (m_s.streams[i].vb) static_cast<VertexBuffer *>(m_s.streams[i].vb.get())->Flush();
 }
 
-bool Device::BindAttributes(UINT baseVertex, GLuint userBuffer, size_t userOffset, UINT userStride)
+/// Sets up the vertex attributes of the current layout and streams and makes the vertex array object
+/// that holds them current. Layouts, buffers and strides that were drawn with before are served from a
+/// cache of vertex array objects (one GL call to bind instead of one per attribute); the cache is keyed
+/// without the base vertex because indexed draws pass it to the draw call
+/// (WEBGL_draw_instanced_base_vertex_base_instance) and streamed data is placed at multiples of the
+/// vertex size. `pointerBase` is a vertex offset applied to the attribute pointers instead, for browsers
+/// without that extension; such draws use the uncached scratch vertex array.
+bool Device::BindAttributes(UINT pointerBase, bool userData, UINT userStride)
 {
     const DWORD vsh = m_s.vertexShader;
     VertexShaderObject *vso = (vsh & 1) ? FindVertexShader(vsh) : nullptr;
     const VertexLayout *layout = vso ? &vso->layout : LayoutFromFVF(vsh);
     if (!layout->count) return false;
 
-    // Cheap signature of everything the pointers depend on.
-    uint64_t sig = layout->id * 1000003ull + baseVertex;
-    sig = sig * 31 + userBuffer;
-    sig = sig * 31 + userOffset + userStride;
     GLuint bufs[MAX_STREAMS] = {};
     UINT strides[MAX_STREAMS] = {};
+    VaoKey key;
+    memset(&key, 0, sizeof key);
+    key.layout = layout->id;
+    key.pointerBase = pointerBase;
+    int streamsUsed = 0;
     for (int i = 0; i < layout->count; ++i)
     {
         const int st = layout->elems[i].stream;
         if (bufs[st]) continue;
-        if (userBuffer && st == 0)
+        if (userData && st == 0)
         {
-            bufs[0] = userBuffer;
+            bufs[0] = m_streamVB;
             strides[0] = userStride;
         }
         else
@@ -651,24 +709,86 @@ bool Device::BindAttributes(UINT baseVertex, GLuint userBuffer, size_t userOffse
             bufs[st] = vb->Flush();
             strides[st] = m_s.streams[st].stride ? m_s.streams[st].stride : layout->stride[st];
         }
-        sig = sig * 31 + bufs[st];
-        sig = sig * 31 + strides[st];
+        if (streamsUsed < VAO_KEY_STREAMS)
+        {
+            key.buf[streamsUsed] = bufs[st];
+            key.stride[streamsUsed] = (uint16_t)strides[st];
+            key.stream[streamsUsed] = (uint8_t)st;
+        }
+        ++streamsUsed;
     }
-    if (sig == m_attribSig && !userBuffer) return true;
-    m_attribSig = userBuffer ? 0 : sig;
 
+    bool cacheable = streamsUsed <= VAO_KEY_STREAMS && !(userData && pointerBase != 0);
+    VaoEntry *entry = nullptr;
+    if (cacheable)
+    {
+        const uint64_t h = HashBytes(&key, sizeof key);
+        auto range = m_vaoCache.equal_range(h);
+        for (auto it = range.first; it != range.second; ++it)
+            if (memcmp(&it->second->key, &key, sizeof key) == 0) { entry = it->second; break; }
+        if (!entry && pointerBase != 0)
+        {
+            // A base vertex in the key (browsers without the base vertex extension): only geometry that
+            // keeps coming back is worth a vertex array object; dynamic buffers move their data around.
+            uint32_t &seen = m_vaoSeen[h];
+            if (seen == 0) { seen = 1; cacheable = false; }
+        }
+        if (cacheable && !entry)
+        {
+            if (m_vaoCache.size() >= VAO_CACHE_LIMIT) EvictVao();
+            entry = new VaoEntry();
+            entry->key = key;
+            glGenVertexArrays(1, &entry->vao);
+            m_vaoCache.insert({h, entry});
+            glBindVertexArray(entry->vao);
+            m_curVao = entry;
+            SetAttributePointers(layout, bufs, strides, pointerBase, 0, &entry->enabled);
+            ++g_d3d.vaoCreated;
+        }
+        if (entry)
+        {
+            entry->lastUse = ++m_vaoClock;
+            if (m_curVao != entry)
+            {
+                glBindVertexArray(entry->vao);
+                m_curVao = entry;
+            }
+            return true;
+        }
+    }
+
+    // Uncached: the scratch vertex array, reconfigured when anything it depends on changed.
+    uint64_t sig = layout->id * 1000003ull + pointerBase;
+    for (int i = 0; i < MAX_STREAMS; ++i)
+        if (bufs[i]) { sig = sig * 31 + bufs[i]; sig = sig * 31 + strides[i]; }
+    if (m_curVao)
+    {
+        glBindVertexArray(m_vao); // keeps the state it was last configured with
+        m_curVao = nullptr;
+    }
+    if (sig == m_attribSig) return true;
+    m_attribSig = sig;
+    SetAttributePointers(layout, bufs, strides, pointerBase, m_enabledAttribs, &m_enabledAttribs);
+    return true;
+}
+
+/// Points the attributes of `layout` at the buffers and enables exactly those arrays (the vertex array
+/// object that is bound keeps the state). `oldEnabled` is the mask of arrays currently enabled in it.
+void Device::SetAttributePointers(const VertexLayout *layout, const GLuint *bufs, const UINT *strides, UINT pointerBase,
+                                  uint32_t oldEnabled, uint32_t *newEnabled)
+{
     uint32_t enabled = 0;
     for (int i = 0; i < layout->count; ++i)
     {
         const VertexElement &e = layout->elems[i];
         const UINT stride = strides[e.stream];
         BindBuffer(GL_ARRAY_BUFFER, bufs[e.stream]);
-        const size_t off = (e.stream == 0 && userBuffer ? userOffset : 0) + (size_t)e.offset + (size_t)baseVertex * stride;
+        const size_t off = (size_t)e.offset + (size_t)pointerBase * stride;
         GLenum type = e.glType == 0 ? GL_FLOAT : (e.glType == 1 ? GL_UNSIGNED_BYTE : GL_SHORT);
         glVertexAttribPointer(e.reg, e.size, type, e.normalized ? GL_TRUE : GL_FALSE, stride, reinterpret_cast<const void *>(off));
         enabled |= 1u << e.reg;
     }
-    const uint32_t changed = enabled ^ m_enabledAttribs;
+    const uint32_t changed = enabled ^ oldEnabled;
     if (changed)
         for (int i = 0; i < 16; ++i)
             if (changed & (1u << i))
@@ -676,8 +796,29 @@ bool Device::BindAttributes(UINT baseVertex, GLuint userBuffer, size_t userOffse
                 if (enabled & (1u << i)) glEnableVertexAttribArray(i);
                 else glDisableVertexAttribArray(i);
             }
-    m_enabledAttribs = enabled;
-    return true;
+    *newEnabled = enabled;
+}
+
+/// Deletes the least recently used vertex array object (and the ones nothing can use any more).
+void Device::EvictVao()
+{
+    uint64_t oldest = ~0ull;
+    VaoEntry *victim = nullptr;
+    uint64_t victimHash = 0;
+    for (auto &kv : m_vaoCache)
+        if (kv.second != m_curVao && kv.second->lastUse < oldest) { oldest = kv.second->lastUse; victim = kv.second; victimHash = kv.first; }
+    if (!victim) return;
+    DeleteVao(victimHash, victim);
+}
+
+void Device::DeleteVao(uint64_t hash, VaoEntry *e)
+{
+    auto range = m_vaoCache.equal_range(hash);
+    for (auto it = range.first; it != range.second; ++it)
+        if (it->second == e) { m_vaoCache.erase(it); break; }
+    if (m_curVao == e) { glBindVertexArray(m_vao); m_curVao = nullptr; m_attribSig = 0; }
+    if (e->vao) glDeleteVertexArrays(1, &e->vao);
+    delete e;
 }
 
 //------------------------------------------------------------------------------
@@ -697,11 +838,66 @@ static bool PrimitiveInfo(D3DPRIMITIVETYPE type, UINT primCount, GLenum &mode, U
     }
 }
 
+/// Diagnostics (-webd3d8report): records the Direct3D 8 features of the current draw that are ignored
+/// or emulated approximately. Only called while the report is on.
+void Device::DiagCheckDrawState(GLenum mode)
+{
+    const DWORD *rs = m_s.rs;
+    const ProgramKey &key = m_curProgram->key;
+    for (int i = 0; i < 8; ++i)
+        if (rs[D3DRS_WRAP0 + i]) WD3D_HIT(Unsupported, "rs WRAP%d (cylindrical texture wrapping) is ignored", i);
+    if (rs[D3DRS_VERTEXBLEND] != D3DVBF_DISABLE) WD3D_HIT(Unsupported, "rs VERTEXBLEND (vertex blending) is ignored");
+    if (rs[D3DRS_INDEXEDVERTEXBLENDENABLE]) WD3D_HIT(Unsupported, "rs INDEXEDVERTEXBLENDENABLE is ignored");
+    if (DwordToFloat(rs[D3DRS_TWEENFACTOR]) != 0.0f) WD3D_HIT(Unsupported, "rs TWEENFACTOR (vertex tweening) is ignored");
+    if (rs[D3DRS_ZBIAS]) WD3D_HIT(Approximated, "rs ZBIAS=%u emulated with polygon offset", (unsigned)rs[D3DRS_ZBIAS]);
+    if (rs[D3DRS_LINEPATTERN]) WD3D_HIT(Unsupported, "rs LINEPATTERN is ignored");
+    if (rs[D3DRS_EDGEANTIALIAS]) WD3D_HIT(Unsupported, "rs EDGEANTIALIAS is ignored");
+    if (!rs[D3DRS_CLIPPING]) WD3D_HIT(Approximated, "rs CLIPPING=FALSE (clipping is always on)");
+    if (!rs[D3DRS_MULTISAMPLEANTIALIAS] && m_samples) WD3D_HIT(Unsupported, "rs MULTISAMPLEANTIALIAS=FALSE on a multisampled target is ignored");
+    if (rs[D3DRS_ZENABLE] != D3DZB_TRUE && rs[D3DRS_ZENABLE] != D3DZB_FALSE) WD3D_HIT(Approximated, "rs ZENABLE=%u (w-buffering) uses z", (unsigned)rs[D3DRS_ZENABLE]);
+    if (rs[D3DRS_FILLMODE] == D3DFILL_POINT && mode != GL_POINTS) WD3D_HIT(Approximated, "rs FILLMODE=POINT");
+    if (rs[D3DRS_BLENDOP] > D3DBLENDOP_MAX) WD3D_HIT(Unsupported, "rs BLENDOP=%u", (unsigned)rs[D3DRS_BLENDOP]);
+    if (rs[D3DRS_SRCBLEND] == D3DBLEND_BOTHSRCALPHA || rs[D3DRS_SRCBLEND] == D3DBLEND_BOTHINVSRCALPHA)
+        WD3D_HIT(Approximated, "rs SRCBLEND=BOTHSRCALPHA/BOTHINVSRCALPHA expanded to a blend pair");
+    if (rs[D3DRS_FOGENABLE] && !rs[D3DRS_FOGVERTEXMODE] && !rs[D3DRS_FOGTABLEMODE]) WD3D_HIT(Approximated, "fog enabled with no fog mode (ignored)");
+    if (rs[D3DRS_FOGENABLE] && rs[D3DRS_FOGVERTEXMODE] && !rs[D3DRS_FOGTABLEMODE] && key.vsHandle)
+        WD3D_HIT(Approximated, "vertex fog with a vertex shader uses oFog");
+    if (rs[D3DRS_SHADEMODE] == D3DSHADE_FLAT && !m_glcaps.provokingVertex) WD3D_HIT(Approximated, "flat shading without WEBGL_provoking_vertex");
+    if (rs[D3DRS_SHADEMODE] != D3DSHADE_FLAT && rs[D3DRS_SHADEMODE] != D3DSHADE_GOURAUD) WD3D_HIT(Unsupported, "rs SHADEMODE=%u", (unsigned)rs[D3DRS_SHADEMODE]);
+    for (int s = 0; s < key.stageCount; ++s)
+    {
+        const StageKey &st = key.stage[s];
+        const DWORD *t = m_s.tss[s];
+        if (!m_curProgram->key.psHandle)
+        {
+            if (st.colorOp == D3DTOP_BUMPENVMAP || st.colorOp == D3DTOP_BUMPENVMAPLUMINANCE)
+                WD3D_HIT(Unsupported, "tss COLOROP=BUMPENVMAP[LUMINANCE] in the fixed-function pipeline");
+            if (st.colorOp == D3DTOP_PREMODULATE || st.alphaOp == D3DTOP_PREMODULATE)
+                WD3D_HIT(Approximated, "tss OP=PREMODULATE (treated as SELECTARG1)");
+        }
+        if (t[D3DTSS_ADDRESSU] == D3DTADDRESS_MIRRORONCE || t[D3DTSS_ADDRESSV] == D3DTADDRESS_MIRRORONCE)
+            WD3D_HIT(Approximated, "tss ADDRESS=MIRRORONCE (treated as MIRROR)");
+        if (t[D3DTSS_ADDRESSU] == D3DTADDRESS_BORDER || t[D3DTSS_ADDRESSV] == D3DTADDRESS_BORDER)
+            WD3D_HIT(Approximated, "tss ADDRESS=BORDER (hard cut, no filtering at the border)");
+        if (t[D3DTSS_MAGFILTER] == D3DTEXF_FLATCUBIC || t[D3DTSS_MAGFILTER] == D3DTEXF_GAUSSIANCUBIC)
+            WD3D_HIT(Approximated, "tss MAGFILTER=CUBIC (treated as LINEAR)");
+        if ((t[D3DTSS_TEXTURETRANSFORMFLAGS] & 0xFF) > 4) WD3D_HIT(Unsupported, "tss TEXTURETRANSFORMFLAGS count %u", (unsigned)(t[D3DTSS_TEXTURETRANSFORMFLAGS] & 0xFF));
+    }
+    const DWORD vsh = m_s.vertexShader;
+    if (!(vsh & 1) && vsh)
+    {
+        const DWORD pos = vsh & D3DFVF_POSITION_MASK;
+        if (pos >= D3DFVF_XYZB1 && pos <= D3DFVF_XYZB5) WD3D_HIT(Unsupported, "FVF with vertex blend weights (weights are skipped)");
+        if (vsh & D3DFVF_LASTBETA_UBYTE4) WD3D_HIT(Unsupported, "FVF LASTBETA_UBYTE4");
+    }
+}
+
 bool Device::PrepareDraw(GLenum mode)
 {
     m_drawingPoints = mode == GL_POINTS;
     ++m_drawCounter;
-    if (m_contextLost) return false;
+    if (m_ctxEvent) CheckContext();
+    if (m_contextLost || m_needsReset) return false;
     if (GetConfig().debug && m_presentCounter % 120 == 0)
         Log("draw #%u: mode 0x%x, fvf 0x%x, vs %u, alphablend %u, src %u dst %u, zenable %u, cull %u, tex0 %d, rt %ux%u", m_drawCounter, (unsigned)mode,
             (unsigned)m_s.vertexShader, (unsigned)m_s.vertexShader, m_s.rs[D3DRS_ALPHABLENDENABLE], m_s.rs[D3DRS_SRCBLEND], m_s.rs[D3DRS_DESTBLEND],
@@ -719,13 +915,14 @@ bool Device::PrepareDraw(GLenum mode)
     }
     GL_STAGE_CHECK("entry");
     if (!SelectProgram()) return false;
+    if (g_diagOn) DiagCheckDrawState(mode);
     GL_STAGE_CHECK("select program");
     ApplyRenderTargets();
     GL_STAGE_CHECK("render targets");
     m_attachedColorTex = 0;
     if (Surface *rt = static_cast<Surface *>(m_curRT.get()))
     {
-        if (rt->GetKind() == Surface::BackBuffer) m_attachedColorTex = m_bbColor;
+        if (rt->GetKind() == Surface::BackBuffer) { m_attachedColorTex = m_samples ? 0 : m_bbColor; m_bbDirty = true; }
         else if (rt->GetKind() == Surface::Level) m_attachedColorTex = rt->Texture()->m_tex;
     }
     ApplyPipeline();
@@ -734,6 +931,7 @@ bool Device::PrepareDraw(GLenum mode)
     {
         glUseProgram(m_curProgram->id);
         m_boundProgram = m_curProgram->id;
+        ++g_d3d.programSwitches;
     }
     GL_STAGE_CHECK("pipeline/program");
     UploadUniforms();
@@ -750,7 +948,10 @@ bool Device::PrepareDraw(GLenum mode)
     return true;
 }
 
-uint32_t Device::UploadStream(const void *data, size_t size, bool index)
+/// Appends data to the streaming buffer used for draws from user memory. Offsets are multiples of
+/// `align` (the vertex size for vertex data, so that the offset is a whole number of vertices and can
+/// be passed as a base vertex). The buffer is orphaned when it is full.
+size_t Device::UploadStream(const void *data, size_t size, bool index, size_t align)
 {
     GLuint &buf = index ? m_streamIB : m_streamVB;
     size_t &cap = index ? m_streamIBSize : m_streamVBSize;
@@ -758,17 +959,20 @@ uint32_t Device::UploadStream(const void *data, size_t size, bool index)
     const GLenum target = index ? GL_ELEMENT_ARRAY_BUFFER : GL_ARRAY_BUFFER;
     if (!buf) glGenBuffers(1, &buf);
     BindBuffer(target, buf);
+    if (align < 4) align = 4;
     size = (size + 3) & ~size_t(3);
-    if (size > cap || pos + size > cap)
+    size_t at = (pos + align - 1) / align * align;
+    if (size > cap || at + size > cap)
     {
-        if (size > cap) cap = Max<size_t>(size * 2, 4u << 20);
+        if (size + align > cap) cap = Max<size_t>((size + align) * 2, 4u << 20);
         glBufferData(target, (GLsizeiptr)cap, nullptr, GL_STREAM_DRAW); // orphan
-        pos = 0;
+        g_gl.uploadBytes += 0;
+        at = 0;
     }
-    glBufferSubData(target, (GLintptr)pos, (GLsizeiptr)size, data);
-    uint32_t off = (uint32_t)pos;
-    pos += size;
-    return off;
+    glBufferSubData(target, (GLintptr)at, (GLsizeiptr)size, data);
+    g_gl.uploadBytes += (uint32_t)size;
+    pos = at + size;
+    return at;
 }
 
 bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UINT start, UINT baseVertex,
@@ -778,20 +982,35 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
     UINT count;
     if (!primCount || !PrimitiveInfo(type, primCount, mode, count)) return false;
     if (!PrepareDraw(mode)) return false;
+    ++g_d3d.draws;
+    g_d3d.primitives += primCount;
+    if (userVerts) ++g_d3d.drawsUP;
+    else if (indexed) ++g_d3d.drawsIndexed;
 
-    // Vertex data.
     const bool userData = userVerts != nullptr;
-    GLuint ub = 0;
-    size_t uoff = 0;
+    const DWORD fill = m_s.rs[D3DRS_FILLMODE];
+    const bool triangles = mode == GL_TRIANGLES || mode == GL_TRIANGLE_STRIP || mode == GL_TRIANGLE_FAN;
+    const bool wire = triangles && (fill == D3DFILL_WIREFRAME || fill == D3DFILL_POINT);
+    // Flat shading takes the color of the triangle's first vertex in Direct3D and of the last one in
+    // WebGL unless WEBGL_provoking_vertex switches the convention; otherwise the triangles are
+    // reordered so that the first vertex comes last.
+    const bool flatFallback = triangles && !wire && m_curProgram->key.flatShade && !m_glcaps.provokingVertex && mode != GL_TRIANGLE_FAN;
+    const bool rebuild = wire || flatFallback;
+
+    // Vertex data. User data is appended to the streaming buffer at a multiple of the vertex size, so
+    // that its position is a vertex number ("vertexBase") like the BaseVertexIndex of SetIndices.
+    UINT vertexBase = 0;
     if (userData)
     {
-        size_t bytes = (size_t)userVertCount * userStride;
-        uoff = UploadStream(userVerts, bytes, false);
-        ub = m_streamVB;
+        const size_t bytes = (size_t)userVertCount * userStride;
+        vertexBase = (UINT)(UploadStream(userVerts, bytes, false, userStride) / userStride);
     }
     else
         FlushBuffers();
-    if (!BindAttributes(userData ? 0 : baseVertex, ub, uoff, userStride)) return false;
+    // Where the base vertex is applied: by the draw call (extension), or by the attribute pointers.
+    const UINT totalBase = userData ? vertexBase : (indexed ? baseVertex : 0);
+    const bool baseInDraw = indexed && m_glcaps.baseVertex && !rebuild;
+    if (!BindAttributes(baseInDraw || !indexed || rebuild ? 0 : totalBase, userData, userStride)) return false;
     GL_STAGE_CHECK("attributes");
 
     // Index data.
@@ -806,7 +1025,7 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
             const bool wide = userIndexFmt == D3DFMT_INDEX32;
             indexType = wide ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT;
             const size_t bytes = (size_t)count * (wide ? 4 : 2);
-            indexOffset = UploadStream(userIndices, bytes, true);
+            indexOffset = UploadStream(userIndices, bytes, true, 4);
             GL_STAGE_CHECK("index upload");
             ibuf = m_streamIB;
             wireSrc = userIndices;
@@ -826,16 +1045,16 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
         GL_STAGE_CHECK("element buffer bind");
     }
 
-    const DWORD fill = m_s.rs[D3DRS_FILLMODE];
-    const bool triangles = mode == GL_TRIANGLES || mode == GL_TRIANGLE_STRIP || mode == GL_TRIANGLE_FAN;
-    if (triangles && (fill == D3DFILL_WIREFRAME || fill == D3DFILL_POINT))
+    if (rebuild)
     {
-        // GL ES has no polygon mode: rebuild the primitive as lines/points.
+        // GL ES has no polygon mode: rebuild the primitive as lines/points (or rotate the triangles).
+        // The indices of the rebuilt list include the base vertex, so the attribute pointers stay put.
         std::vector<uint32_t> tri;
         tri.reserve(count);
         auto fetch = [&](UINT i) -> uint32_t {
-            if (!indexed) return start + i;
-            return indexType == GL_UNSIGNED_INT ? static_cast<const uint32_t *>(wireSrc)[i] : static_cast<const uint16_t *>(wireSrc)[i];
+            if (!indexed) return (userData ? vertexBase : start) + i;
+            const uint32_t raw = indexType == GL_UNSIGNED_INT ? static_cast<const uint32_t *>(wireSrc)[i] : static_cast<const uint16_t *>(wireSrc)[i];
+            return raw + totalBase;
         };
         for (UINT p = 0; p < primCount; ++p)
         {
@@ -843,27 +1062,49 @@ bool Device::DrawCommon(D3DPRIMITIVETYPE type, UINT primCount, bool indexed, UIN
             if (mode == GL_TRIANGLES) { a = fetch(p * 3); b = fetch(p * 3 + 1); c = fetch(p * 3 + 2); }
             else if (mode == GL_TRIANGLE_STRIP) { a = fetch(p); b = fetch(p + 1 + (p & 1)); c = fetch(p + 2 - (p & 1)); }
             else { a = fetch(0); b = fetch(p + 1); c = fetch(p + 2); }
-            tri.push_back(a); tri.push_back(b); tri.push_back(c);
+            if (flatFallback)
+            {
+                // (a,b,c) keeps its winding as (b,c,a); the vertex D3D shades with ends up last.
+                tri.push_back(b); tri.push_back(c); tri.push_back(a);
+            }
+            else { tri.push_back(a); tri.push_back(b); tri.push_back(c); }
         }
         std::vector<uint32_t> out;
-        if (fill == D3DFILL_WIREFRAME)
+        GLenum outMode = GL_TRIANGLES;
+        if (wire && fill == D3DFILL_WIREFRAME)
+        {
+            outMode = GL_LINES;
             for (size_t i = 0; i + 2 < tri.size(); i += 3)
             { out.push_back(tri[i]); out.push_back(tri[i + 1]); out.push_back(tri[i + 1]); out.push_back(tri[i + 2]); out.push_back(tri[i + 2]); out.push_back(tri[i]); }
+        }
         else
+        {
+            if (wire) outMode = GL_POINTS;
             out = tri;
-        size_t off = UploadStream(out.data(), out.size() * 4, true);
+        }
+        size_t off = UploadStream(out.data(), out.size() * 4, true, 4);
         BindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_streamIB);
-        glDrawElements(fill == D3DFILL_WIREFRAME ? GL_LINES : GL_POINTS, (GLsizei)out.size(), GL_UNSIGNED_INT, reinterpret_cast<const void *>(off));
+        glDrawElements(outMode, (GLsizei)out.size(), GL_UNSIGNED_INT, reinterpret_cast<const void *>(off));
+        if (g_diagOn)
+        {
+            if (wire) WD3D_HIT(Approximated, "fill mode %s rebuilt from the triangle list on the CPU", fill == D3DFILL_WIREFRAME ? "WIREFRAME" : "POINT");
+            else WD3D_HIT(Approximated, "flat shading by reordering triangles (no WEBGL_provoking_vertex)");
+        }
         return true;
     }
+    if (g_diagOn && triangles && m_curProgram->key.flatShade && mode == GL_TRIANGLE_FAN)
+        WD3D_HIT(Approximated, "flat shaded triangle fan uses the wrong provoking vertex");
 
     if (indexed)
     {
-        glDrawElements(mode, count, indexType, reinterpret_cast<const void *>(indexOffset));
+        if (baseInDraw && totalBase)
+            glDrawElementsInstancedBaseVertexBaseInstanceWEBGL(mode, count, indexType, reinterpret_cast<const void *>(indexOffset), 1, (GLint)totalBase, 0);
+        else
+            glDrawElements(mode, count, indexType, reinterpret_cast<const void *>(indexOffset));
         GL_STAGE_CHECK("glDrawElements");
     }
     else
-        glDrawArrays(mode, userData ? 0 : start, count);
+        glDrawArrays(mode, userData ? vertexBase : start, count);
 
     if (GetConfig().debug)
     {
@@ -910,39 +1151,57 @@ HRESULT Device::ProcessVertices(UINT, UINT, UINT, IDirect3DVertexBuffer8 *, DWOR
 //------------------------------------------------------------------------------
 HRESULT Device::Clear(DWORD count, const D3DRECT *rects, DWORD flags, D3DCOLOR color, float z, DWORD stencil)
 {
-    if (m_contextLost) return D3DERR_DEVICELOST;
+    if (m_ctxEvent) CheckContext();
+    if (m_contextLost || m_needsReset) return D3DERR_DEVICELOST;
     if (count && !rects) return D3DERR_INVALIDCALL;
     ApplyRenderTargets();
+    ++g_d3d.clears;
+    if (m_samples && m_curRT.get() && static_cast<Surface *>(m_curRT.get())->GetKind() == Surface::BackBuffer) m_bbDirty = true;
 
+    // The masks a clear needs are set through the pipeline cache so that the next draw only re-issues
+    // what really differs.
+    const bool known = m_pipelineValid;
     GLbitfield bits = 0;
     if (flags & D3DCLEAR_TARGET)
     {
         float c[4];
         ColorToVec4(color, c);
-        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-        glClearColor(c[0], c[1], c[2], c[3]);
+        if (!known || m_applied.colorMask != 0xF) glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        m_applied.colorMask = 0xF;
+        if (c[0] != m_clearColor[0] || c[1] != m_clearColor[1] || c[2] != m_clearColor[2] || c[3] != m_clearColor[3] || !m_clearColorValid)
+        {
+            glClearColor(c[0], c[1], c[2], c[3]);
+            memcpy(m_clearColor, c, sizeof c);
+            m_clearColorValid = true;
+        }
         bits |= GL_COLOR_BUFFER_BIT;
     }
     const Surface *ds = static_cast<const Surface *>(m_curDS.get());
     if ((flags & D3DCLEAR_ZBUFFER) && ds)
     {
-        glDepthMask(GL_TRUE);
-        glClearDepthf(Clamp(z, 0.0f, 1.0f));
+        if (!known || !m_applied.depthMask) glDepthMask(GL_TRUE);
+        m_applied.depthMask = true;
+        const float zc = Clamp(z, 0.0f, 1.0f);
+        if (zc != m_clearDepth || !m_clearDepthValid) { glClearDepthf(zc); m_clearDepth = zc; m_clearDepthValid = true; }
         bits |= GL_DEPTH_BUFFER_BIT;
     }
     const FormatInfo *dsInfo = ds ? GetFormatInfo(ds->Format()) : nullptr;
     if ((flags & D3DCLEAR_STENCIL) && dsInfo && dsInfo->stencil)
     {
-        glStencilMask(0xFF);
-        glClearStencil((GLint)stencil);
+        if (!known || m_applied.stencilWriteMask != 0xFF) glStencilMask(0xFF);
+        m_applied.stencilWriteMask = 0xFF;
+        if ((GLint)stencil != m_clearStencil || !m_clearStencilValid) { glClearStencil((GLint)stencil); m_clearStencil = (GLint)stencil; m_clearStencilValid = true; }
         bits |= GL_STENCIL_BUFFER_BIT;
     }
     if (bits)
     {
-        glDisable(GL_STENCIL_TEST); // stencil test does not affect clears, but keep the state tidy
-        glEnable(GL_SCISSOR_TEST);
+        // The scissor test restricts a clear to the rectangles (the stencil test does not affect it). It
+        // stays enabled afterwards; the next draw switches it off when needed (PipelineState::scissor).
+        if (!known || !m_applied.scissor) glEnable(GL_SCISSOR_TEST);
+        m_applied.scissor = true;
         auto clearRect = [&](GLint x, GLint y, GLint w, GLint h) {
-            glScissor(x, y, w, h);
+            const GLint sc[4] = {x, y, w, h};
+            if (memcmp(sc, m_applied.sc, sizeof sc) != 0 || !known) { glScissor(x, y, w, h); memcpy(m_applied.sc, sc, sizeof sc); }
             glClear(bits);
         };
         if (count)
@@ -957,9 +1216,7 @@ HRESULT Device::Clear(DWORD count, const D3DRECT *rects, DWORD flags, D3DCOLOR c
         }
         else
             clearRect((GLint)m_s.viewport.X, (GLint)m_s.viewport.Y, (GLint)m_s.viewport.Width, (GLint)m_s.viewport.Height);
-        glDisable(GL_SCISSOR_TEST);
-        // The cached masks/test state were touched.
-        m_pipelineValid = false;
+        // Anything that was not known (m_pipelineValid false) is applied in full by the next draw.
     }
     return D3D_OK;
 }

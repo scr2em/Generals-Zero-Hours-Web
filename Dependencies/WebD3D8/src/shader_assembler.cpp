@@ -38,7 +38,7 @@ struct OpInfo
 
 const OpInfo kOps[] = {
     {"nop", D3DSIO_NOP, 0, 0},       {"mov", D3DSIO_MOV, 2, 2},       {"add", D3DSIO_ADD, 3, 3},
-    {"sub", D3DSIO_SUB, -1, 3},      {"mad", D3DSIO_MAD, 4, 4},       {"mul", D3DSIO_MUL, 3, 3},
+    {"sub", D3DSIO_SUB, 3, 3},      {"mad", D3DSIO_MAD, 4, 4},       {"mul", D3DSIO_MUL, 3, 3},
     {"rcp", D3DSIO_RCP, 2, -1},      {"rsq", D3DSIO_RSQ, 2, -1},      {"dp3", D3DSIO_DP3, 3, 3},
     {"dp4", D3DSIO_DP4, 3, 3},       {"min", D3DSIO_MIN, 3, -1},      {"max", D3DSIO_MAX, 3, -1},
     {"slt", D3DSIO_SLT, 3, -1},      {"sge", D3DSIO_SGE, 3, -1},      {"exp", D3DSIO_EXP, 2, -1},
@@ -55,6 +55,7 @@ const OpInfo kOps[] = {
     {"cnd", D3DSIO_CND, -1, 4},      {"def", D3DSIO_DEF, 5, 5},       {"texreg2rgb", D3DSIO_TEXREG2RGB, -1, 2},
     {"texdp3tex", D3DSIO_TEXDP3TEX, -1, 2}, {"texdp3", D3DSIO_TEXDP3, -1, 2}, {"texm3x3", D3DSIO_TEXM3x3, -1, 2},
     {"texdepth", D3DSIO_TEXDEPTH, -1, 1}, {"cmp", D3DSIO_CMP, -1, 4}, {"bem", D3DSIO_BEM, -1, 4},
+    {"texm3x2depth", D3DSIO_TEXM3x2DEPTH, -1, 2}, {"texm3x3diff", D3DSIO_TEXM3x3DIFF, -1, 2},
     {"phase", D3DSIO_PHASE, 0, 0},
 };
 
@@ -379,7 +380,9 @@ struct Assembler
             return;
         }
 
-        out.push_back(info->op | (coissue ? 0x40000000u : 0u));
+        // vs.1.1 has no subtract instruction: "sub d, a, b" is the assembler macro "add d, a, -b".
+        const bool vsSub = !isPS && info->op == D3DSIO_SUB;
+        out.push_back((vsSub ? (DWORD)D3DSIO_ADD : info->op) | (coissue ? 0x40000000u : 0u));
         for (size_t i = 0; i < ops.size(); ++i)
         {
             DWORD t;
@@ -392,6 +395,11 @@ struct Assembler
             }
             else if (!ParseSource(ops[i], t))
                 return;
+            else if (vsSub && i == 2)
+            {
+                if ((t & D3DSP_SRCMOD_MASK) != 0) { Error("sub cannot negate a source that has a modifier"); return; }
+                t |= D3DSPSM_NEG;
+            }
             out.push_back(t);
         }
     }

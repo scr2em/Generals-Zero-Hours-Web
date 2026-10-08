@@ -26,9 +26,17 @@
 namespace webd3d8 {
 
 BufferStorage::BufferStorage(Device *dev, GLenum target, UINT size, DWORD usage)
-    : m_dev(dev), m_target(target), m_data(size, 0), m_usage(usage)
+    : GLObject(dev), m_dev(dev), m_target(target), m_data(size, 0), m_usage(usage)
 {
     glGenBuffers(1, &m_buf);
+}
+
+void BufferStorage::OnContextRestored()
+{
+    // The system memory copy is authoritative: the whole buffer is uploaded again by the next Flush().
+    glGenBuffers(1, &m_buf);
+    m_allocated = false;
+    m_dirtyBegin = m_dirtyEnd = 0;
 }
 
 BufferStorage::~BufferStorage()

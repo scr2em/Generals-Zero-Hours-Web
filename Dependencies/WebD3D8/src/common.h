@@ -23,6 +23,9 @@
 
 #include <GLES3/gl3.h>
 #include <GLES2/gl2ext.h>
+// Declarations of the WebGL extension entry points (before glcount.h turns GL calls into macros).
+#include <webgl/webgl2_ext.h>
+#include <emscripten/html5_webgl.h>
 
 #include <algorithm>
 #include <cmath>
@@ -36,6 +39,7 @@
 #include <vector>
 
 #include "WebD3D8/WebD3D8.h"
+#include "glcount.h"
 
 namespace webd3d8 {
 
@@ -56,6 +60,10 @@ struct Config
     bool releaseTextureShadows = false;
     bool disableS3TC = false;
     int contextProxy = 0;
+    int featureOverrides = 0;     ///< WebD3D8_SetFeatureOverrides
+    int reportSeconds = 0;
+    int loseAfterFrames = 0;      ///< test aid: drop the context after this many presented frames
+    int loseRestoreFrames = 120;  ///< ... and restore it this many frames later
 };
 Config &GetConfig();
 

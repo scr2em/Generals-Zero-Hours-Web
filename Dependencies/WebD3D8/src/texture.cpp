@@ -89,7 +89,7 @@ HRESULT DeviceChild::FreePrivateDataCommon(REFGUID guid)
 //------------------------------------------------------------------------------
 TextureBase::TextureBase(Device *dev, D3DRESOURCETYPE type, UINT w, UINT h, UINT d, UINT levels,
                          DWORD usage, D3DFORMAT fmt, D3DPOOL pool)
-    : m_dev(dev), m_type(type), m_format(fmt), m_usage(usage), m_pool(pool),
+    : GLObject(dev), m_dev(dev), m_type(type), m_format(fmt), m_usage(usage), m_pool(pool),
       m_width(w), m_height(h), m_depth(d), m_uniqueId(g_nextId++)
 {
     m_info = GetFormatInfo(fmt);
@@ -129,6 +129,25 @@ TextureBase::TextureBase(Device *dev, D3DRESOURCETYPE type, UINT w, UINT h, UINT
 TextureBase::~TextureBase()
 {
     ReleaseGL();
+}
+
+void TextureBase::OnContextRestored()
+{
+    // Textures that never had a GL object (system memory) stay without one. The others are created
+    // again and refilled from the shadow copies; levels whose copy was released (DEFAULT pool, see
+    // UnlockLevel) come back empty, exactly like Direct3D 8 resources in the default pool.
+    const bool had = m_glAllocated;
+    m_tex = 0;
+    m_glAllocated = false;
+    m_baseLevel = 0;
+    if (!had) return;
+    EnsureGL();
+    for (LevelData &lv : m_levels)
+        if (!lv.shadowValid && lv.glValid && !m_isRT)
+        {
+            WD3D_HIT(Event, "texture contents lost with the context (default pool, game must reload)");
+            break;
+        }
 }
 
 void TextureBase::ReleaseGL()
@@ -619,7 +638,7 @@ HRESULT Volume::UnlockBox() { return m_parent->UnlockBox(m_level); }
 // Surface
 //------------------------------------------------------------------------------
 Surface::Surface(TextureBase *tex, IUnknown *owner, UINT face, UINT level)
-    : DeviceChild(tex->m_dev, false), m_kind(Level), m_format(tex->m_format),
+    : DeviceChild(tex->m_dev, false), GLObject(nullptr), m_kind(Level), m_format(tex->m_format),
       m_width(tex->LevelWidth(level)), m_height(tex->LevelHeight(level)),
       m_pool(tex->m_pool), m_usage(tex->m_usage), m_tex(tex), m_owner(owner),
       m_face(face), m_level(level), m_id(g_nextId++)
@@ -627,10 +646,12 @@ Surface::Surface(TextureBase *tex, IUnknown *owner, UINT face, UINT level)
     m_refs = 0;
 }
 
-Surface::Surface(Device *dev, Kind kind, UINT w, UINT h, D3DFORMAT fmt)
-    : DeviceChild(dev, true), m_kind(kind), m_format(fmt),
+Surface::Surface(Device *dev, Kind kind, UINT w, UINT h, D3DFORMAT fmt, int samples)
+    : DeviceChild(dev, true), GLObject(dev), m_kind(kind), m_format(fmt),
       m_width(w), m_height(h), m_id(g_nextId++)
 {
+    m_samples = samples >= 2 ? Min<int>(samples, dev->Caps().maxSamples) : 0;
+    if (m_samples < 2) m_samples = 0;
     const FormatInfo *info = GetFormatInfo(fmt);
     if (kind == Image)
     {
@@ -643,14 +664,16 @@ Surface::Surface(Device *dev, Kind kind, UINT w, UINT h, D3DFORMAT fmt)
         glGenRenderbuffers(1, &m_rb);
         glBindRenderbuffer(GL_RENDERBUFFER, m_rb);
         GLenum internal = info && info->glInternal && info->renderTarget ? info->glInternal : GL_RGBA8;
-        glRenderbufferStorage(GL_RENDERBUFFER, internal, w, h);
+        if (m_samples) glRenderbufferStorageMultisample(GL_RENDERBUFFER, m_samples, internal, w, h);
+        else glRenderbufferStorage(GL_RENDERBUFFER, internal, w, h);
     }
     else if (kind == DepthStencil)
     {
         m_usage = D3DUSAGE_DEPTHSTENCIL;
         glGenRenderbuffers(1, &m_rb);
         glBindRenderbuffer(GL_RENDERBUFFER, m_rb);
-        glRenderbufferStorage(GL_RENDERBUFFER, DepthRenderbufferFormat(fmt), w, h);
+        if (m_samples) glRenderbufferStorageMultisample(GL_RENDERBUFFER, m_samples, DepthRenderbufferFormat(fmt), w, h);
+        else glRenderbufferStorage(GL_RENDERBUFFER, DepthRenderbufferFormat(fmt), w, h);
     }
     else if (kind == BackBuffer)
     {
@@ -661,6 +684,24 @@ Surface::Surface(Device *dev, Kind kind, UINT w, UINT h, D3DFORMAT fmt)
 Surface::~Surface()
 {
     if (m_rb) glDeleteRenderbuffers(1, &m_rb);
+}
+
+int Surface::Samples() const
+{
+    if (m_kind == BackBuffer) return m_device->BackBufferSamples();
+    return m_samples;
+}
+
+void Surface::OnContextRestored()
+{
+    if (m_kind != RenderTarget && m_kind != DepthStencil) return;
+    const FormatInfo *info = GetFormatInfo(m_format);
+    glGenRenderbuffers(1, &m_rb);
+    glBindRenderbuffer(GL_RENDERBUFFER, m_rb);
+    GLenum internal = m_kind == DepthStencil ? DepthRenderbufferFormat(m_format)
+                                             : (info && info->glInternal && info->renderTarget ? info->glInternal : GL_RGBA8);
+    if (m_samples) glRenderbufferStorageMultisample(GL_RENDERBUFFER, m_samples, internal, m_width, m_height);
+    else glRenderbufferStorage(GL_RENDERBUFFER, internal, m_width, m_height);
 }
 
 ULONG Surface::AddRef()
@@ -699,7 +740,7 @@ HRESULT Surface::GetDesc(D3DSURFACE_DESC *d)
     d->Usage = m_usage;
     d->Pool = m_pool;
     d->Size = FormatLevelSize(m_format, m_width, m_height);
-    d->MultiSampleType = D3DMULTISAMPLE_NONE;
+    d->MultiSampleType = (D3DMULTISAMPLE_TYPE)Samples();
     d->Width = m_width;
     d->Height = m_height;
     return D3D_OK;
@@ -760,31 +801,47 @@ HRESULT Surface::UnlockRect()
     return D3D_OK;
 }
 
-void Surface::AttachColor()
+uint64_t Surface::AttachColor(uint64_t cachedKey)
 {
+    uint64_t key = 0;
     switch (m_kind)
     {
     case Level:
         m_tex->EnsureGL();
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, m_tex->FaceTarget(m_face), m_tex->m_tex, m_level);
+        key = (1ull << 60) | ((uint64_t)m_tex->m_tex << 24) | ((uint64_t)m_face << 16) | (uint64_t)m_level;
+        if (key != cachedKey)
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, m_tex->FaceTarget(m_face), m_tex->m_tex, m_level);
         break;
     case RenderTarget:
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, m_rb);
+        key = (2ull << 60) | m_rb;
+        if (key != cachedKey) glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, m_rb);
         break;
     case BackBuffer:
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_device->BackBufferTexture(), 0);
+        if (m_device->BackBufferSamples())
+        {
+            key = (3ull << 60) | m_device->BackBufferRenderbuffer();
+            if (key != cachedKey) glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, m_device->BackBufferRenderbuffer());
+        }
+        else
+        {
+            key = (4ull << 60) | m_device->BackBufferTexture();
+            if (key != cachedKey) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_device->BackBufferTexture(), 0);
+        }
         break;
     default: break;
     }
+    return key;
 }
 
-void Surface::AttachDepth(bool &hasStencil)
+uint64_t Surface::AttachDepth(bool &hasStencil, uint64_t cachedKey)
 {
     const FormatInfo *info = GetFormatInfo(m_format);
     hasStencil = info && info->stencil;
-    if (m_kind != DepthStencil) return;
+    if (m_kind != DepthStencil) return cachedKey;
     // The renderbuffer is DEPTH24_STENCIL8 for stencil formats and a pure
     // depth format otherwise; attach to the matching point and detach the other.
+    const uint64_t key = ((hasStencil ? 5ull : 6ull) << 60) | m_rb;
+    if (key == cachedKey) return key;
     if (hasStencil)
     {
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_rb);
@@ -794,6 +851,7 @@ void Surface::AttachDepth(bool &hasStencil)
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, 0);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_rb);
     }
+    return key;
 }
 
 bool Surface::ReadPixelsTo(const RECT &rc, D3DFORMAT dstFormat, void *dst, UINT dstPitch)

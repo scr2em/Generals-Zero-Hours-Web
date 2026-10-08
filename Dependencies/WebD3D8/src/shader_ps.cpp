@@ -65,6 +65,7 @@ bool CreatePixelShaderObject(const DWORD *function, PixelShaderObject **out)
     if ((version & 0xFFFF0000) != 0xFFFF0000 || ((version >> 8) & 0xFF) != 1 || (version & 0xFF) > 4)
     {
         Log("CreatePixelShader: unsupported shader version 0x%08x", (unsigned)version);
+        WD3D_HIT(Unsupported, "pixel shader version 0x%08x", (unsigned)version);
         return false;
     }
     PixelShaderObject *ps = new PixelShaderObject();
@@ -106,6 +107,7 @@ bool CreatePixelShaderObject(const DWORD *function, PixelShaderObject **out)
         if (nops < 0 || i + nops > count)
         {
             Log("CreatePixelShader: unsupported instruction %u", (unsigned)op);
+            WD3D_HIT(Unsupported, "ps opcode %u", (unsigned)op);
             delete ps;
             return false;
         }
@@ -115,29 +117,30 @@ bool CreatePixelShaderObject(const DWORD *function, PixelShaderObject **out)
         in.n = nops;
         for (int k = 0; k < nops; ++k) in.p[k] = DecodeParam(code[i + k]);
         i += nops;
+        // Stages whose coordinates / samplers the shader touches (the destination register of a
+        // texture addressing instruction names the stage).
         switch (op)
         {
-        case D3DSIO_TEXDP3: case D3DSIO_TEXDP3TEX: case D3DSIO_TEXM3x3: case D3DSIO_TEXM3x2DEPTH:
-        case D3DSIO_TEXDEPTH: case D3DSIO_TEXM3x3DIFF:
+        case D3DSIO_TEXCOORD: case D3DSIO_TEXKILL: case D3DSIO_TEX: case D3DSIO_TEXBEM: case D3DSIO_TEXBEML:
+        case D3DSIO_TEXREG2AR: case D3DSIO_TEXREG2GB: case D3DSIO_TEXREG2RGB: case D3DSIO_TEXM3x2PAD:
+        case D3DSIO_TEXM3x2TEX: case D3DSIO_TEXM3x3PAD: case D3DSIO_TEXM3x3TEX: case D3DSIO_TEXM3x3SPEC:
+        case D3DSIO_TEXM3x3VSPEC: case D3DSIO_TEXDP3: case D3DSIO_TEXDP3TEX: case D3DSIO_TEXM3x3:
+        case D3DSIO_TEXM3x2DEPTH:
+            if (ps->version >= 0x0104 && (op == D3DSIO_TEX || op == D3DSIO_TEXCOORD))
+            {
+                // texld rN, tM / texcrd rN, tM: the sampler is named by the destination, the
+                // coordinates by the source.
+                if (op == D3DSIO_TEX) texMask |= 1u << in.p[0].reg;
+            }
+            else if (in.p[0].type == RT_ADDR_TEX)
+                texMask |= 1u << in.p[0].reg;
+            break;
+        case D3DSIO_TEXM3x3DIFF:
             Log("CreatePixelShader: instruction %s is not supported", OpcodeName(op));
+            WD3D_HIT(Unsupported, "ps opcode %s", OpcodeName(op));
             delete ps;
             return false;
         default: break;
-        }
-        // Stages whose coordinates / samplers the shader touches.
-        if (op >= D3DSIO_TEXCOORD && op <= D3DSIO_TEXM3x3VSPEC)
-        {
-            if (ps->version >= 0x0104 && (op == D3DSIO_TEX || op == D3DSIO_TEXCOORD))
-            {
-                // texld rN, tM / texcrd rN, tM
-                if (op == D3DSIO_TEX) texMask |= 1u << in.p[0].reg;
-                if (in.p[1].type == RT_ADDR_TEX) texMask |= 1u << in.p[1].reg;
-            }
-            else
-            {
-                texMask |= 1u << in.p[0].reg;
-                if (nops > 1 && in.p[1].type == RT_ADDR_TEX) texMask |= 1u << in.p[1].reg;
-            }
         }
         for (int k = 1; k < nops; ++k)
             if (in.p[k].type == RT_ADDR_TEX) texMask |= 1u << in.p[k].reg;
@@ -158,6 +161,7 @@ struct PSGen
     std::string error;
     std::string pendingEval, pendingStore;
     bool m3Used = false;
+    bool usesDepth = false;   ///< texdepth / texm3x2depth write gl_FragDepth
 
     PSGen(const PixelShaderObject::Impl &i, const ProgramKey &k) : impl(i), key(k) {}
 
@@ -214,8 +218,7 @@ struct PSGen
         const StageKey &st = key.stage[stage];
         if (!st.texType) return "vec4(1.0)";
         std::string bias = st.lodBias ? Fmt(", u_lod[%d]", stage) : "";
-        if (st.texType == 1) return Fmt("texture(s%d, (%s).xy%s)", stage, coord.c_str(), bias.c_str());
-        return Fmt("texture(s%d, (%s).xyz%s)", stage, coord.c_str(), bias.c_str());
+        return TextureFetch(key, stage, st.texType == 1 ? Fmt("(%s).xy", coord.c_str()) : Fmt("(%s).xyz", coord.c_str()), bias);
     }
 
     void Flush()
@@ -321,6 +324,15 @@ struct PSGen
                 EmitTex(tmp, Fmt("vec4((%s).xyz, 1.0)", coord.c_str()));
                 return true;
             }
+            if (op == D3DSIO_TEXDEPTH)
+            {
+                // texdepth r5: depth = r5.r / r5.g (1.0 when r5.g is 0); r5 is consumed.
+                usesDepth = true;
+                const std::string r = RegName(p[0]);
+                s += Fmt("    fragDepth = (%s.g != 0.0) ? %s.r / %s.g : 1.0;\n", r.c_str(), r.c_str(), r.c_str());
+                s += Fmt("    %s = vec4(1.0);\n", r.c_str());
+                return true;
+            }
             error = Fmt("instruction %s is not valid in ps.1.4", OpcodeName(op));
             return false;
         }
@@ -387,6 +399,29 @@ struct PSGen
             s += Fmt("      %s = %s; }\n", t.c_str(), Sample(n, "vec4(rr, 1.0)").c_str());
             return true;
         }
+        case D3DSIO_TEXDP3:
+            // texdp3 tn, tm: dot3 of tn's texture coordinates and tm, replicated into all channels.
+            s += Fmt("    %s = vec4(dot((%s).xyz, t%d.xyz));\n", t.c_str(), Coord(n).c_str(), p[1].reg);
+            return true;
+        case D3DSIO_TEXDP3TEX:
+        {
+            // texdp3tex tn, tm: the dot product is the u coordinate of a 1D lookup (v = 0).
+            s += Fmt("    %s = %s;\n", t.c_str(),
+                     Sample(n, Fmt("vec4(dot((%s).xyz, t%d.xyz), 0.0, 0.0, 1.0)", Coord(n).c_str(), p[1].reg)).c_str());
+            return true;
+        }
+        case D3DSIO_TEXM3x3:
+            // Final row of a 3x3 transform: tn = (dot0, dot1, dot2, 1) without a lookup.
+            m3Used = true;
+            s += Fmt("    %s = vec4(m3d0, m3d1, dot((%s).xyz, t%d.xyz), 1.0);\n", t.c_str(), Coord(n).c_str(), p[1].reg);
+            return true;
+        case D3DSIO_TEXM3x2DEPTH:
+            // texm3x2depth tn, tm: depth = dot0 / dot1 of the 3x2 matrix started by texm3x2pad.
+            m3Used = true;
+            usesDepth = true;
+            s += Fmt("    { float zw = dot((%s).xyz, t%d.xyz); fragDepth = (zw != 0.0) ? m3d0 / zw : 1.0; %s = vec4(fragDepth); }\n",
+                     Coord(n).c_str(), p[1].reg, t.c_str());
+            return true;
         default:
             error = Fmt("unsupported pixel shader instruction %s", OpcodeName(op));
             return false;
@@ -408,6 +443,7 @@ std::string PixelShaderObject::Generate(const ProgramKey &key) const
     if (!gen.Run())
     {
         Log("pixel shader translation failed: %s", gen.error.c_str());
+        WD3D_HIT(Unsupported, "pixel shader: %s", gen.error.c_str());
         return "";
     }
     std::string s;
@@ -441,9 +477,20 @@ std::string PixelShaderObject::Generate(const ProgramKey &key) const
     }
     if (gen.m3Used)
         s += "    float m3d0 = 0.0, m3d1 = 0.0, m3w0 = 0.0, m3w1 = 0.0; int m3count = 0;\n";
+    if (gen.usesDepth)
+        s += "    float fragDepth = gl_FragCoord.z;\n";
     s += gen.s;
     s += "    vec4 col = clamp(r0, 0.0, 1.0);\n";
-    s += FragmentTail(key);
+    std::string tail = FragmentTail(key);
+    if (gen.usesDepth)
+    {
+        // The depth written by the shader is a D3D window depth in [0,1]; GL expects the value after
+        // the viewport depth range transform.
+        const size_t at = tail.find("    fragColor = col;");
+        if (at != std::string::npos)
+            tail.insert(at, "    gl_FragDepth = u_zrange.x + clamp(fragDepth, 0.0, 1.0) * u_zrange.y;\n");
+    }
+    s += tail;
     return s;
 }
 

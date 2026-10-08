@@ -46,6 +46,45 @@ const char *kSwizzle[] = {"x", "xy", "xyz", "xyzw"};
 
 } // namespace
 
+std::string PackedUniformDeclarations()
+{
+    // The state uniforms are packed into a few vec4 arrays so that a state change costs one WebGL
+    // call per group; the macros keep the generated code readable.
+    return
+        "uniform vec4 u_xf[15];\n"
+        "#define u_wvp mat4(u_xf[0], u_xf[1], u_xf[2], u_xf[3])\n"
+        "#define u_wv mat4(u_xf[4], u_xf[5], u_xf[6], u_xf[7])\n"
+        "#define u_nm mat3(u_xf[8].xyz, u_xf[9].xyz, u_xf[10].xyz)\n"
+        "#define u_world mat4(u_xf[11], u_xf[12], u_xf[13], u_xf[14])\n"
+        "uniform mat4 u_tm[8];\n"
+        "uniform vec4 u_view[2];\n"
+        "#define u_pix u_view[0].xy\n"
+        "#define u_zrange u_view[0].zw\n"
+        "#define u_vp u_view[1]\n"
+        "uniform vec4 u_pt[2];\n"
+        "#define u_point u_pt[0]\n"
+        "#define u_pointatt u_pt[1].xyz\n"
+        "uniform vec4 u_clip[6];\n"
+        "uniform vec4 u_fogp[2];\n"
+        "#define u_fog u_fogp[0]\n"
+        "#define u_fogColor u_fogp[1].xyz\n"
+        "uniform vec4 u_mat[5];\n"
+        "#define u_matE u_mat[0]\n"
+        "#define u_matA u_mat[1]\n"
+        "#define u_matD u_mat[2]\n"
+        "#define u_matS u_mat[3]\n"
+        "#define u_matP u_mat[4].x\n"
+        "uniform vec4 u_lt[56];\n"
+        "#define u_lpos(i) u_lt[(i) * 7].xyz\n"
+        "#define u_ldir(i) u_lt[(i) * 7 + 1].xyz\n"
+        "#define u_ldiff(i) u_lt[(i) * 7 + 2].xyz\n"
+        "#define u_lspec(i) u_lt[(i) * 7 + 3].xyz\n"
+        "#define u_lamb(i) u_lt[(i) * 7 + 4].xyz\n"
+        "#define u_latt(i) u_lt[(i) * 7 + 5]\n"
+        "#define u_lspot(i) u_lt[(i) * 7 + 6]\n"
+        "// end of uniforms\n";
+}
+
 std::string VaryingDeclarations(const ProgramKey &key, bool vertexStage, bool forTranslatedVS)
 {
     std::string s;
@@ -75,10 +114,7 @@ std::string GenerateFixedFunctionVertexShader(const ProgramKey &key)
 {
     std::string s;
     s += "#version 300 es\nprecision highp float;\nprecision highp int;\n";
-    s += "uniform mat4 u_wvp;\nuniform mat4 u_wv;\nuniform mat4 u_world;\nuniform mat3 u_nm;\n";
-    s += "uniform mat4 u_tm[8];\nuniform vec2 u_pix;\nuniform vec4 u_vp;\n";
-    s += "uniform vec4 u_point;\nuniform vec3 u_pointatt;\nuniform vec4 u_clip[6];\n";
-    s += "uniform vec4 u_fog;\n";
+    s += PackedUniformDeclarations();
 
     // Inputs (locations are the D3DVSDE register numbers).
     s += "layout(location=0) in vec4 a_pos;\n";
@@ -95,13 +131,7 @@ std::string GenerateFixedFunctionVertexShader(const ProgramKey &key)
 
     if (key.lighting && !key.rhw)
     {
-        s += "uniform vec4 u_matE;\nuniform vec4 u_matA;\nuniform vec4 u_matD;\nuniform vec4 u_matS;\nuniform float u_matP;\n";
         s += "uniform vec4 u_ambient;\n";
-        if (key.lightCount)
-        {
-            s += "uniform vec3 u_lpos[8];\nuniform vec3 u_ldir[8];\nuniform vec3 u_ldiff[8];\nuniform vec3 u_lspec[8];\n";
-            s += "uniform vec3 u_lamb[8];\nuniform vec4 u_latt[8];\nuniform vec4 u_lspot[8];\n";
-        }
     }
     s += VaryingDeclarations(key, true, false);
 
@@ -160,28 +190,28 @@ std::string GenerateFixedFunctionVertexShader(const ProgramKey &key)
                     const int type = key.lightType[i]; // 0 directional, 1 point, 2 spot
                     Add(s, "    {\n        float att = 1.0;\n");
                     if (type == 0)
-                        Add(s, "        vec3 L = -u_ldir[%d];\n", i);
+                        Add(s, "        vec3 L = -u_ldir(%d);\n", i);
                     else
                     {
-                        Add(s, "        vec3 Lv = u_lpos[%d] - eyePos.xyz;\n        float dist = length(Lv);\n", i);
+                        Add(s, "        vec3 Lv = u_lpos(%d) - eyePos.xyz;\n        float dist = length(Lv);\n", i);
                         Add(s, "        vec3 L = Lv / max(dist, 1e-6);\n");
-                        Add(s, "        att = (dist > u_latt[%d].w) ? 0.0 : 1.0 / (u_latt[%d].x + u_latt[%d].y * dist + u_latt[%d].z * dist * dist);\n", i, i, i, i);
+                        Add(s, "        att = (dist > u_latt(%d).w) ? 0.0 : 1.0 / (u_latt(%d).x + u_latt(%d).y * dist + u_latt(%d).z * dist * dist);\n", i, i, i, i);
                         if (type == 2)
                         {
-                            Add(s, "        float rho = dot(-L, u_ldir[%d]);\n", i);
-                            Add(s, "        float spot = (rho > u_lspot[%d].x) ? 1.0 : ((rho <= u_lspot[%d].y) ? 0.0 : pow((rho - u_lspot[%d].y) * u_lspot[%d].w, u_lspot[%d].z));\n",
+                            Add(s, "        float rho = dot(-L, u_ldir(%d));\n", i);
+                            Add(s, "        float spot = (rho > u_lspot(%d).x) ? 1.0 : ((rho <= u_lspot(%d).y) ? 0.0 : pow((rho - u_lspot(%d).y) * u_lspot(%d).w, u_lspot(%d).z));\n",
                                 i, i, i, i, i);
                             s += "        att *= spot;\n";
                         }
                     }
-                    Add(s, "        lAmb += att * u_lamb[%d];\n", i);
+                    Add(s, "        lAmb += att * u_lamb(%d);\n", i);
                     s += "        float ndl = max(dot(eyeNormal, L), 0.0);\n";
-                    Add(s, "        lDiff += att * ndl * u_ldiff[%d];\n", i);
+                    Add(s, "        lDiff += att * ndl * u_ldiff(%d);\n", i);
                     if (key.specularEnable)
                     {
                         s += "        if (ndl > 0.0) {\n            vec3 H = normalize(L + viewDir);\n";
                         s += "            float sp = (u_matP > 0.0) ? pow(max(dot(eyeNormal, H), 0.0), u_matP) : 1.0;\n";
-                        Add(s, "            lSpec += att * sp * u_lspec[%d];\n        }\n", i);
+                        Add(s, "            lSpec += att * sp * u_lspec(%d);\n        }\n", i);
                     }
                     s += "    }\n";
                 }
@@ -238,15 +268,18 @@ std::string GenerateFixedFunctionVertexShader(const ProgramKey &key)
             else Add(s, "    v_clip%d = dot(u_clip[%d], u_world * vec4(a_pos.xyz, 1.0));\n", i, i);
         }
 
-    // Point size.
-    if (key.hasPSize) s += "    float psz = a_psize.x;\n";
-    else s += "    float psz = u_point.x;\n";
-    if (key.pointScale && !key.rhw)
+    // Point size (only point lists use it; the uniforms are then part of the program).
+    if (key.points)
     {
-        s += "    float pd = length(eyePos.xyz);\n";
-        s += "    psz = u_point.w * psz * inversesqrt(max(u_pointatt.x + u_pointatt.y * pd + u_pointatt.z * pd * pd, 1e-12));\n";
+        if (key.hasPSize) s += "    float psz = a_psize.x;\n";
+        else s += "    float psz = u_point.x;\n";
+        if (key.pointScale && !key.rhw)
+        {
+            s += "    float pd = length(eyePos.xyz);\n";
+            s += "    psz = u_point.w * psz * inversesqrt(max(u_pointatt.x + u_pointatt.y * pd + u_pointatt.z * pd * pd, 1e-12));\n";
+        }
+        s += "    gl_PointSize = clamp(psz, u_point.y, u_point.z);\n";
     }
-    s += "    gl_PointSize = clamp(psz, u_point.y, u_point.z);\n";
     s += "}\n";
     return s;
 }
@@ -354,7 +387,26 @@ std::string FragmentTail(const ProgramKey &key)
 
 std::string FragmentCommonUniforms()
 {
-    return "uniform vec4 u_tfactor;\nuniform float u_alphaRef;\nuniform vec4 u_fog;\nuniform vec3 u_fogColor;\nuniform float u_lod[8];\n";
+    return "uniform vec4 u_tfactor;\nuniform float u_alphaRef;\nuniform vec4 u_fogp[2];\n"
+           "#define u_fog u_fogp[0]\n#define u_fogColor u_fogp[1].xyz\n"
+           "uniform vec4 u_view[2];\n#define u_zrange u_view[0].zw\n"
+           "uniform float u_lod[8];\n"
+           "uniform vec4 u_border[8];\n"
+           "// end of uniforms\n"
+           "vec4 d3d_b2(vec2 c, vec4 t, vec4 b, int m) { bool o = ((m & 1) != 0 && (c.x < 0.0 || c.x > 1.0)) || ((m & 2) != 0 && (c.y < 0.0 || c.y > 1.0)); return o ? b : t; }\n"
+           "vec4 d3d_b3(vec3 c, vec4 t, vec4 b, int m) { bool o = ((m & 1) != 0 && (c.x < 0.0 || c.x > 1.0)) || ((m & 2) != 0 && (c.y < 0.0 || c.y > 1.0)) || ((m & 4) != 0 && (c.z < 0.0 || c.z > 1.0)); return o ? b : t; }\n";
+}
+
+std::string TextureFetch(const ProgramKey &key, int stage, const std::string &coord, const std::string &lodArg)
+{
+    const StageKey &st = key.stage[stage];
+    char head[48];
+    snprintf(head, sizeof head, "texture(s%d, ", stage);
+    std::string tex = head + coord + lodArg + ")";
+    if (!st.borderMask || st.texType == 2) return tex;
+    char tail[64];
+    snprintf(tail, sizeof tail, ", u_border[%d], %d)", stage, (int)st.borderMask);
+    return std::string(st.texType == 1 ? "d3d_b2(" : "d3d_b3(") + coord + ", " + tex + tail;
 }
 
 std::string TexCoordExpr(const ProgramKey &key, int stage)
@@ -413,7 +465,7 @@ std::string GenerateFixedFunctionFragmentShader(const ProgramKey &key)
                 }
                 else coord = tc + ".xyz";
             }
-            Add(s, "        vec4 tex = texture(s%d, %s%s);\n", i, coord.c_str(), bias.c_str());
+            Add(s, "        vec4 tex = %s;\n", TextureFetch(key, i, coord, bias).c_str());
         }
         else
             s += "        vec4 tex = vec4(1.0);\n";

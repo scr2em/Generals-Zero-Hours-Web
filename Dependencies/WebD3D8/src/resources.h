@@ -70,11 +70,13 @@ protected:
 // Buffers
 //------------------------------------------------------------------------------
 /// Shared CPU-shadow + GL buffer logic of vertex and index buffers.
-class BufferStorage
+class BufferStorage : public GLObject
 {
 public:
     BufferStorage(Device *dev, GLenum target, UINT size, DWORD usage);
-    ~BufferStorage();
+    ~BufferStorage() override;
+    void OnContextLost() override { m_buf = 0; m_allocated = false; }
+    void OnContextRestored() override;
     HRESULT Lock(UINT offset, UINT size, BYTE **ppData, DWORD flags);
     HRESULT Unlock();
     /// Uploads the pending dirty range to the GL buffer. Returns the GL buffer.
@@ -147,11 +149,13 @@ struct LevelData
 };
 
 /// Storage common to 2D, cube and volume textures.
-class TextureBase
+class TextureBase : public GLObject
 {
 public:
     TextureBase(Device *dev, D3DRESOURCETYPE type, UINT w, UINT h, UINT d, UINT levels, DWORD usage, D3DFORMAT fmt, D3DPOOL pool);
     virtual ~TextureBase();
+    void OnContextLost() override { m_tex = 0; m_baseLevel = 0; /* m_glAllocated stays: the object had GL storage */ }
+    void OnContextRestored() override;
 
     bool Valid() const { return m_valid; }
     bool EnsureGL();
@@ -277,16 +281,18 @@ private:
 //------------------------------------------------------------------------------
 // Surfaces
 //------------------------------------------------------------------------------
-class Surface final : public Unknown<IDirect3DSurface8>, public DeviceChild
+class Surface final : public Unknown<IDirect3DSurface8>, public DeviceChild, public GLObject
 {
 public:
     enum Kind { Level, Image, RenderTarget, DepthStencil, BackBuffer };
 
     /// Surface of a texture level; lifetime is tied to the texture.
     Surface(TextureBase *tex, IUnknown *owner, UINT face, UINT level);
-    /// Standalone surface.
-    Surface(Device *dev, Kind kind, UINT w, UINT h, D3DFORMAT fmt);
+    /// Standalone surface. `samples` > 1 makes a multisampled render target / depth buffer.
+    Surface(Device *dev, Kind kind, UINT w, UINT h, D3DFORMAT fmt, int samples = 0);
     ~Surface() override;
+    void OnContextLost() override { m_rb = 0; }
+    void OnContextRestored() override;
 
     ULONG STDMETHODCALLTYPE AddRef() override;
     ULONG STDMETHODCALLTYPE Release() override;
@@ -310,9 +316,12 @@ public:
     UINT Face() const { return m_face; }
     UINT MipLevel() const { return m_level; }
     GLuint Renderbuffer() const { return m_rb; }
-    /// Attaches this surface to the currently bound framebuffer.
-    void AttachColor();
-    void AttachDepth(bool &hasStencil);
+    /// Samples per pixel (0 = not multisampled).
+    int Samples() const;
+    /// Attaches this surface to the currently bound framebuffer unless `cachedKey` (the value returned
+    /// by the previous call for that framebuffer) says it already is. Returns the new key.
+    uint64_t AttachColor(uint64_t cachedKey);
+    uint64_t AttachDepth(bool &hasStencil, uint64_t cachedKey);
     /// Reads a rectangle into `dst` converted to `dstFormat`.
     bool ReadPixelsTo(const RECT &rc, D3DFORMAT dstFormat, void *dst, UINT dstPitch);
     /// Writes a rectangle from `src` (in `srcFormat`) at the position of rc.
@@ -334,6 +343,7 @@ private:
     UINT m_face = 0, m_level = 0;
     std::vector<uint8_t> m_data; // Image surfaces
     GLuint m_rb = 0;             // RenderTarget/DepthStencil
+    int m_samples = 0;
     bool m_locked = false;
     DWORD m_lockFlags = 0;
     RECT m_lockRect = {};

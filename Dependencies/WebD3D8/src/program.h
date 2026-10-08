@@ -42,7 +42,7 @@ struct StageKey
     uint8_t xformCount;  ///< D3DTTFF_COUNTn (0 = transform disabled)
     uint8_t projected;
     uint8_t lodBias;     ///< non-zero when a mip LOD bias is applied
-    uint8_t pad;
+    uint8_t borderMask;  ///< bit 0/1/2: U/V/W address mode is D3DTADDRESS_BORDER (emulated in the shader)
 };
 
 struct ProgramKey
@@ -62,21 +62,30 @@ struct ProgramKey
     uint8_t alphaTest, alphaFunc;
     uint8_t clipMask;
     uint8_t pointSprite, pointScale, flatShade;
+    uint8_t points;      ///< the draw is a point list (gl_PointSize is only written then)
     uint8_t stageCount;  ///< number of active stages (fixed-function fragment stage)
     uint8_t tcMask;      ///< stages whose texture coordinates are produced/consumed
-    uint8_t pad[3];
+    uint8_t pad[2];
     StageKey stage[MAX_STAGES];
 };
 
 enum UniformId
 {
-    U_WVP, U_WV, U_WORLD, U_NM, U_TM, U_PIX, U_VP, U_CLIP, U_POINT, U_POINTATT,
-    U_MAT_E, U_MAT_A, U_MAT_D, U_MAT_S, U_MAT_P,
-    U_LPOS, U_LDIR, U_LDIFF, U_LSPEC, U_LAMB, U_LATT, U_LSPOT,
-    U_AMBIENT, U_FOG, U_FOGCOLOR, U_TFACTOR, U_ALPHAREF, U_LOD, U_BUMP, U_BUMPL,
-    U_VSC, U_PSC,
+    U_XF,      ///< vec4[15]: wvp (0..3), wv (4..7), normal matrix columns (8..10), world (11..14)
+    U_TM,      ///< mat4[8] texture transforms
+    U_VIEW,    ///< vec4[2]: (1/width, 1/height, zmin, zrange), viewport (x, y, w, h)
+    U_CLIP,    ///< vec4[6] user clip planes
+    U_PT,      ///< vec4[2]: (size, min, max, viewport height), (scale a, b, c)
+    U_MAT,     ///< vec4[5]: emissive, ambient, diffuse, specular, (power)
+    U_LT,      ///< vec4[8*7]: per light position, direction, diffuse, specular, ambient, attenuation(+range), spot
+    U_AMBIENT,
+    U_FOGP,    ///< vec4[2]: (start, end, density, 1/(end-start)), color
+    U_TFACTOR, U_ALPHAREF, U_LOD, U_BUMP, U_BUMPL,
+    U_VSC, U_PSC, U_BORDER,
     U_COUNT
 };
+
+
 
 class Program
 {
@@ -84,7 +93,9 @@ public:
     ~Program();
     GLuint id = 0;
     GLint loc[U_COUNT];
-    uint32_t verTransform = 0, verLights = 0, verMaterial = 0, verMisc = 0, verVsConst = 0, verPsConst = 0;
+    uint32_t ver[G_COUNT] = {};   ///< version of each uniform group this program last received
+    uint32_t usedGroups = 0;      ///< bit per UniformGroup: some uniform of the group exists in the program
+    int xfCount = 4;              ///< vec4s of U_XF the program reads (4 = only the projection matrix)
     ProgramKey key;
     bool valid = false;
 };
@@ -94,6 +105,10 @@ Program *CreateProgram(Device *dev, const ProgramKey &key, const std::string &vs
 
 std::string GenerateFixedFunctionVertexShader(const ProgramKey &key);
 std::string GenerateFixedFunctionFragmentShader(const ProgramKey &key);
+
+/// Declarations (and the macros that give the packed uniforms their readable names) shared by all
+/// shader stages.
+std::string PackedUniformDeclarations();
 
 /// Fragment-stage prologue shared by FF and translated shaders: declarations
 /// of the varyings both vertex stages produce.
@@ -109,5 +124,9 @@ std::string FragmentCommonUniforms();
 std::string TexCoordExpr(const ProgramKey &key, int stage);
 /// Fog, alpha test and the write of `col` to fragColor; closes main().
 std::string FragmentTail(const ProgramKey &key);
+/// GLSL expression that samples stage `stage` at `coord` (a vec2 or vec3 expression; `lodArg` is the
+/// optional ", bias" argument). Stages with D3DTADDRESS_BORDER return the border color outside
+/// [0,1], which WebGL cannot do in the sampler.
+std::string TextureFetch(const ProgramKey &key, int stage, const std::string &coord, const std::string &lodArg);
 
 } // namespace webd3d8

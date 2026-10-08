@@ -65,56 +65,88 @@ struct Image
     std::vector<uint8_t> px; // B,G,R,A, tightly packed
 };
 
-/// Resamples an ARGB image. Down-scaling averages the covered source area
-/// (box/triangle), up-scaling is bilinear for the smoothing filters and
-/// nearest for NONE/POINT.
+/// Resamples an ARGB image with a D3DX filter (the low bits of `filter`, plus the MIRROR_U/V flags):
+///   NONE      no scaling: the overlapping top-left region is copied, the rest is transparent black
+///   POINT     nearest texel
+///   LINEAR    the four nearest texels around the sample position
+///   TRIANGLE  every covered source texel contributes equally (area average)
+///   BOX       the average of the covered texels (2x2 for the half-size steps of a mip chain)
+/// Dithering (D3DX_FILTER_DITHER) is not applied: it only matters for 16 bit destinations.
 Image Resample(const Image &src, uint32_t dw, uint32_t dh, DWORD filter)
 {
     Image dst;
     dst.w = dw; dst.h = dh;
     dst.px.resize((size_t)dw * dh * 4);
     const DWORD f = filter & 0xFF;
-    const bool smooth = f != D3DX_FILTER_NONE && f != D3DX_FILTER_POINT;
     if (dw == src.w && dh == src.h) { dst.px = src.px; return dst; }
 
-    // Horizontal pass into floats, then vertical.
-    std::vector<float> tmp((size_t)dw * src.h * 4);
-    auto axis = [&](uint32_t srcN, uint32_t dstN, std::vector<std::vector<std::pair<uint32_t, float>>> &weights) {
+    if (f == D3DX_FILTER_NONE)
+    {
+        memset(dst.px.data(), 0, dst.px.size());
+        for (uint32_t y = 0; y < Min(dh, src.h); ++y)
+            memcpy(&dst.px[(size_t)y * dw * 4], &src.px[(size_t)y * src.w * 4], (size_t)Min(dw, src.w) * 4);
+        return dst;
+    }
+
+    // Weights of every destination coordinate along one axis.
+    auto axis = [&](uint32_t srcN, uint32_t dstN, bool mirror, std::vector<std::vector<std::pair<uint32_t, float>>> &weights) {
         weights.resize(dstN);
+        auto wrap = [&](int i) -> uint32_t {
+            if (i >= 0 && i < (int)srcN) return (uint32_t)i;
+            if (mirror)
+            {
+                const int period = 2 * (int)srcN;
+                int m = ((i % period) + period) % period;
+                return (uint32_t)(m < (int)srcN ? m : period - 1 - m);
+            }
+            return (uint32_t)Clamp(i, 0, (int)srcN - 1);
+        };
+        const double scale = (double)srcN / dstN;
         for (uint32_t i = 0; i < dstN; ++i)
         {
             auto &w = weights[i];
-            if (!smooth)
+            const double center = (i + 0.5) * scale; // in source texel units, texel k spans [k, k+1)
+            if (f == D3DX_FILTER_POINT)
+                w.push_back({wrap((int)std::floor(center)), 1.0f});
+            else if (f == D3DX_FILTER_LINEAR)
             {
-                uint32_t s = Min<uint32_t>((uint32_t)(((uint64_t)i * 2 + 1) * srcN / (2 * dstN)), srcN - 1);
-                w.push_back({s, 1.0f});
-            }
-            else if (dstN < srcN)
-            {
-                // Area average.
-                double a = (double)i * srcN / dstN, b = (double)(i + 1) * srcN / dstN;
-                for (uint32_t s = (uint32_t)a; s < srcN && s < b; ++s)
-                {
-                    double lo = Max<double>(a, s), hi = Min<double>(b, s + 1);
-                    if (hi > lo) w.push_back({s, (float)((hi - lo) / (b - a))});
-                }
+                const double c = center - 0.5;
+                const int s0 = (int)std::floor(c);
+                const float t = (float)(c - s0);
+                w.push_back({wrap(s0), 1.0f - t});
+                w.push_back({wrap(s0 + 1), t});
             }
             else
             {
-                double c = ((double)i + 0.5) * srcN / dstN - 0.5;
-                int s0 = (int)std::floor(c);
-                float t = (float)(c - s0);
-                int s1 = s0 + 1;
-                s0 = Clamp(s0, 0, (int)srcN - 1);
-                s1 = Clamp(s1, 0, (int)srcN - 1);
-                w.push_back({(uint32_t)s0, 1.0f - t});
-                w.push_back({(uint32_t)s1, t});
+                // BOX and TRIANGLE (and anything unknown): every covered source texel contributes equally,
+                // the area average of [i*scale, (i+1)*scale).
+                if (dstN < srcN)
+                {
+                    const double a = (double)i * scale, b = (double)(i + 1) * scale;
+                    for (uint32_t k = (uint32_t)a; k < srcN && k < b; ++k)
+                    {
+                        const double lo = Max<double>(a, k), hi = Min<double>(b, k + 1);
+                        if (hi > lo) w.push_back({k, (float)((hi - lo) / (b - a))});
+                    }
+                }
+                else
+                {
+                    // Enlarging: bilinear, a box cannot invent texels.
+                    const double c = center - 0.5;
+                    const int s0 = (int)std::floor(c);
+                    const float t = (float)(c - s0);
+                    w.push_back({wrap(s0), 1.0f - t});
+                    w.push_back({wrap(s0 + 1), t});
+                }
             }
         }
     };
     std::vector<std::vector<std::pair<uint32_t, float>>> wx, wy;
-    axis(src.w, dw, wx);
-    axis(src.h, dh, wy);
+    axis(src.w, dw, (filter & D3DX_FILTER_MIRROR_U) != 0, wx);
+    axis(src.h, dh, (filter & D3DX_FILTER_MIRROR_V) != 0, wy);
+
+    // Horizontal pass into floats, then vertical.
+    std::vector<float> tmp((size_t)dw * src.h * 4);
     for (uint32_t y = 0; y < src.h; ++y)
         for (uint32_t x = 0; x < dw; ++x)
         {
@@ -567,7 +599,7 @@ HRESULT WINAPI D3DXFilterTexture(LPDIRECT3DBASETEXTURE8 pBase, const PALETTEENTR
     TextureBase *tb = AsBase(pBase, &type);
     if (!tb || !tb->Valid()) return D3DERR_INVALIDCALL;
     if (srcLevel >= tb->m_levelCount) return D3DERR_INVALIDCALL;
-    if (filter == kDefault) filter = D3DX_FILTER_BOX;
+    if (filter == kDefault || (filter & 0xFF) == 0 || (filter & 0xFF) == D3DX_FILTER_NONE) filter = (filter & ~0xFFu) | D3DX_FILTER_BOX;
     const FormatInfo *fi = tb->m_info;
 
     if (type == D3DRTYPE_VOLUMETEXTURE)
@@ -619,7 +651,7 @@ HRESULT WINAPI D3DXFilterTexture(LPDIRECT3DBASETEXTURE8 pBase, const PALETTEENTR
             if (!tb->ReadRect(f, l, full, own.data(), s.pitch)) return D3DERR_INVALIDCALL;
             Image img;
             if (!ToImage(tb->m_format, own.data(), s.pitch, s.width, s.height, img)) return D3DERR_INVALIDCALL;
-            Image out = Resample(img, d.width, d.height, filter | D3DX_FILTER_BOX);
+            Image out = Resample(img, d.width, d.height, filter);
             uint32_t pitch = FormatPitch(tb->m_format, d.width);
             std::vector<uint8_t> enc((size_t)pitch * FormatRows(tb->m_format, d.height));
             if (fi->blockBytes)
