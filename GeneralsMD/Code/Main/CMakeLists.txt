@@ -95,6 +95,9 @@ endif()
 # WebAssembly: the page (shell), the engine thread and the browser storage.
 if(EMSCRIPTEN)
     set(ZH_WEB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/web)
+    # "Read in place" mode (see webdirect/INTEGRATION.md): a WasmFS backend that serves the files of
+    # the folder the player picked, without copying them into OPFS.
+    set(ZH_DIRECT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/webdirect)
 
     # The linker settings shared by the game and the platform test.
     #
@@ -103,7 +106,8 @@ if(EMSCRIPTEN)
     #    driven from that worker through an OffscreenCanvas transferred from the
     #    page's <canvas id="canvas"> (WebPlatform_GetCanvasSelector() returns the
     #    same selector). This needs a cross-origin isolated page, see web/serve.py.
-    #  - The game data lives in the Origin Private File System, mounted through WasmFS.
+    #  - The game data lives in the Origin Private File System, mounted through WasmFS, or is read in
+    #    place from the player's folder (webdirect/); the user data always lives in OPFS.
     #  - The game keeps big buffers on the stack and a few hundred MB of data.
     function(zh_web_link_options target)
         target_link_options(${target} PRIVATE
@@ -129,8 +133,15 @@ if(EMSCRIPTEN)
             # finds its archives by listing the install directory).
             -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$stringToUTF8OnStack
             "SHELL:--shell-file ${ZH_WEB_DIR}/shell.html"
+            # Read in place: hands the page's File objects to the engine thread (--pre-js) and serves
+            # them through WasmFS (--js-library); the C++ side is WebStorage.cpp.
+            "SHELL:--pre-js ${ZH_DIRECT_DIR}/zhdirect_pre.js"
+            "SHELL:--js-library ${ZH_DIRECT_DIR}/library_zhdirect.js"
         )
-        set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS ${ZH_WEB_DIR}/shell.html)
+        set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
+            ${ZH_WEB_DIR}/shell.html
+            ${ZH_DIRECT_DIR}/zhdirect_pre.js
+            ${ZH_DIRECT_DIR}/library_zhdirect.js)
 
         # The page and its scripts sit next to the build output.
         add_custom_command(TARGET ${target} POST_BUILD
@@ -138,6 +149,7 @@ if(EMSCRIPTEN)
                 ${ZH_WEB_DIR}/importer.js
                 ${ZH_WEB_DIR}/coi-serviceworker.js
                 ${ZH_WEB_DIR}/serve.py
+                ${ZH_DIRECT_DIR}/direct-source.js
                 $<TARGET_FILE_DIR:${target}>
             COMMENT "Copying the web page scripts"
         )
@@ -162,6 +174,22 @@ if(EMSCRIPTEN)
     set_target_properties(web_platform_test PROPERTIES SUFFIX ".html")
     zh_web_link_options(web_platform_test)
     target_link_options(web_platform_test PRIVATE -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -lGL)
+
+    # Test of the read in place mode without the game: the WasmFS backend, the file lookup, reads and
+    # seeks, threads, the read cache. See webdirect/test/README.txt.
+    #   cmake --build <dir> --target web_direct_test
+    add_executable(web_direct_test EXCLUDE_FROM_ALL
+        webdirect/test/direct_test.cpp
+        ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/WebDevice/Platform/WebKeyTable.cpp
+        ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/WebDevice/Platform/WebPlatform.cpp
+        ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/WebDevice/Platform/WebStorage.cpp
+    )
+    target_compile_features(web_direct_test PRIVATE cxx_std_20)
+    target_include_directories(web_direct_test PRIVATE ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Include)
+    target_link_libraries(web_direct_test PRIVATE deps_config)
+    set_target_properties(web_direct_test PROPERTIES SUFFIX ".html")
+    zh_web_link_options(web_direct_test)
+    target_link_options(web_direct_test PRIVATE -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -lGL)
 endif()
 
 # File system test (OPFS mounts, Windows paths, case insensitivity, relative paths after

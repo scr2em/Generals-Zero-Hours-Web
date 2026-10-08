@@ -29,7 +29,8 @@
 //    through the message pump (PeekMessage/GetMessage/DispatchMessage),
 //  - keeps a second queue of keyboard transitions in DirectInput scan codes
 //    for WebKeyboard,
-//  - mounts the Origin Private File System where the game data lives.
+//  - mounts the game data (a copy in the Origin Private File System, or the player's own
+//    folder read in place) and the user data (OPFS).
 //
 // This header is plain C with fixed-size types so Dependencies/WebCompat can
 // declare and call these functions without including any game header. The
@@ -151,14 +152,36 @@ uint32_t WebPlatform_GetTimeMs(void);
 
 // ---- storage ---------------------------------------------------------------
 
-// Mounts the Origin Private File System, filled by the page before the game
-// started, in the WasmFS tree (call once from the engine thread, before
-// anything touches the file system):
-//   /game      Zero Hour install            (OPFS directory "game")
-//   /generals  Generals install             (OPFS directory "generals")
-//   /userdata  saves, replays, options.ini  (OPFS directory "userdata")
-// Names are case insensitive. Returns 0 on success.
+// Makes the game data and the user data visible in the WasmFS tree (call once from the
+// engine thread, before anything touches the file system):
+//   /game      Zero Hour install
+//   /generals  Generals install
+//   /userdata  saves, replays, options.ini  (always the Origin Private File System)
+// Names are case insensitive. Returns 0 on success. Where /game and /generals come from depends
+// on what the page did before the game started:
+//   * it copied the install into OPFS (directories "game" and "generals"): OPFS mode, or
+//   * it handed the engine thread the File objects of the folder the player picked
+//     (Module.zhDirect, see GeneralsMD/Code/Main/webdirect): direct mode, "read in place". The
+//     files are served read-only, straight from the player's disk; nothing is copied.
 int WebPlatform_MountStorage(void);
+
+enum
+{
+	WEBPLATFORM_STORAGE_NONE = 0,		// WebPlatform_MountStorage() has not succeeded
+	WEBPLATFORM_STORAGE_OPFS = 1,		// the game data was copied into OPFS
+	WEBPLATFORM_STORAGE_DIRECT = 2		// the game data is read in place from the player's folder
+};
+
+// Which of the two WebPlatform_MountStorage() set up.
+int WebPlatform_GetStorageMode(void);
+
+// With required != 0 WebPlatform_MountStorage() fails instead of falling back to OPFS when the page
+// did not hand over any files (the page asked for direct mode with -webdirect). Call before mounting.
+void WebPlatform_RequireDirectStorage(int required);
+
+// Counters of the calling thread's reads in direct mode as JSON text in buffer (reads, cache hits,
+// bytes fetched from the files ...). Returns the length, or -1 when it does not fit. For tests and logs.
+int WebPlatform_GetDirectStats(char *buffer, int capacity);
 
 // ---- DirectInput scan code / virtual key lookup (exposed for tests) --------
 

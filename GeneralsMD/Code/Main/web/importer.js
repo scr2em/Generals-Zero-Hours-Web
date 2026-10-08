@@ -89,13 +89,15 @@ async function walkDirectoryHandle(dirHandle, prefix, out) {
 			await walkDirectoryHandle(entry, prefix.concat(entry.name), out);
 		} else {
 			const handle = entry;
-			let size = 0;
+			let file;
 			try {
-				size = (await handle.getFile()).size;
+				file = await handle.getFile();
 			} catch (e) {
 				continue; // unreadable (e.g. locked), skip
 			}
-			out.push({ segments: prefix.concat(entry.name), size, getFile: () => handle.getFile() });
+			// getFile() gives a fresh snapshot each time (the copy reads it when its turn comes); file is the one
+			// from the walk, which the read in place mode (webdirect/direct-source.js) keeps.
+			out.push({ segments: prefix.concat(entry.name), size: file.size, getFile: () => handle.getFile(), file });
 		}
 	}
 }
@@ -113,7 +115,7 @@ export async function pickDirectory() {
 export async function sourceFromDirectoryHandle(handle) {
 	const files = [];
 	await walkDirectoryHandle(handle, [], files);
-	return { name: handle.name, files };
+	return { name: handle.name, files, handle };
 }
 
 export function sourceFromFileList(fileList) {
@@ -188,7 +190,7 @@ export function subSource(source, prefix) {
 			files.push({ ...file, segments: file.segments.slice(prefix.length) });
 		}
 	}
-	return { name: prefix[prefix.length - 1], files };
+	return { name: prefix[prefix.length - 1], files, handle: source.handle };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -343,6 +345,7 @@ export async function writeManifest(plan, extra = {}) {
 		version: MANIFEST_VERSION,
 		kind: plan.kind || 'install',
 		source: plan.sourceName,
+		mode: plan.mode || 'copy',	// 'copy': the files are in OPFS; 'direct': they are read from the player's folder (webdirect/)
 		...(plan.manifestExtra || {}),
 		...extra,
 		files: plan.files.length,

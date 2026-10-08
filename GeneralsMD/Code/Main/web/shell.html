@@ -241,17 +241,26 @@
 
 		<section class="choice" id="choice-install" aria-labelledby="install-title">
 			<h2 id="install-title">Use my Zero Hour installation</h2>
-			<p>Bring your own copy of the game. Select your Zero Hour folder, or the folder above it that holds your games
-				(for example your Steam, EA app or Ultimate Collection library): the page finds what it needs. The files are copied
-				once into this browser&rsquo;s private storage.</p>
+			<p id="install-desc">Bring your own copy of the game. Select your Zero Hour folder, or the folder above it that holds your games
+				(for example your Steam, EA app or Ultimate Collection library): the page finds what it needs.
+				<span id="desc-direct">The game reads the files straight from that folder: nothing is copied, so the game files take no
+				browser storage. Chrome asks you to allow access to the folder again on each visit.</span>
+				<span id="desc-copy" hidden>The files are copied once into this browser&rsquo;s private storage.</span></p>
 			<div class="row" id="row-game">
 				<div class="name">Zero Hour</div>
 				<button type="button" id="pick-game">Select folder&hellip;</button>
 				<div class="state" id="state-game">Checking&hellip;</div>
 			</div>
+			<p class="optional-line" id="row-other" hidden>
+				<button type="button" id="pick-other" class="link">Choose a different folder</button>
+			</p>
 			<p class="optional-line" id="row-generals" hidden>
 				<span id="state-generals"></span>
 				<button type="button" id="pick-generals" class="link">Add the original Generals files (optional, improves missing art)</button>
+			</p>
+			<p class="optional-line" id="row-copy">
+				<label class="inline"><input type="checkbox" id="copy-mode">
+					Copy the files into this browser&rsquo;s storage instead (needs about 2&nbsp;GB of space; no permission prompts afterwards)</label>
 			</p>
 		</section>
 
@@ -291,8 +300,8 @@
 		</div>
 
 		<p class="fine">
-			Your own game files are copied once into this browser&rsquo;s private storage and never leave your computer.
-			The free starter content is downloaded from this site instead and needs none of them.
+			Your own game files never leave your computer: the game reads them from your folder (or, with the copy option, from a copy in
+			this browser&rsquo;s private storage). The free starter content is downloaded from this site instead and needs none of them.
 			<button type="button" class="link" id="clear">Remove imported files</button>
 		</p>
 		<input type="file" id="folder-input" webkitdirectory multiple hidden>
@@ -323,6 +332,7 @@
 
 <script type="module">
 import * as importer from './importer.js';
+import * as direct from './direct-source.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -388,6 +398,15 @@ if (problems.length) {
 let status = {};
 let busy = false;
 
+// How an own install is put in place: read in place from the player's folder ('direct', the default; Chrome) or copied into
+// OPFS ('copy'). ?copy=1 and the checkbox choose the copy; browsers without a folder picker can only copy.
+const directAvailable = env.directoryPicker || params.has('picker');
+let copyMode = params.has('copy') || !directAvailable;
+try { if (!params.has('copy') && localStorage.getItem('zh-copy-mode') === '1') copyMode = true; } catch (e) { /* ignore */ }
+let needsAccess = false;     // an install read in place was chosen on an earlier visit and its folder is not open yet
+let savedFolders = [];       // the remembered folder handles
+let autoReopenTried = false;
+
 function setState(key, text, kind) {
 	const el = $('state-' + key);
 	el.textContent = text;
@@ -401,18 +420,37 @@ function currentMode() {
 	return null;
 }
 
+const isDirect = (m) => !!m && m.mode === 'direct';
+
 async function refreshStatus() {
 	status = await importer.getStatus();
+	try { savedFolders = await direct.loadFolders(); } catch (e) { savedFolders = []; }
 	const starter = status.game && status.game.kind === 'starter' ? status.game : null;
 	const own = status.game && status.game.kind !== 'starter' ? status.game : null;
-	setState('game', own ? 'Ready \u00b7 ' + own.files.toLocaleString() + ' files \u00b7 ' + importer.formatBytes(own.bytes)
-		: starter ? 'Not imported (the starter content is installed instead)' : 'Not imported yet', own ? 'ok' : '');
+	needsAccess = isDirect(own) && !direct.isOpen('game');
+	const folderName = (m) => m && m.source ? '\u201c' + m.source + '\u201d' : 'the folder';
+	if (needsAccess) {
+		setState('game', savedFolders.length
+			? 'Your folder ' + folderName(own) + ' is remembered \u00b7 allow access to play (nothing is copied)'
+			: 'Choose the folder ' + folderName(own) + ' again to play (nothing is copied)', '');
+	} else {
+		setState('game', own ? 'Ready \u00b7 ' + own.files.toLocaleString() + ' files \u00b7 ' + importer.formatBytes(own.bytes) +
+			(isDirect(own) ? ' \u00b7 read from ' + folderName(own) + ', not copied' : '')
+			: starter ? 'Not imported (the starter content is installed instead)' : 'Not imported yet', own ? 'ok' : '');
+	}
+	$('pick-game').textContent = needsAccess && savedFolders.length ? 'Allow access' : 'Select folder\u2026';
+	$('row-other').hidden = !(needsAccess && savedFolders.length);
 	// The original Generals files are an unobtrusive extra offered after a Zero Hour import (Play never waits for them).
 	const base = status.generals && status.generals.kind !== 'starter' ? status.generals : null;
-	$('row-generals').hidden = !own;
-	$('state-generals').textContent = base ? 'Original Generals files added \u00b7 ' + base.files.toLocaleString() + ' files \u00b7 ' + importer.formatBytes(base.bytes) + '. ' : '';
+	$('row-generals').hidden = !own || needsAccess;
+	$('state-generals').textContent = base ? 'Original Generals files added \u00b7 ' + base.files.toLocaleString() + ' files \u00b7 ' + importer.formatBytes(base.bytes) +
+		(isDirect(base) ? ' (read in place)' : '') + '. ' : '';
 	$('state-generals').className = 'state' + (base ? ' ok' : '');
 	$('pick-generals').textContent = base ? 'Add them again' : 'Add the original Generals files (optional, improves missing art)';
+	$('desc-direct').hidden = copyMode;
+	$('desc-copy').hidden = !copyMode;
+	$('copy-mode').checked = copyMode;
+	$('row-copy').hidden = !directAvailable;
 	if (starter) {
 		setState('starter', 'Ready · ' + starter.files.toLocaleString() + ' files · ' + importer.formatBytes(starter.bytes) +
 			(starter.packVersion ? ' · version ' + starter.packVersion : ''), 'ok');
@@ -425,14 +463,22 @@ async function refreshStatus() {
 	$('choice-starter').classList.toggle('active', mode === 'starter');
 	$('choice-install').classList.toggle('active', mode === 'install');
 	$('play-mode').textContent = mode === 'starter' ? 'Will play: free starter content (placeholder game)'
+		: needsAccess ? 'Allow access to your folder to play'
 		: mode === 'install' ? 'Will play: your Zero Hour installation' : '';
 	updateButtons();
+	// Chrome can keep the permission between visits; then there is nothing to click.
+	if (needsAccess && savedFolders.length && !autoReopenTried) {
+		autoReopenTried = true;
+		if (await direct.queryAccess(savedFolders) === 'granted') reopenSaved().catch((e) => pushLog('Reopen: ' + e, false));
+	}
 }
 
 function updateButtons() {
-	const ready = currentMode() !== null && problems.length === 0;
+	const ready = currentMode() !== null && !needsAccess && problems.length === 0;
 	$('play').disabled = busy || !ready;
 	$('pick-game').disabled = busy || !env.opfs;
+	$('pick-other').disabled = busy;
+	$('copy-mode').disabled = busy;
 	$('pick-generals').disabled = busy || !env.opfs;
 	$('download-starter').disabled = busy || !env.opfs;
 	$('clear').disabled = busy;
@@ -470,25 +516,84 @@ async function importPlan(plan, key, target, totalBytes = plan.bytes) {
 	if (!plan.looksRight) {
 		throw 'That does not look like the ' + target.label + ' folder (' + target.signature[0].toUpperCase() + ' not found).';
 	}
-	const { quota, usage } = await importer.storageEstimate();
-	if (quota && quota - usage < totalBytes) {
-		throw importer.quotaMessage(totalBytes, quota - usage);
+	const inPlace = plan.mode === 'direct';
+	if (!inPlace) {
+		const { quota, usage } = await importer.storageEstimate();
+		if (quota && quota - usage < totalBytes) {
+			throw importer.quotaMessage(totalBytes, quota - usage);
+		}
+		await importer.requestPersistence();
 	}
-	await importer.requestPersistence();
+	const other = key === 'game' ? 'generals' : 'game';
 	if (status.game && status.game.kind === 'starter') {
 		// The starter content lives in game/ too; it can be downloaded again at any time.
 		await importer.clearTarget('game');
 		await importer.clearTarget('generals');
 		status = await importer.getStatus();
+	} else if (key === 'game' && status.game && (status.game.mode === 'direct') !== inPlace) {
+		// Switching between reading in place and the copy: what the old way left (a copy in browser storage, or the
+		// remembered folder) is removed, so there is never a mix of the two.
+		await importer.clearTarget('game');
+		await importer.clearTarget('generals');
+		direct.closeOpen();
+		status = await importer.getStatus();
+	} else if (status[other] && (status[other].mode === 'direct') !== inPlace) {
+		await importer.clearTarget(other);
+		direct.closeOpen(other);
+		status = await importer.getStatus();
 	}
-	setState(key, 'Copying ' + plan.files.length.toLocaleString() + ' files\u2026');
+	if (!inPlace) direct.closeOpen(key);
+	setState(key, (inPlace ? 'Opening ' : 'Copying ') + plan.files.length.toLocaleString() + ' files\u2026');
 	await importer.runImport(plan, { onProgress: showProgress, forceWorker: params.get('writer') === 'worker' });
 	status = await importer.getStatus();
 }
 
 // "Select folder" for Zero Hour: the picked folder is Zero Hour itself or holds it (and perhaps the original game, too:
 // then those files are added silently). key 'generals' is the optional second pick for the original game's files.
-async function pickAndImport(key) {
+// Remembers the picked folder for the next visit (Chrome keeps the handle in IndexedDB; the permission is asked again).
+// A pick that came from <input webkitdirectory> has no handle and cannot be remembered.
+async function rememberFolders(role, source, includedBase) {
+	try {
+		await direct.rememberFolder(role, source.handle || null);
+		if (role === 'game' && includedBase) await direct.rememberFolder('generals', null);
+	} catch (e) {
+		pushLog('The folder could not be remembered for the next visit: ' + (e && e.message || e), false);
+	}
+}
+
+// The folders remembered from an earlier visit, opened again (after requestAccess, or when Chrome kept the permission).
+async function reopenSaved() {
+	if (busy) return;
+	const folders = await direct.loadFolders();
+	for (const role of ['game', 'generals']) {
+		const folder = folders.find((f) => f.role === role);
+		if (!folder) continue;
+		const source = await importer.sourceFromDirectoryHandle(folder.handle);
+		await pickAndImport(role, source);
+	}
+}
+
+async function allowAccess() {
+	if (busy || savedFolders.length === 0) return;
+	// requestPermission needs the click's user gesture: nothing is awaited before it.
+	const granted = await direct.requestAccess(savedFolders);
+	if (granted !== 'granted') {
+		setState('game', 'Access to the folder was not given. Click \u201cAllow access\u201d and choose Allow, or choose the folder again.', 'err');
+		$('row-other').hidden = false;
+		return;
+	}
+	await reopenSaved();
+}
+
+// How a pick of this target is put in place: 'direct' (read in place) or 'copy'. The optional original Generals files
+// follow the way the Zero Hour files were put in place.
+function modeFor(key) {
+	if (key === 'generals' && status.game && status.game.kind !== 'starter') return status.game.mode === 'direct' ? 'direct' : 'copy';
+	return copyMode ? 'copy' : 'direct';
+}
+
+// preset: a source from a remembered folder (no picker); otherwise the picker is shown.
+async function pickAndImport(key, preset = null) {
 	if (busy) return;
 	let problem = null;
 	let problemKey = key;
@@ -496,9 +601,10 @@ async function pickAndImport(key) {
 	updateButtons();
 	const noQuiet = (e) => { if (typeof e === 'string') { problem = e; return true; } throw e; };
 	try {
-		const source = await pickSource();
+		const source = preset || await pickSource();
 		if (!source) return;
 		setState(key, 'Reading folder\u2026');
+		const mode = preset ? 'direct' : modeFor(key);
 		const found = importer.detectInstall(source);
 		if (key === 'game') {
 			if (!found.game) {
@@ -506,10 +612,12 @@ async function pickAndImport(key) {
 				return;
 			}
 			const gamePlan = importer.planImport(importer.subSource(source, found.game), 'game', { includeVideos: false });
-			// Identical archives (Music.big is in both installs) are copied once, from Zero Hour.
+			// Identical archives (Music.big is in both installs) are copied once, from Zero Hour. Read in place there is nothing to save.
 			const basePlan = found.base
-				? importer.planImport(importer.subSource(source, found.base), 'generals', { includeVideos: false, skip: gamePlan.manifestExtra.bigs })
+				? importer.planImport(importer.subSource(source, found.base), 'generals', { includeVideos: false, skip: mode === 'copy' ? gamePlan.manifestExtra.bigs : undefined })
 				: null;
+			gamePlan.mode = mode;
+			if (basePlan) basePlan.mode = mode;
 			const total = gamePlan.bytes + (basePlan ? basePlan.bytes : 0);
 			try {
 				await importPlan(gamePlan, 'game', importer.TARGETS.game, total);
@@ -520,12 +628,16 @@ async function pickAndImport(key) {
 					await importPlan(basePlan, 'generals', importer.TARGETS.generals);
 				} catch (e) { if (noQuiet(e)) return; }
 			}
+			if (mode === 'direct' && !preset) await rememberFolders('game', source, !!basePlan);
 		} else {
 			// The optional second pick: the folder of the original game (or one above it).
 			const sub = found.base ? importer.subSource(source, found.base) : source;
 			const own = status.game && status.game.bigs || [];
 			try {
-				await importPlan(importer.planImport(sub, 'generals', { includeVideos: false, skip: own }), 'generals', importer.TARGETS.generals);
+				const plan = importer.planImport(sub, 'generals', { includeVideos: false, skip: mode === 'copy' ? own : undefined });
+				plan.mode = mode;
+				await importPlan(plan, 'generals', importer.TARGETS.generals);
+				if (mode === 'direct' && !preset) await rememberFolders('generals', source, false);
 			} catch (e) {
 				if (typeof e === 'string' && /does not look like/.test(e)) { problem = 'That does not look like the original Generals folder (INI.big not found).'; return; }
 				if (noQuiet(e)) return;
@@ -583,11 +695,19 @@ async function downloadStarterContent() {
 }
 $('download-starter').onclick = downloadStarterContent;
 
-$('pick-game').onclick = () => pickAndImport('game');
+$('pick-game').onclick = () => (needsAccess && savedFolders.length ? allowAccess() : pickAndImport('game'));
+$('pick-other').onclick = () => pickAndImport('game');
+$('copy-mode').onchange = () => {
+	copyMode = $('copy-mode').checked;
+	try { localStorage.setItem('zh-copy-mode', copyMode ? '1' : '0'); } catch (e) { /* ignore */ }
+	refreshStatus();
+};
 $('pick-generals').onclick = () => pickAndImport('generals');
 $('clear').onclick = async () => {
 	if (busy || !confirm('Remove the imported game files (or the starter content) from this browser? Saved games and options are kept.')) return;
 	for (const key of Object.keys(importer.TARGETS)) await importer.clearTarget(key);
+	direct.closeOpen();
+	await direct.forgetFolders();
 	await refreshStatus();
 };
 
@@ -672,6 +792,16 @@ function startGame() {
 		postRun: [() => { $('loading').hidden = true; }],
 	};
 
+	// An install read in place: hand the files to the engine thread (see webdirect/INTEGRATION.md).
+	if (currentMode() === 'install' && isDirect(status.game)) {
+		try {
+			direct.attachCurrent(window.Module);
+		} catch (e) {
+			pushLog('Could not open the game folder: ' + (e && e.message || e), true);
+			return;
+		}
+	}
+
 	const template = $('game-script').content.querySelector('script');
 	const script = document.createElement('script');
 	script.src = template.getAttribute('src');
@@ -697,7 +827,7 @@ try {
 } catch (e) { /* ignore */ }
 
 // For tests and automation.
-window.__zh = { importer, startGame, logLines, refreshStatus, fail: (text) => pushLog(text, true) };
+window.__zh = { importer, direct, startGame, logLines, refreshStatus, fail: (text) => pushLog(text, true) };
 
 refreshStatus().catch((e) => pushLog('Status: ' + e, false));
 </script>

@@ -29,8 +29,9 @@
 // canvas, WebPlatform turns its input into the same window messages Windows
 // would deliver, and WebWndProc below is the game's window procedure.
 //
-// Data: the page copied the player's game files into the Origin Private File
-// System before starting us; WebPlatform_MountStorage() makes them appear as
+// Data: the page either copied the player's game files into the Origin Private File
+// System before starting us, or (-webdirect) handed us the files of the folder the
+// player picked, to be read in place; WebPlatform_MountStorage() makes them appear as
 // /game (Zero Hour), /generals (Generals) and /userdata (saves, options).
 //
 ///////////////////////////////////////////////////////////////////////////////
@@ -377,6 +378,7 @@ static void reportFatal( const char *message )
 static unsigned s_frameCount = 0;
 static double s_busyMs = 0.0;	// time spent in executeFrame() since the last report
 static bool s_logFrames = false;
+static bool s_logDirectStats = false;	// -webdirectstats: the read counters of the direct file mode, see WebStorage.cpp
 
 // gameFrame ==================================================================
 /** One browser frame of the game: the body of GameEngine::execute()'s loop. */
@@ -402,6 +404,12 @@ static void gameFrame( void * )
 		{
 			DEBUG_LOG(("First frame done"));
 			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFirstFrameAt = Date.now(); } );
+		}
+		if( s_logDirectStats && ( s_frameCount == 1 || s_frameCount % 300 == 0 ) )
+		{
+			char stats[512];
+			if( WebPlatform_GetDirectStats( stats, sizeof( stats ) ) > 0 )
+				printf( "direct file stats at frame %u: %s\n", s_frameCount, stats );
 		}
 		if( s_frameCount % 30 == 0 )
 		{
@@ -485,6 +493,10 @@ int main( int argc, char **argv )
 			s_logFrames = true;
 		if( strcmp( argv[i], "-webinputlog" ) == 0 )
 			WebPlatform_SetInputLog( 1 );
+		if( strcmp( argv[i], "-webdirect" ) == 0 )
+			WebPlatform_RequireDirectStorage( 1 );
+		if( strcmp( argv[i], "-webdirectstats" ) == 0 )
+			s_logDirectStats = true;
 		if( strncmp( argv[i], "-webd3d8debug", 13 ) == 0 )
 			WebD3D8_SetDebug( argv[i][13] == '=' ? atoi( argv[i] + 14 ) | 1 : 1 );	// see WebD3D8.h
 	}
@@ -508,7 +520,7 @@ int main( int argc, char **argv )
 
 		if( WebPlatform_MountStorage() != 0 )
 		{
-			fprintf( stderr, "Could not open the game files. Import them from the start page first.\n" );
+			fprintf( stderr, "Could not open the game files. Import them or open your game folder from the start page first.\n" );
 			return exitcode;
 		}
 
