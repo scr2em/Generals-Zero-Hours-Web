@@ -87,7 +87,7 @@ async function walkDirectoryHandle(dirHandle, prefix, out) {
 	}
 }
 
-// Shows the browser's folder picker (Chromium and Safari). Returns null when
+// Shows the browser's folder picker (Chrome/Chromium only; other browsers are out of scope). Returns null when
 // the API does not exist; use sourceFromFileList with an <input webkitdirectory>.
 export async function pickDirectory() {
 	if (typeof window.showDirectoryPicker !== 'function') {

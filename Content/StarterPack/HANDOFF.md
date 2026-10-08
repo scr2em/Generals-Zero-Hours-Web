@@ -15,11 +15,21 @@ For an AI coding agent or developer who has never seen the session that produced
   `Default/` (the main file is a stub), `WeaponSet` blocks on every object and `PhysicsBehavior` on every mover,
   default teams in `SkirmishScripts.scb` (`team<SkirmishSide>`), `EVERYONE` on the audio types, and the strings
   `GUI:StartingMoneyFormat` / `MAP:StarterCrossing`.
-* **Open: units and buildings are invisible in game** (trees draw). Found with temporary logging: the render objects exist,
-  are in the scene and not hidden, but their bounding sphere has radius 0 (`HLodClass::Update_Obj_Space_Bounding_Volumes` found no
-  sub objects), so the scene culls them. Only objects that go through the team colour path in `W3DAssetManager::Create_Render_Obj`
-  (non zero colour: every player owned object) are affected; neutral trees (colour 0) are fine. A tree model on the HQ is
-  invisible too, so it is not my W3D data but the clone/unique path of `HLodClass` (or `Make_Unique`) in this port. See section 9 A.
+* **Browser scope: Chrome (Chromium) only** (user decision). Firefox and Safari are out of scope; the launcher may use
+  `showDirectoryPicker`, OPFS `createSyncAccessHandle` and Keyboard Lock. Do not add fallbacks for other browsers; existing
+  ones (the `<input webkitdirectory>` picker is what the tests drive) stay only because they cost nothing.
+* **Fixed: units and buildings were invisible, and their shadows were black squares.** Root cause was an engine bug, not the
+  W3D data: `ThingTemplate::m_assetScale` was never initialised in the constructor, so every object without an explicit
+  `Scale = ` line got scale 0 (zero memory on wasm); `W3DModelDraw` then set `ObjectScale` 0 and the bounding sphere radius
+  (`ObjectScale * radius`) became 0, so the scene culled the object. Trees only worked because their INI had `Scale = 1.0`.
+  Engine fix (report to the coordinator): one line in `Core/GameEngine/Source/Common/Thing/ThingTemplate.cpp` (constructor sets
+  `m_assetScale = 1.0f`). Data fix so the pack also works on unpatched engines: every object in `Object.ini` now has
+  `Scale = 1.0`. The black squares were `sp_shadow` itself: `SHADOW_DECAL` is drawn with the multiplicative shader, so the
+  texture must be white at the edge and darker in the middle (no alpha); `gen/textures.py::shadow_texture` fixed.
+  `Buildable = Yes` is now explicit on the Ironwood objects (the field is also never initialised by the constructor).
+* **Skirmish setup text** (found by the font agent): added the strings `GUI:Random`, `GUI:None`, `GUI:Observer` and `GUI:???`
+  (the colour combo's "random" entry; the `.str` label check now allows `?`), and the column headings were hidden under
+  the rows backdrop (later siblings draw on top in a `.wnd`), so the backdrop is now the first child.
 * **Launcher: one folder pick for Zero Hour.** The page asks for the Zero Hour folder or any folder above it (Steam / EA app /
   Ultimate Collection library); `importer.detectInstall` finds Zero Hour (INIZH.big ...) and the base game it depends on
   (INI.big ...) inside the pick and imports both. Only when the base game is not found does a clearly secondary prompt appear. The
