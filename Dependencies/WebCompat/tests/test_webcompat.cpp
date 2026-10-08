@@ -504,7 +504,10 @@ static void TestMisc()
 	CHECK(GetFileAttributesA("/userdata") & FILE_ATTRIBUTE_DIRECTORY);
 	CHECK(GetModuleHandleA("shell32.dll") == nullptr);
 	char module[MAX_PATH];
-	CHECK(GetModuleFileNameA(nullptr, module, sizeof(module)) > 0 && strcmp(module, "/game/generalszh.exe") == 0);
+	// Only the Direct3D 8 library exists (and without WebD3D8 linked in, not even that).
+	CHECK(LoadLibraryA("no_such_library.dll") == nullptr);
+	CHECK(GetProcAddress(nullptr, "Direct3DCreate8") == nullptr);
+	CHECK(GetModuleFileNameA(nullptr, module, sizeof(module)) > 0 && strcmp(module, "/game\\generalszh.exe") == 0);
 
 	// Sockets
 	WSADATA wsa;
@@ -541,7 +544,7 @@ static void TestOleAutomationAndExtras()
 
 	// Wide module name
 	WCHAR wide[MAX_PATH];
-	CHECK(GetModuleFileNameW(nullptr, wide, MAX_PATH) > 0 && wcscmp(wide, L"/game/generalszh.exe") == 0);
+	CHECK(GetModuleFileNameW(nullptr, wide, MAX_PATH) > 0 && wcscmp(wide, L"/game\\generalszh.exe") == 0);
 	WCHAR small[4];
 	CHECK(GetModuleFileNameW(nullptr, small, 4) == 4 && small[3] == 0);
 
