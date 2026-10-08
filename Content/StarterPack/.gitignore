@@ -1,0 +1,5 @@
+# Everything the pack build generates stays out of git.
+/build/
+/out/
+__pycache__/
+*.pyc

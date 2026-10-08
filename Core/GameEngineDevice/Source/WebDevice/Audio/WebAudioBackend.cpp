@@ -130,7 +130,7 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 	var HDR_I = shared >> 2;
 	var HDR_F = shared >> 3;
 	function vI(idx) { return (shared >> 2) + 8 + idx * 8; }
-	function vF(idx) { return (shared >> 3) + 4 + idx * 4; }
+	function vF(idx) { return (shared >> 3) + 4 + idx * 4; }   // double index of the voice record; endWallMs is at +2
 
 	function publishState() {
 		var s = ctx.state === 'running' ? 2 : (ctx.state === 'closed' ? 3 : 1);
@@ -146,7 +146,7 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 		var end = 0;
 		if (v.paused) end = 1e18;
 		else if (v.endCtx > now) end = Date.now() - now * 1000 + v.endCtx * 1000;
-		HEAPF64[vF(v.idx) + 1] = end;
+		HEAPF64[vF(v.idx) + 2] = end;
 	}
 	A.publishVoice = publishVoice;
 
@@ -243,7 +243,7 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 		var i = vI(idx);
 		Atomics.store(HEAP32, i, 0);
 		Atomics.store(HEAP32, i + 1, 0);
-		HEAPF64[vF(idx) + 1] = 0;
+		HEAPF64[vF(idx) + 2] = 0;
 		Atomics.store(HEAP32, i + 2, id >>> 12);
 		A.stats.voicesCreated++;
 	}
@@ -361,7 +361,7 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 				s.begun = s.startAt <= now;
 				killSource(s);
 				if (progressed >= s.dur - 0.0005) done.push(s);
-				else { s.offset = progressed; s.delay = wait; }
+				else { s.offset = progressed; if (i === 0) s.delay = wait; }	// later segments follow the first one on the timeline, whatever delay they were queued with
 			}
 			for (var d = 0; d < done.length; ++d) {
 				A.stats.sourcesEnded++;
@@ -418,6 +418,27 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 	function setParam(param, value, instant) {
 		if (instant) param.value = value;
 		else param.setTargetAtTime(value, ctx.currentTime, 0.01);
+	}
+
+	// The browser loads its HRTF database in the background and passes sounds through unpanned until it has
+	// finished (half a second), so the first use must not be a real sound: run a silent source through one.
+	function warmHrtf() {
+		if (A.hrtfWarm) return;
+		A.hrtfWarm = true;
+		try {
+			var o = ctx.createConstantSource ? ctx.createConstantSource() : ctx.createOscillator();
+			var p = ctx.createPanner();
+			p.panningModel = 'HRTF';
+			var g = ctx.createGain();
+			g.gain.value = 0;
+			o.connect(p);
+			p.connect(g);
+			g.connect(ctx.destination);
+			o.start();
+			setTimeout(function () {
+				try { o.stop(); o.disconnect(); p.disconnect(); g.disconnect(); } catch (e) {}
+			}, 2000);
+		} catch (e) {}
 	}
 
 	function makeBuffer(ptr, frames, ch, rate) {
@@ -523,6 +544,7 @@ EM_JS(int, wa_js_install, (void *shared, int sampleRate, int freeFn), {
 					case 15: A.master.gain.setTargetAtTime(F[a], ctx.currentTime, 0.01); break;
 					case 16: {
 						A.hrtf = I[a] !== 0;
+						if (A.hrtf) warmHrtf();
 						for (var k = 0; k < MAX_VOICES; ++k) {
 							var vk = A.voices[k];
 							if (vk && vk.panner) vk.panner.panningModel = A.hrtf ? 'HRTF' : 'equalpower';

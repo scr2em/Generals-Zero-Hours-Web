@@ -680,6 +680,7 @@ bool probe(const uint8_t *data, size_t size, size_t fileSize, StreamInfo *info)
 	else if (m.bitrateKbps != 0)
 	{
 		// Constant bit rate estimate from the size of the audio data.
+		si.lengthExact = false;
 		const uint64_t audioBytes = fileSize > m.audioStart ? fileSize - m.audioStart : 0;
 		frames = (audioBytes * 8ull * m.sampleRate) / ((uint64_t)m.bitrateKbps * 1000ull * m.samplesPerFrame);
 	}

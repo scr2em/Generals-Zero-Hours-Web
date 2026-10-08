@@ -39,6 +39,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <emscripten.h>
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
@@ -353,6 +354,22 @@ static void finishGame()
 	TheGameEngine = nullptr;
 }
 
+// reportFatal ================================================================
+/** Debug and release crashes (RELEASE_CRASH, failed asserts) end up here instead of
+	* in the Windows message box. The text goes to stderr, which the page collects
+	* into its error panel; the game exits right after (ReleaseCrash ends with _exit). */
+//=============================================================================
+static void reportFatal( const char *message )
+{
+	fprintf( stderr, "Fatal error: %s\n", message ? message : "(no message)" );
+	fflush( stderr );
+}
+
+// Frames run since the game started, for the page (window.__zhFrames, about twice a second)
+// and for the log when -webframelog is on the command line.
+static unsigned s_frameCount = 0;
+static bool s_logFrames = false;
+
 // gameFrame ==================================================================
 /** One browser frame of the game: the body of GameEngine::execute()'s loop. */
 //=============================================================================
@@ -366,6 +383,14 @@ static void gameFrame( void * )
 
 		TheGameEngine->executeFrame();
 
+		++s_frameCount;
+		if( s_frameCount % 30 == 0 )
+		{
+			MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; }, s_frameCount );
+			if( s_logFrames && s_frameCount % 300 == 0 )
+				printf( "frame %u\n", s_frameCount );
+		}
+
 		if( TheGameEngine->getQuitting() )
 		{
 			emscripten_cancel_main_loop();
@@ -375,6 +400,8 @@ static void gameFrame( void * )
 	}
 	catch (...)
 	{
+		// An exception that reaches the frame loop is a failure of the game, not of one frame.
+		fprintf( stderr, "Fatal error: unhandled exception in game frame %u\n", s_frameCount );
 		emscripten_cancel_main_loop();
 		WebPlatform_NotifyExit( 1 );
 	}
@@ -427,6 +454,14 @@ int main( int argc, char **argv )
 	__argc = argc;
 	__argv = argv;
 
+	// Fatal errors are shown by the page. Set before anything can fail.
+	DebugSetCrashHandler( reportFatal );
+	for( int i = 1; i < argc; ++i )
+	{
+		if( strcmp( argv[i], "-webframelog" ) == 0 )
+			s_logFrames = true;
+	}
+
 	try {
 
 		TheAsciiStringCriticalSection = &critSec1;
@@ -456,6 +491,10 @@ int main( int argc, char **argv )
 			fprintf( stderr, "Could not enter %s.\n", GAME_DIRECTORY );
 			return exitcode;
 		}
+
+		// The debug log (debug builds only) goes to the console and to a file in the user data;
+		// the memory manager could not start it any earlier, see GameMemory.cpp.
+		DEBUG_INIT(DEBUG_FLAGS_DEFAULT);
 
 		CommandLine::parseCommandLineForStartup();
 
@@ -499,7 +538,12 @@ int main( int argc, char **argv )
 	}
 	catch (...)
 	{
-
+		// The Windows version swallows this silently; in the browser nobody would learn why
+		// the game never started. Most of these are INI or file errors thrown by the engine's
+		// start-up, which log the details (see the lines above) before throwing.
+		fprintf( stderr, "Fatal error: the game failed to start (exception during start-up)\n" );
+		fflush( stderr );
+		exitcode = 1;
 	}
 
 	shutdownApplication( exitcode );

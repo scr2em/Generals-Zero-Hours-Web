@@ -56,6 +56,7 @@ struct StreamInfo
 	uint32_t sampleRate = 0;
 	uint32_t channels = 0;
 	uint64_t totalFrames = 0;	///< length in sample frames (one sample of every channel), 0 if unknown
+	bool lengthExact = true;	///< false if totalFrames is an estimate (probe() of the start of an MP3 without a Xing tag)
 
 	/// Length in milliseconds like Miles' AIL_stream_ms_position reports it, 0 if unknown.
 	uint32_t durationMs() const

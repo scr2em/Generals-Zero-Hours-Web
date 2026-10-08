@@ -9,23 +9,42 @@ if (typeof document !== 'undefined') {
   globalThis.zhTest = (function () {
     var T = { rec: null, chunks: [], total: 0, rate: 0, maxFrames: 0 };
 
+    // An AudioWorklet copies the rendered blocks to the page (a ScriptProcessor on the busy main
+    // thread drops blocks, which shows up as clicks that are not in the audio).
+    T.ready = 0;
+    T.endFrame = 0;
     T.startRecording = function () {
       var A = globalThis.zhWebAudio;
       if (!A || !A.ctx) return 0;
       if (T.rec) return 1;
       T.rate = A.ctx.sampleRate;
       T.maxFrames = T.rate * 30;
-      var sp = A.ctx.createScriptProcessor(1024, 2, 2);
-      sp.onaudioprocess = function (e) {
-        var l = e.inputBuffer.getChannelData(0).slice();
-        var r = e.inputBuffer.getChannelData(Math.min(1, e.inputBuffer.numberOfChannels - 1)).slice();
-        T.chunks.push([l, r]);
-        T.total += l.length;
-        while (T.chunks.length > 1 && (T.chunks.length - 1) * l.length > T.maxFrames) T.chunks.shift();
-      };
-      A.master.connect(sp);
-      sp.connect(A.ctx.destination);
-      T.rec = sp;
+      T.rec = true;
+      var code = 'class Tap extends AudioWorkletProcessor {' +
+        ' constructor() { super(); this.n = 0; this.l = new Float32Array(1024); this.r = new Float32Array(1024); }' +
+        ' process(inputs) {' +
+        '   var i = inputs[0]; var a = i[0], b = i.length > 1 ? i[1] : i[0];' +
+        '   if (a) { this.l.set(a, this.n); this.r.set(b, this.n); } else { this.l.fill(0, this.n, this.n + 128); this.r.fill(0, this.n, this.n + 128); }' +
+        '   this.n += 128;' +
+        '   if (this.n >= 1024) { this.port.postMessage([this.l.slice(), this.r.slice(), currentFrame + 128 - 1024]); this.n = 0; }' +
+        '   return true; } }' +
+        'registerProcessor("tap", Tap);';
+      var url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+      A.ctx.audioWorklet.addModule(url).then(function () {
+        var node = new AudioWorkletNode(A.ctx, 'tap', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+        node.port.onmessage = function (e) {
+          T.chunks.push(e.data);
+          T.total += e.data[0].length;
+          T.endFrame = e.data[2] + e.data[0].length;
+          while (T.chunks.length > 1 && (T.chunks.length - 1) * e.data[0].length > T.maxFrames) T.chunks.shift();
+        };
+        var mute = A.ctx.createGain();
+        mute.gain.value = 0;
+        A.master.connect(node);
+        node.connect(mute);
+        mute.connect(A.ctx.destination);
+        T.ready = 1;
+      }, function (err) { console.error('tap failed ' + err); T.ready = -1; });
       return 1;
     };
 
@@ -71,6 +90,15 @@ if (typeof document !== 'undefined') {
       return best * 1000 / T.rate;
     };
 
+    // Where the longest silence starts, in ms from the start of the window.
+    T.silenceStartMs = function (ch, ms, threshold) {
+      var s = T.last(ch, ms), run = 0, best = 0, bestAt = 0;
+      for (var i = 0; i < s.length; ++i) {
+        if (Math.abs(s[i]) < threshold) { ++run; if (run > best) { best = run; bestAt = i - run + 1; } } else run = 0;
+      }
+      return bestAt * 1000 / T.rate;
+    };
+
     // Largest sample to sample jump (clicks show up as jumps far above what the tone itself does).
     T.maxStep = function (ch, ms) {
       var s = T.last(ch, ms), best = 0;
@@ -79,6 +107,8 @@ if (typeof document !== 'undefined') {
     };
 
     T.totalFrames = function () { return T.total; };
+    // How many frames the data that reached the page lags behind the rendering (the worklet posts blocks of 1024 frames).
+    T.behind = function () { return Math.round(globalThis.zhWebAudio.ctx.currentTime * T.rate) - T.endFrame; };
 
     // Introspection of the Web Audio graph.
     T.ctxState = function () { var A = globalThis.zhWebAudio; return A && A.ctx ? ({ suspended: 1, running: 2, closed: 3 }[A.ctx.state] || 1) : 0; };

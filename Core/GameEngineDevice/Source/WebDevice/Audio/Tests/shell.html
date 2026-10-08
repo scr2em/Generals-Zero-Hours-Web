@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>web_audio_test</title>
+<style>
+  body { margin: 8px; background: #222; color: #ddd; font: 12px monospace; }
+  pre { margin: 4px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h3>web_audio_test</h3>
+<pre id="log"></pre>
+<script>
+  var logEl = document.getElementById('log');
+  function logLine(s) { console.log(s); logEl.textContent += s + '\n'; }
+  var Module = {
+    print: logLine, printErr: logLine,
+    // ?args=chain,streams runs only those scenarios (decode volume positional lowpass chain suspend streams)
+    arguments: (new URLSearchParams(location.search).get('args') || '').split(',').filter(Boolean),
+  };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

@@ -119,6 +119,10 @@ if(EMSCRIPTEN)
             -sPTHREAD_POOL_SIZE=4
             -sENVIRONMENT=web,worker
             -sEXIT_RUNTIME=0
+            # The OPFS backend of WasmFS lists directories with stringToUTF8OnStack but does not
+            # declare it as a dependency; without it every readdir fails with EIO (the game
+            # finds its archives by listing the install directory).
+            -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$stringToUTF8OnStack
             "SHELL:--shell-file ${ZH_WEB_DIR}/shell.html"
         )
         set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS ${ZH_WEB_DIR}/shell.html)
@@ -151,4 +155,23 @@ if(EMSCRIPTEN)
     set_target_properties(web_platform_test PROPERTIES SUFFIX ".html")
     zh_web_link_options(web_platform_test)
     target_link_options(web_platform_test PRIVATE -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -lGL)
+endif()
+
+# File system test (OPFS mounts, Windows paths, case insensitivity, relative paths after
+# chdir), see webtest/fs_test.cpp:
+#   cmake --build <dir> --target web_fs_test
+#   node webtest/smoke.mjs --site <dir>/GeneralsMD --page web_fs_test.html --data <data dir> --until FS_DONE
+if(EMSCRIPTEN)
+    add_executable(web_fs_test EXCLUDE_FROM_ALL
+        webtest/fs_test.cpp
+        ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/WebDevice/Platform/WebKeyTable.cpp
+        ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/WebDevice/Platform/WebPlatform.cpp
+        ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Source/WebDevice/Platform/WebStorage.cpp
+    )
+    target_compile_features(web_fs_test PRIVATE cxx_std_20)
+    target_include_directories(web_fs_test PRIVATE ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Include)
+    target_link_libraries(web_fs_test PRIVATE deps_config)
+    set_target_properties(web_fs_test PROPERTIES SUFFIX ".html")
+    zh_web_link_options(web_fs_test)
+    target_link_options(web_fs_test PRIVATE -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -lGL)
 endif()

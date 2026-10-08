@@ -128,7 +128,7 @@ typedef struct WSAData {
 #define WSAEHOSTDOWN         EHOSTDOWN
 #define WSAEHOSTUNREACH      EHOSTUNREACH
 #define WSAENOTEMPTY         ENOTEMPTY
-#define WSAEPROCLIM          EPROCLIM
+#define WSAEPROCLIM          (WSABASEERR + 67) /* no EPROCLIM in this libc */
 #define WSAEUSERS            EUSERS
 #define WSAEDQUOT            EDQUOT
 #define WSAESTALE            ESTALE
@@ -140,10 +140,11 @@ typedef struct WSAData {
 #define WSASYSNOTREADY       (WSABASEERR + 91)
 #define WSAVERNOTSUPPORTED   (WSABASEERR + 92)
 #define WSANOTINITIALISED    (WSABASEERR + 93)
-#define WSAHOST_NOT_FOUND    HOST_NOT_FOUND
-#define WSATRY_AGAIN         TRY_AGAIN
-#define WSANO_RECOVERY       NO_RECOVERY
-#define WSANO_DATA           NO_DATA
+/* The Winsock values (11001..11004), not the resolver's 1..4, which would collide with other codes. */
+#define WSAHOST_NOT_FOUND    (WSABASEERR + 1001)
+#define WSATRY_AGAIN         (WSABASEERR + 1002)
+#define WSANO_RECOVERY       (WSABASEERR + 1003)
+#define WSANO_DATA           (WSABASEERR + 1004)
 
 #ifdef __cplusplus
 extern "C" {

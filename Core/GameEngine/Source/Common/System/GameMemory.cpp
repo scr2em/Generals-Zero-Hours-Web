@@ -3535,8 +3535,14 @@ static NOINLINE void preMainInitMemoryManagerImpl()
 		userMemoryManagerInitPools();
 		thePreMainInitFlag = true;
 
+#ifndef __EMSCRIPTEN__
 		DEBUG_INIT(DEBUG_FLAGS_DEFAULT);
 		DEBUG_LOG(("*** Initialized the Memory Manager prior to main!"));
+#else
+		// In the browser build this runs inside the file system's static constructor (see
+		// userMemoryManagerInitPools), where the debug log file cannot be created yet.
+		// WebMain.cpp calls DEBUG_INIT once the file system is up.
+#endif
 	}
 }
 #if defined(_MSC_VER) && _MSC_VER < 1300

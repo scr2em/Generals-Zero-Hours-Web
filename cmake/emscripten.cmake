@@ -37,6 +37,37 @@ string(APPEND CMAKE_EXE_LINKER_FLAGS " -fwasm-exceptions")
 # literals would look like resource ids. Start static data at 1 MB.
 string(APPEND CMAKE_EXE_LINKER_FLAGS " -sGLOBAL_BASE=1048576")
 
+# Debug-friendly variant for finding runtime failures:
+#   cmake --preset emscripten -B build/em-dbg -DRTS_WEB_DEBUG=ON -DRTS_DEBUG_LOGGING=ON
+# Builds with -O1 and symbols (function names in browser stack traces), turns on
+# the Emscripten runtime checks (ASSERTIONS, stack overflow detection) and, with
+# RTS_WEB_SAFE_HEAP, checks every memory access for alignment and bounds (slow).
+# The default build is unaffected.
+option(RTS_WEB_DEBUG "Build the WebAssembly game with symbols, light optimization and runtime checks" OFF)
+option(RTS_WEB_SAFE_HEAP "With RTS_WEB_DEBUG: also check every heap access (SAFE_HEAP, very slow)" OFF)
+if(RTS_WEB_DEBUG)
+    message(STATUS "Emscripten debug build (RTS_WEB_DEBUG)")
+    foreach(lang C CXX)
+        # Replace the per-configuration optimization flags; they come after
+        # CMAKE_<LANG>_FLAGS on the command line, so appending -O1 there would lose.
+        set(CMAKE_${lang}_FLAGS_RELEASE "-O1 -g -DNDEBUG")
+        set(CMAKE_${lang}_FLAGS_RELWITHDEBINFO "-O1 -g -DNDEBUG")
+    endforeach()
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -g -sASSERTIONS=1 -sSTACK_OVERFLOW_CHECK=2 --pre-js ${CMAKE_CURRENT_LIST_DIR}/web_debug_prejs.js")
+    if(RTS_WEB_SAFE_HEAP)
+        string(APPEND CMAKE_EXE_LINKER_FLAGS " -sSAFE_HEAP=1")
+    endif()
+else()
+    # cmake/compilers.cmake adds -g to Release builds for crash analysis. With Emscripten that
+    # makes the page download 75 MB of DWARF and stops the linker from running the full Binaryen
+    # optimizer ("limited binaryen optimizations because DWARF info requested"). Keep only the
+    # function names, which is what browser stack traces need, at a few MB.
+    foreach(lang C CXX)
+        string(REGEX REPLACE " -g( |$)" "\\1" CMAKE_${lang}_FLAGS_RELEASE "${CMAKE_${lang}_FLAGS_RELEASE}")
+    endforeach()
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " --profiling-funcs")
+endif()
+
 add_subdirectory(Dependencies/WebCompat)
 
 # Flags for every game target.

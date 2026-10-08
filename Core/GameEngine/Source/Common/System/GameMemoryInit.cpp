@@ -103,6 +103,14 @@ static Int roundUpMemBound(Int i)
 //-----------------------------------------------------------------------------
 void userMemoryManagerInitPools()
 {
+#ifdef __EMSCRIPTEN__
+	// The memory manager initializes itself on the first operator new, which in the browser build
+	// is made by the file system's own static constructor (WasmFS allocates its file table there).
+	// The file system cannot be used yet, and MemoryPools.ini is a developer tuning file that the
+	// retail game does not ship, so the built-in pool sizes are used.
+	return;
+#endif
+
 	// note that we MUST use stdio stuff here, and not the normal game file system
 	// (with bigfile support, etc), because that relies on memory pools, which
 	// aren't yet initialized properly! so rely ONLY on straight stdio stuff here.
