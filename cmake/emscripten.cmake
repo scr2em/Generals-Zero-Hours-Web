@@ -132,3 +132,7 @@ target_compile_options(d3d8lib INTERFACE "SHELL:-idirafter ${dx8_SOURCE_DIR}/ext
 if(TARGET web_d3d8)
     target_link_libraries(d3d8lib INTERFACE web_d3d8)
 endif()
+
+# The free starter content (original placeholder game data), generated next to
+# the web page so the launcher can offer it. See Content/StarterPack/README.md.
+add_subdirectory(Content)
