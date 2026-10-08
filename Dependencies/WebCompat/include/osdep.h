@@ -15,14 +15,8 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 /*
-** WebAssembly port: includes the DirectX 8 headers (min-dx8-sdk, patched for
-** the web build, see cmake/patches/dx8-emscripten.patch) on top of
-** Dependencies/WebCompat.
+** WebAssembly port: the header of the old Unix port of the game, which some
+** headers include when _UNIX is defined. The GameSpy SDK defines _UNIX for
+** the platform, but nothing from the old port is needed.
 */
 #pragma once
-
-#include <windows.h>
-#include <objbase.h>
-
-#include <d3d8.h>
-#include <d3dx8.h>

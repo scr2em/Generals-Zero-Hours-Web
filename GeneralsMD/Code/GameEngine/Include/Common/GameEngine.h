@@ -63,6 +63,7 @@ public:
 
 	virtual void execute();											/**< The "main loop" of the game engine.
 																								 It will not return until the game exits. */
+	void executeFrame();												///< One iteration of the main loop, which execute() repeats until the game exits.
 
 	static Bool isTimeFrozen(); ///< Returns true if a script has frozen time.
 	static Bool isGameHalted(); ///< Returns true if the game is paused or the network is stalling.

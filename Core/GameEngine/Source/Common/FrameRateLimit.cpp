@@ -30,11 +30,28 @@ FrameRateLimit::FrameRateLimit()
 	m_start = start.QuadPart;
 }
 
+Bool FrameRateLimit::isDue(UnsignedInt maxFps) const
+{
+	LARGE_INTEGER tick;
+	QueryPerformanceCounter(&tick);
+	const double elapsedSeconds = static_cast<double>(tick.QuadPart - m_start) / m_freq;
+	// A millisecond early is on time, so that a frame limit at the display's refresh rate is not missed by jitter.
+	return elapsedSeconds >= 1.0 / maxFps - 0.001;
+}
+
 Real FrameRateLimit::wait(UnsignedInt maxFps)
 {
 	PROFILER_SECTION;
 	LARGE_INTEGER tick;
 	QueryPerformanceCounter(&tick);
+#ifdef __EMSCRIPTEN__
+	// The browser paces the frames (requestAnimationFrame) and the caller skips the ones that come
+	// before the fps limit is due, so there is nothing to wait for. Sleeping or spinning here would
+	// only stall the page.
+	const double elapsedSeconds = static_cast<double>(tick.QuadPart - m_start) / m_freq;
+	m_start = tick.QuadPart;
+	return (Real)elapsedSeconds;
+#else
 	double elapsedSeconds = static_cast<double>(tick.QuadPart - m_start) / m_freq;
 	const double targetSeconds = 1.0 / maxFps;
 	const double sleepSeconds = targetSeconds - elapsedSeconds - 0.002; // leave ~2ms for spin wait
@@ -56,6 +73,7 @@ Real FrameRateLimit::wait(UnsignedInt maxFps)
 
 	m_start = tick.QuadPart;
 	return (Real)elapsedSeconds;
+#endif
 }
 
 void FrameRateLimit::reset()

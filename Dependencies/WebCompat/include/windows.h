@@ -184,6 +184,7 @@ DECLARE_HANDLE(HRGN);
 DECLARE_HANDLE(HPALETTE);
 DECLARE_HANDLE(HRSRC);
 DECLARE_HANDLE(HMONITOR);
+#define HMONITOR_DECLARED
 DECLARE_HANDLE(HKL);
 DECLARE_HANDLE(HIMC);
 DECLARE_HANDLE(HDROP);
@@ -2028,7 +2029,10 @@ void webcompat_set_key_state(int virtualKey, int down);
 #include "winerror.h"
 #include "objbase.h"
 
-/* windows.h declares Winsock 1 too, unless told not to. */
+/* windows.h declares the input method manager and Winsock 1 too (the latter
+** unless told not to). */
+#include "imm.h"
+
 #if !defined(WIN32_LEAN_AND_MEAN) && !defined(_WINSOCKAPI_)
 #include "winsock.h"
 #endif

@@ -75,6 +75,11 @@ void FramePacer::update()
 	}
 }
 
+Bool FramePacer::isFrameDue() const
+{
+	return m_frameRateLimit.isDue(getActualFramesPerSecondLimit());
+}
+
 void FramePacer::reset()
 {
 	m_frameRateLimit.reset();

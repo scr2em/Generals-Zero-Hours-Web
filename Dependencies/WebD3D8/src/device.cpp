@@ -414,7 +414,7 @@ void Device::PresentToCanvas()
     if (GetConfig().hooks.OnFramePresented) GetConfig().hooks.OnFramePresented();
 }
 
-HRESULT Device::Present(const RECT *, const RECT *, HWND, const WebD3D8_RGNDATA *)
+HRESULT Device::Present(const RECT *, const RECT *, HWND, const RGNDATA *)
 {
     if (m_contextLost) return D3DERR_DEVICELOST;
     PresentToCanvas();

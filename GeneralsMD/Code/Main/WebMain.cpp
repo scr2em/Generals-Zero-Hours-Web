@@ -20,8 +20,12 @@
 //
 // Entry point of the WebAssembly build, the counterpart of WinMain.cpp.
 //
-// main() runs on a worker thread (-sPROXY_TO_PTHREAD), so the engine's blocking
-// main loop works unchanged. There is no window to create: the page provides a
+// main() runs on a worker thread (-sPROXY_TO_PTHREAD). The engine's main loop
+// cannot block there, though: the browser only shows a frame once the thread
+// returns to its event loop, so the loop is run one frame per
+// requestAnimationFrame (emscripten_set_main_loop) and main() returns right
+// after starting it. The shutdown that follows GameMain() on Windows runs from
+// the loop when the game quits. There is no window to create: the page provides a
 // canvas, WebPlatform turns its input into the same window messages Windows
 // would deliver, and WebWndProc below is the game's window procedure.
 //
@@ -35,11 +39,13 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <emscripten.h>
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "WinMain.h"
 #include "Common/CommandLine.h"
 #include "Common/CriticalSection.h"
+#include "Common/FramePacer.h"
 #include "Common/GlobalData.h"
 #include "Common/GameEngine.h"
 #include "Common/GameSounds.h"
@@ -47,6 +53,7 @@
 #include "Common/GameMemory.h"
 #include "Common/MessageStream.h"
 #include "Common/PlayerList.h"
+#include "Common/ReplaySimulation.h"
 #include "Common/Registry.h"
 #include "Common/Team.h"
 #include "Common/WorkingDirectory.h"
@@ -58,6 +65,7 @@
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "WebDevice/Common/WebGameEngine.h"
 #include "WebDevice/Platform/WebPlatform.h"
+#include <WebD3D8/WebD3D8.h>
 #include "Common/version.h"
 #include "BuildVersion.h"
 #include "GeneratedVersion.h"
@@ -300,6 +308,114 @@ static intptr_t WebWndProc( uintptr_t hWnd, uint32_t message, uintptr_t wParam, 
 // Necessary to allow memory managers and such to have useful critical sections
 static CriticalSection critSec1, critSec2, critSec3, critSec4, critSec5;
 
+// shutdownApplication ========================================================
+/** Everything that follows the end of the game: the counterpart of the code
+	* after GameMain() in WinMain. Runs at the end of main() or, when the game
+	* runs frame by frame, from the last frame. */
+//=============================================================================
+static void shutdownApplication( Int exitcode )
+{
+	try {
+
+		delete TheVersion;
+		TheVersion = nullptr;
+
+	#ifdef MEMORYPOOL_DEBUG
+		TheMemoryPoolFactory->debugMemoryReport(REPORT_POOLINFO | REPORT_POOL_OVERFLOW | REPORT_SIMPLE_LEAKS, 0, 0);
+	#endif
+	#if defined(RTS_DEBUG)
+		TheMemoryPoolFactory->memoryPoolUsageReport("AAAMemStats");
+	#endif
+
+		shutdownMemoryManager();
+	}
+	catch (...)
+	{
+
+	}
+
+	WebPlatform_Shutdown();
+	WebPlatform_NotifyExit( exitcode );
+
+	TheUnicodeStringCriticalSection = nullptr;
+	TheDmaCriticalSection = nullptr;
+	TheMemoryPoolCriticalSection = nullptr;
+}
+
+// finishGame =================================================================
+/** The end of GameMain(): the engine is done, free it. */
+//=============================================================================
+static void finishGame()
+{
+	delete TheFramePacer;
+	TheFramePacer = nullptr;
+	delete TheGameEngine;
+	TheGameEngine = nullptr;
+}
+
+// gameFrame ==================================================================
+/** One browser frame of the game: the body of GameEngine::execute()'s loop. */
+//=============================================================================
+static void gameFrame( void * )
+{
+	try {
+
+		// requestAnimationFrame runs at the display's rate, which can be above the game's fps limit.
+		if( !TheFramePacer->isFrameDue() )
+			return;
+
+		TheGameEngine->executeFrame();
+
+		if( TheGameEngine->getQuitting() )
+		{
+			emscripten_cancel_main_loop();
+			finishGame();
+			shutdownApplication( 0 );
+		}
+	}
+	catch (...)
+	{
+		emscripten_cancel_main_loop();
+		WebPlatform_NotifyExit( 1 );
+	}
+}
+
+// runGame ====================================================================
+/** The counterpart of GameMain(): creates and initializes the engine, then runs
+	* it. Returns true when the game was only started and runs frame by frame
+	* from now on (see gameFrame), and false when it already ended, with the
+	* exit code in exitcode. */
+//=============================================================================
+static Bool runGame( Int &exitcode )
+{
+	exitcode = 0;
+
+	TheFramePacer = new FramePacer();
+	TheFramePacer->enableFramesPerSecondLimit(TRUE);
+	TheGameEngine = CreateGameEngine();
+	TheGameEngine->init();
+
+	if (!TheGlobalData->m_simulateReplays.empty())
+	{
+		// Headless: nothing is shown, so the plain blocking loop is fine.
+		exitcode = ReplaySimulation::simulateReplays(TheGlobalData->m_simulateReplays, TheGlobalData->m_simulateReplayJobs);
+	}
+	else if (TheGlobalData->m_headless)
+	{
+		TheGameEngine->execute();
+	}
+	else
+	{
+		// Frames are driven by requestAnimationFrame (fps 0); the stack is not unwound
+		// (simulate_infinite_loop 0), main() returns and the thread stays alive for the frames.
+		emscripten_set_main_loop_arg( gameFrame, nullptr, 0, 0 );
+		return true;
+	}
+
+	finishGame();
+	return false;
+}
+
 // main =======================================================================
 /** Application entry point, on the engine thread */
 //=============================================================================
@@ -349,6 +465,15 @@ int main( int argc, char **argv )
 		WebPlatform_SetWindowProc( WebWndProc );
 		WebPlatform_SetTitle( "Command and Conquer Generals Zero Hour" );
 
+		// The renderer (Direct3D 8 on WebGL2) draws on the page's canvas, tells the page when the
+		// back buffer size changes, and leaves presenting the frame to the browser: the frames
+		// end by returning to the event loop, see gameFrame().
+		WebD3D8_PlatformHooks d3dHooks = {};
+		d3dHooks.OnClientSize = []( unsigned width, unsigned height ) { WebPlatform_SetClientSize( (int)width, (int)height ); };
+		WebD3D8_SetPlatformHooks( &d3dHooks );
+		WebD3D8_SetCanvas( WebPlatform_GetCanvasSelector() );
+		WebD3D8_SetPresentMode( WEBD3D8_PRESENT_IMPLICIT );
+
 		// The Win32 mouse code and the renderer want a window handle, like in WinMain.
 		ApplicationHInstance = (HINSTANCE)0x00400000;
 		if( !TheGlobalData->m_headless )
@@ -366,31 +491,18 @@ int main( int argc, char **argv )
 		DEBUG_LOG(("CRC message is %d", GameMessage::MSG_LOGIC_CRC));
 
 		// run the game main loop
-		exitcode = GameMain();
-
-		delete TheVersion;
-		TheVersion = nullptr;
-
-	#ifdef MEMORYPOOL_DEBUG
-		TheMemoryPoolFactory->debugMemoryReport(REPORT_POOLINFO | REPORT_POOL_OVERFLOW | REPORT_SIMPLE_LEAKS, 0, 0);
-	#endif
-	#if defined(RTS_DEBUG)
-		TheMemoryPoolFactory->memoryPoolUsageReport("AAAMemStats");
-	#endif
-
-		shutdownMemoryManager();
+		if( runGame( exitcode ) )
+		{
+			// The game runs from the browser's frames now; they shut down when it ends.
+			return 0;
+		}
 	}
 	catch (...)
 	{
 
 	}
 
-	WebPlatform_Shutdown();
-	WebPlatform_NotifyExit( exitcode );
-
-	TheUnicodeStringCriticalSection = nullptr;
-	TheDmaCriticalSection = nullptr;
-	TheMemoryPoolCriticalSection = nullptr;
+	shutdownApplication( exitcode );
 
 	return exitcode;
 

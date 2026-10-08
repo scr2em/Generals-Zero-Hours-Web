@@ -937,12 +937,23 @@ extern HWND ApplicationHWnd;
  */
 void GameEngine::execute()
 {
-#if defined(RTS_DEBUG)
-	DWORD startTime = timeGetTime() / 1000;
-#endif
-
 	// pretty basic for now
 	while( !m_quitting )
+	{
+		executeFrame();
+	}
+}
+
+/** -----------------------------------------------------------------------------------------------
+ * One iteration of the main loop: computes a frame, then waits out the rest of its time slice.
+ * The web build calls this once per browser frame instead of running execute().
+ */
+void GameEngine::executeFrame()
+{
+#if defined(RTS_DEBUG)
+	static const DWORD startTime = timeGetTime() / 1000;
+#endif
+
 	{
 
 		//if (TheGlobalData->m_vTune)

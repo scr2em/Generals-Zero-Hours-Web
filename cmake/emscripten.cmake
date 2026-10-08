@@ -71,10 +71,18 @@ target_link_libraries(deps_config INTERFACE webcompat_headers)
 
 # DirectX 8 headers. The interfaces are implemented on WebGL2 by the
 # web_d3d8 library (Core/GameEngineDevice, WebGL backend).
+# The SDK headers pick the Windows layout (4 byte packing, the LARGE_INTEGER
+# driver version, the interface ids) from _WIN32, which the web build does not
+# define. The patch makes them accept __EMSCRIPTEN__ as well.
+find_package(Git REQUIRED)
 FetchContent_Declare(
     dx8
     GIT_REPOSITORY https://github.com/TheSuperHackers/min-dx8-sdk.git
     GIT_TAG        7bddff8c01f5fb931c3cb73d4aa8e66d303d97bc
+    PATCH_COMMAND ${CMAKE_COMMAND}
+        -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
+        -DPATCH_FILE=${CMAKE_CURRENT_LIST_DIR}/patches/dx8-emscripten.patch
+        -P ${CMAKE_CURRENT_LIST_DIR}/patches/apply_patch.cmake
 )
 FetchContent_GetProperties(dx8)
 if(NOT dx8_POPULATED)
