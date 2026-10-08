@@ -15,6 +15,14 @@ endif()
 message(STATUS "Emscripten (WebAssembly) build")
 set(IS_WEB_BUILD TRUE)
 
+# The engine runs its original blocking main loop on a worker thread
+# (PROXY_TO_PTHREAD), and the game and GameSpy use threads, so every object
+# file - including third-party dependencies - must be built with shared
+# memory support. Set it globally so FetchContent dependencies get it too.
+string(APPEND CMAKE_C_FLAGS " -pthread")
+string(APPEND CMAKE_CXX_FLAGS " -pthread")
+string(APPEND CMAKE_EXE_LINKER_FLAGS " -pthread")
+
 add_subdirectory(Dependencies/WebCompat)
 
 # Flags for every game target.
