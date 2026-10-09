@@ -133,6 +133,23 @@ Int AssistUI::controlBarTop()
 }
 
 //-------------------------------------------------------------------------------------------------
+Int AssistUI::stackY( const AssistPanel *panel, Int height )
+{
+	Int y = controlBarTop() - px( 6 ) - height;
+	for (size_t i = 0; i < s_panels.size() && s_panels[i] != panel; ++i)
+	{
+		AssistPanel *p = s_panels[i];
+		if (p->isStackLeft() && p->isVisible())
+		{
+			Int w, h;
+			p->window()->winGetSize( &w, &h );
+			y -= h + px( 4 );
+		}
+	}
+	return y;
+}
+
+//-------------------------------------------------------------------------------------------------
 void AssistUI::usePool( AssistTextPool *pool )
 {
 	s_pool = pool ? pool : &s_overlayPool;
@@ -257,6 +274,7 @@ AssistPanel::AssistPanel( const char *name ) : m_name( name )
 	m_texts = nullptr;
 	m_fillAlpha = 190;
 	m_manual = FALSE;
+	m_stackLeft = FALSE;
 	s_panels.push_back( this );
 }
 
@@ -586,6 +604,7 @@ public:
 	FormationPanel() : AssistPanel( "Formation" )
 	{
 		m_title = L"Formation";
+		setStackLeft( TRUE );
 		for (Int f = AFORM_NONE; f < AFORM_COUNT; ++f)
 			addButton( f, f, formationShort[f], nullptr );
 	}
@@ -616,7 +635,7 @@ public:
 		const Int cellH = AssistUI::px( 30 );
 		flow( AFORM_COUNT, cellW, cellH, AssistUI::px( 3 ), w, h );
 		*x = AssistUI::px( 6 );
-		*y = AssistUI::controlBarTop() - *h - AssistUI::px( 6 );
+		*y = AssistUI::stackY( this, *h );
 	}
 
 	virtual void clicked( Int id ) override
@@ -705,6 +724,7 @@ void AssistUI::init()
 //-------------------------------------------------------------------------------------------------
 void AssistUI::reset()
 {
+	AssistProtectUI::reset();
 	for (size_t i = 0; i < s_panels.size(); ++i)
 		s_panels[i]->destroy();
 	s_selection.m_valid = FALSE;
@@ -731,6 +751,7 @@ void AssistUI::update()
 
 	if (s_formationPanel == nullptr)
 		s_formationPanel = new FormationPanel;
+	AssistProtectUI::init();
 
 	for (size_t i = 0; i < s_panels.size(); ++i)
 	{
@@ -754,6 +775,7 @@ void AssistUI::drawOverlays( View *view )
 	if (!AssistUI::active())
 		return;
 	drawAim();
+	AssistProtectUI::drawOverlays( view );
 }
 
 //=================================================================================================
@@ -855,7 +877,7 @@ void AssistUI::drawAim()
 
 namespace
 {
-	enum { OPT_FORMATIONS = 1, OPT_CLOSE = 100 };
+	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_CLOSE = 100 };
 
 	struct ToggleRow { Int id; const wchar_t *label; Bool *value; };
 }
@@ -869,6 +891,7 @@ public:
 		m_fillAlpha = 252;
 		m_title = L"Player assists";
 		addButton( OPT_FORMATIONS, 0, L"Formations: picker, hotkeys, drag to aim", nullptr );
+		addButton( OPT_PROTECT, 0, L"Protect: units guard other units, buildings and groups", nullptr );
 		addButton( 200, 0, L"All assists are off until switched on here.", nullptr );
 		addButton( 201, 0, L"Those that give orders also need \"Player assists allowed\" in the match setup.", nullptr );
 		addButton( OPT_CLOSE, 0, L"Close", nullptr );
@@ -901,6 +924,7 @@ public:
 	void refreshValues()
 	{
 		find( OPT_FORMATIONS )->m_on = TheAssistOptions.m_formations;
+		find( OPT_PROTECT )->m_on = TheAssistOptions.m_protect;
 	}
 
 	virtual Bool refresh() override { return TRUE; }
@@ -941,6 +965,7 @@ public:
 		switch (id)
 		{
 			case OPT_FORMATIONS: TheAssistOptions.m_formations = !TheAssistOptions.m_formations; break;
+			case OPT_PROTECT: TheAssistOptions.m_protect = !TheAssistOptions.m_protect; break;
 			case OPT_CLOSE: closeDialog(); return;
 			default: return;
 		}
@@ -1080,6 +1105,9 @@ GameMessageDisposition AssistUI::translate( const GameMessage *msg )
 	const GameMessage::Type t = msg->getType();
 	if (t != GameMessage::MSG_RAW_MOUSE_POSITION)
 		invalidateSelection();	// the selection may have changed since the last frame
+
+	if (AssistProtectUI::translate( msg ))
+		return DESTROY_MESSAGE;
 
 	// ---- hotkeys -----------------------------------------------------------------------------
 	if (t >= GameMessage::MSG_META_ASSIST_FORM_NONE && t <= GameMessage::MSG_META_ASSIST_FORM_CYCLE)

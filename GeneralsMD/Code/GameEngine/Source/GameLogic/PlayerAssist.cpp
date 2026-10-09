@@ -61,6 +61,7 @@ void PlayerAssist::reset()
 {
 	m_allowed = FALSE;
 	m_units.clear();
+	m_protect.reset();
 	m_aimValid = FALSE;
 	m_pruneFrame = 0;
 }
@@ -100,6 +101,7 @@ void PlayerAssist::logicUpdate()
 		return;
 
 	const UnsignedInt now = TheGameLogic->getFrame();
+	m_protect.update( now );
 	if (now >= m_pruneFrame)
 	{
 		m_pruneFrame = now + 2 * LOGICFRAMES_PER_SECOND;
@@ -130,10 +132,84 @@ Bool PlayerAssist::onMessage( GameMessage *msg, Player *player, AIGroup *group )
 			return TRUE;
 		}
 
+		case GameMessage::MSG_ASSIST_PROTECT:
+		{
+			// (hotkey group or -1, number of protectors, protectors ..., protected ...)
+			const Int squad = msg->getArgument( 0 )->integer;
+			const Int count = msg->getArgument( 1 )->integer;
+			const Int total = (Int)msg->getArgumentCount();
+			std::vector<ObjectID> protectors, targets;
+			for (Int i = 0; i < count && 2 + i < total; ++i)
+				protectors.push_back( msg->getArgument( 2 + i )->objectID );
+			for (Int i = 2 + count; i < total; ++i)
+			{
+				const Object *o = TheGameLogic->findObjectByID( msg->getArgument( i )->objectID );
+				if (o && !o->isEffectivelyDead() && player->getRelationship( o->getTeam() ) != ENEMIES)
+					targets.push_back( o->getID() );
+			}
+			for (size_t i = 0; i < protectors.size(); ++i)
+			{
+				Object *o = TheGameLogic->findObjectByID( protectors[i] );
+				if (o == nullptr || o->isEffectivelyDead() || o->getControllingPlayer() != player)
+					continue;
+				if (m_protect.link( o, targets, squad, nullptr ))
+					ASSIST_DEBUG(( "ASSIST protect link %d protects %d objects and hotkey group %d", (int)o->getID(), (int)targets.size(), squad ));
+			}
+			return TRUE;
+		}
+
+		case GameMessage::MSG_ASSIST_UNPROTECT:
+		{
+			if (group)
+			{
+				const VecObjectID ids = group->getAllIDs();
+				for (size_t i = 0; i < ids.size(); ++i)
+				{
+					if (m_protect.unlink( ids[i] ))
+						ASSIST_DEBUG(( "ASSIST protect link %d removed", (int)ids[i] ));
+				}
+			}
+			return TRUE;
+		}
+
 		default:
 			break;
 	}
 	return FALSE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/// The player moved these units by hand: protectors among them have their home where they were sent.
+void PlayerAssist::noteGroupMove( AIGroup *group, const Coord3D *dest )
+{
+	if (!m_allowed || group == nullptr || m_protect.count() == 0)
+		return;
+	Coord3D center;
+	if (!group->getCenter( &center ))
+		return;
+	const VecObjectID ids = group->getAllIDs();
+	for (size_t i = 0; i < ids.size(); ++i)
+	{
+		if (!m_protect.isProtector( ids[i] ))
+			continue;
+		const Object *o = TheGameLogic->findObjectByID( ids[i] );
+		if (o == nullptr)
+			continue;
+		// every unit keeps its place in the group, up to six times its size (as the game's own group move does)
+		Real ox = o->getPosition()->x - center.x;
+		Real oy = o->getPosition()->y - center.y;
+		const Real len = sqrtf( ox * ox + oy * oy );
+		const Real limit = 6.0f * o->getGeometryInfo().getBoundingCircleRadius();
+		if (len > limit && len > 0.0f)
+		{
+			ox *= limit / len;
+			oy *= limit / len;
+		}
+		Coord3D home = *dest;
+		home.x += ox;
+		home.y += oy;
+		m_protect.noteManualMove( ids[i], home );
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -146,13 +222,15 @@ void PlayerAssist::crc( Xfer *x )
 //-------------------------------------------------------------------------------------------------
 void PlayerAssist::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 1;
+	XferVersion currentVersion = 2;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
-	xfer->xferBool( &m_allowed );
-
 	const Bool loading = xfer->getXferMode() == XFER_LOAD;
+	xfer->xferBool( &m_allowed );
+	if (version >= 2)
+		m_protect.xfer( xfer );
+
 	UnsignedInt count = (UnsignedInt)m_units.size();
 	xfer->xferUnsignedInt( &count );
 

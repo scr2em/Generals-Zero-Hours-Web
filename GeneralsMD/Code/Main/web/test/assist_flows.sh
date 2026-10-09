@@ -17,6 +17,8 @@
 #   formations-off   without the option nothing happens (no panel, hotkeys do nothing)
 #   formations-rule  option on, but the match does not allow assists (the setup check box): hotkeys do nothing
 #   formations-replay  a match with formation orders is recorded, then played back: no CRC mismatch, same orders
+#   protect          riflemen protect the headquarters, an enemy attacks it, they answer, return home; a move by hand moves the home
+#   protect-replay   the same, recorded and played back
 site=$(cd "$1" && pwd)
 out=${2:-${TMPDIR:-/tmp}/zh-assist-flows}
 here=$(cd "$(dirname "$0")" && pwd)
@@ -81,6 +83,20 @@ run formations-replay "$GAME W:ASSIST~match~allowed=1 $SELECT \
 	$WEDGE W:ASSIST~formation~set~type=3~units=15 c:200,230 W:ASSIST~formation~move~type=3~units=15 f:500 \
 	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:450 \
 	K:2:ASSIST~formation~set~type=3 K:2:ASSIST~formation~move~type=3~units=15 N:CRC~Mismatch N:RuntimeError" $assist --options AssistFormations=1
+
+# 6. Protect: three riflemen are told to protect the headquarters; an enemy scout shoots at it; they attack-move there and
+#    come back; moving them by hand sets their new home; the stop command removes the link.
+PROTECT_UNITS="0:IronwoodRifleman:3+1:IronwoodRifleman:1:0:170:-60"
+PROTECT_GAME="w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodRifleman~for~player~1 w:3"
+PROTECT_DO="k:Home w:5 r:300,225,430,300 w:4 kd:Control w:1 k:Digit1 w:1 ku:Control w:2 R:900,365 w:3 r:120,345,260,400 w:4 s:selected kd:Alt w:1 k:KeyP w:1 ku:Alt w:3 s:picking k:Digit1 W:ASSIST~protect~link~[0-9]+~protects~0~objects~and~hotkey~group~1 s:linked"
+run protect "$PROTECT_GAME W:ASSIST~match~allowed=1 $PROTECT_DO \
+	W:ASSIST~protect~[0-9]+~answers~the~alarm s:answering W:ASSIST~protect~[0-9]+~goes~home W:ASSIST~protect~[0-9]+~is~home s:home \
+	c:200,230 W:ASSIST~protect~home~of~[0-9]+~moved~by~hand w:3 \
+	kd:Alt w:1 k:KeyU w:1 ku:Alt w:3 W:ASSIST~protect~link~[0-9]+~removed N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$PROTECT_UNITS" --arg -assistDebug --options AssistProtect=1
+
+run protect-replay "$PROTECT_GAME W:ASSIST~match~allowed=1 $PROTECT_DO W:ASSIST~protect~[0-9]+~answers~the~alarm W:ASSIST~protect~[0-9]+~is~home f:700 \
+	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:600 \
+	K:2:ASSIST~protect~link~[0-9]+~protects N:CRC~Mismatch N:RuntimeError" --arg -assistTest --arg "$PROTECT_UNITS" --arg -assistDebug --options AssistProtect=1
 
 echo "$failed flow(s) failed"
 exit $((failed > 0))

@@ -265,6 +265,7 @@ void PlayerAssist::formationMove( AIGroup *group, Int type, const Coord3D &a, co
 		group->groupMoveToPosition( &dest, false, CMD_FROM_PLAYER );
 
 	m_aimValid = FALSE;
+	noteGroupMove( group, &dest );
 }
 
 //-------------------------------------------------------------------------------------------------

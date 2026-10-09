@@ -37,6 +37,7 @@
 #include "Common/GameCommon.h"
 #include "Common/Snapshot.h"
 #include "Common/SubsystemInterface.h"
+#include "GameLogic/Protect.h"
 
 class AIGroup;
 class GameMessage;
@@ -98,6 +99,11 @@ public:
 	/// A command of the player arrived (from the logic message dispatcher).  'group' is the player's selection.
 	Bool onMessage( GameMessage *msg, Player *player, AIGroup *group );
 
+	// ---- protect (Protect.h) -------------------------------------------------------------------
+	const ProtectManager &protect() const { return m_protect; }
+	/// The selection was moved by hand to 'dest' (a move order of the player): the homes of protectors in it move there.
+	void noteGroupMove( AIGroup *group, const Coord3D *dest );
+
 	// ---- formations (AssistFormation.cpp) ------------------------------------------------------
 	/// The formation set for this unit (AFORM_NONE if it has none).
 	Int formationOf( ObjectID id ) const;
@@ -132,6 +138,7 @@ private:
 
 	Bool				m_allowed;
 	UnitMap			m_units;
+	ProtectManager	m_protect;
 
 	// the drag a formation move was given (valid only while the command is being carried out)
 	Bool				m_aimValid;

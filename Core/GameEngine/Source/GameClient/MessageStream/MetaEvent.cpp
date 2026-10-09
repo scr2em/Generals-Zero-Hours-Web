@@ -182,6 +182,8 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "ASSIST_FORMATION_BOX",										GameMessage::MSG_META_ASSIST_FORM_BOX },
 	{ "ASSIST_FORMATION_LOOSE",										GameMessage::MSG_META_ASSIST_FORM_LOOSE },
 	{ "ASSIST_FORMATION_KEEP",										GameMessage::MSG_META_ASSIST_FORM_KEEP },
+	{ "ASSIST_PROTECT",										GameMessage::MSG_META_ASSIST_PROTECT },
+	{ "ASSIST_UNPROTECT",									GameMessage::MSG_META_ASSIST_UNPROTECT },
 	{ "ASSIST_FORMATION_CYCLE",										GameMessage::MSG_META_ASSIST_FORM_CYCLE },
 
 	{ "BEGIN_CAMERA_ROTATE_LEFT",									GameMessage::MSG_META_BEGIN_CAMERA_ROTATE_LEFT },
@@ -991,6 +993,8 @@ void MetaMap::generateMetaMap()
 			{ GameMessage::MSG_META_ASSIST_FORM_LOOSE,  MK_5, CTRL_ALT, L"Formation: loose",     L"Selected units spread out" },
 			{ GameMessage::MSG_META_ASSIST_FORM_KEEP,   MK_6, CTRL_ALT, L"Formation: keep shape",L"Selected units keep their current shape" },
 			{ GameMessage::MSG_META_ASSIST_FORM_CYCLE,  MK_F, ALT, L"Formation: next",      L"Pick the next formation for the selected units" },
+			{ GameMessage::MSG_META_ASSIST_PROTECT,     MK_P, ALT, L"Protect",              L"The selected units protect what you choose next" },
+			{ GameMessage::MSG_META_ASSIST_UNPROTECT,   MK_U, ALT, L"Stop protecting",      L"The selected units stop protecting" },
 		};
 		for (size_t i = 0; i < ARRAY_SIZE(assistKeys); ++i)
 		{

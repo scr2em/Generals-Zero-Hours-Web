@@ -448,6 +448,8 @@ public:
 		MSG_META_ASSIST_FORM_LOOSE,									///< formation: loose
 		MSG_META_ASSIST_FORM_KEEP,									///< formation: keep the shape
 		MSG_META_ASSIST_FORM_CYCLE,									///< formation: next one
+		MSG_META_ASSIST_PROTECT,										///< protect: choose what the selected units protect
+		MSG_META_ASSIST_UNPROTECT,									///< protect: the selected units stop protecting
 
 		MSG_END_META_MESSAGES,											///< Marker to delineate "meta" messages
 
@@ -618,6 +620,8 @@ public:
 		// player assists (GameLogic/PlayerAssist.h).  Ignored by the logic unless the match allows them.
 		MSG_ASSIST_FORMATION,												///< (Int AssistFormation) the selected units get this formation
 		MSG_ASSIST_FORMATION_MOVE,									///< (Int formation, location a, location b, Bool attackMove) move in formation; a to b is the front line the player dragged (a == b: a click)
+		MSG_ASSIST_PROTECT,													///< (Int hotkey group or -1, Int n, n protector objectIDs, then the objectIDs to protect) the protectors guard these
+		MSG_ASSIST_UNPROTECT,												///< the selected units stop protecting
 
 		MSG_BEGIN_DEBUG_NETWORK_MESSAGES = 1900,		///< network messages that exist only in debug/internal builds. all grouped separately.
 

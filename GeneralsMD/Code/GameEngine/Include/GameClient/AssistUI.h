@@ -82,6 +82,8 @@ public:
 
 	void	addButton( Int id, Int glyph, const wchar_t *label, const wchar_t *tip );
 	void	setManual( Bool manual ) { m_manual = manual; }
+	void	setStackLeft( Bool stack ) { m_stackLeft = stack; }
+	Bool	isStackLeft() const { return m_stackLeft; }
 	Bool	isManual() const { return m_manual; }
 	AssistButton *find( Int id );
 	/// Lay the buttons out in a row/grid: 'columns' per row, cells of w x h, a gap, below a title line.
@@ -98,6 +100,7 @@ private:
 	AsciiString	m_name;
 	GameWindow	*m_window;
 	Bool				m_manual;				///< shown and hidden by its owner, not by AssistUI::update
+	Bool				m_stackLeft;			///< one of the panels stacked above the command bar at the left
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -116,6 +119,8 @@ public:
 	static Real scale();
 	static Int  px( Int designPixels );								///< designPixels * scale()
 	static Int  controlBarTop();											///< y of the top of the command bar (the panels sit above)
+	/// y of a panel of the left stack: above the command bar and the stack panels that were made before it and are shown.
+	static Int  stackY( const AssistPanel *panel, Int height );
 
 	/// Draw text with the shared string pool (call from draw code only).
 	static void text( const UnicodeString &s, Int x, Int y, Color color, Int pointSize = 10, Bool centeredInWidth = FALSE, Int width = 0 );
@@ -159,4 +164,21 @@ class AssistTranslator : public GameMessageTranslator
 {
 public:
 	virtual GameMessageDisposition translateGameMessage( const GameMessage *msg ) override;
+};
+
+
+//-------------------------------------------------------------------------------------------------
+/// The protect assist (AssistUIProtect.cpp).
+class AssistProtectUI
+{
+public:
+	static void init();
+	static void reset();
+	static Bool picking();										///< the player is choosing what to protect
+	static void begin();											///< start choosing, with the selected units as protectors
+	static void cancel();
+	static void stop();												///< the selected units stop protecting
+	static void useSelection();								///< the selected units are what to protect
+	static Bool translate( const GameMessage *msg );	///< true when the message is used up
+	static void drawOverlays( View *view );
 };
