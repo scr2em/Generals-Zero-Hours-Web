@@ -1223,6 +1223,8 @@ static CommandLineParam paramsForStartup[] =
 
 	// TheSuperHackers @feature AI test bench: play a match between computer players, see AIMatch.h.
 	{ "-aiMatch", parseAIMatch },
+	// The player assist test bench: a scripted skirmish without a user interface, see AssistMatch.h (Zero Hour).
+	{ "-assistMatch", parseAIMatch },
 
 #if RTS_ZEROHOUR
 	{ "-assistTest", parseAssistTest },

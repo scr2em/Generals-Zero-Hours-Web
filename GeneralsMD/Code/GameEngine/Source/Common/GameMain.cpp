@@ -32,6 +32,7 @@
 #include "Common/GameEngine.h"
 #include "Common/ReplaySimulation.h"
 #include "Common/AIMatch.h"
+#include "Common/AssistMatch.h"
 
 
 /**
@@ -49,6 +50,10 @@ Int GameMain()
 	if (AIMatch::isRequested())
 	{
 		exitcode = AIMatch::run();
+	}
+	else if (AssistMatch::isRequested())
+	{
+		exitcode = AssistMatch::run();
 	}
 	else if (!TheGlobalData->m_simulateReplays.empty())
 	{

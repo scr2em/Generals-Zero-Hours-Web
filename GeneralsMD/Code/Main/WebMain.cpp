@@ -62,6 +62,7 @@
 #include "Common/PlayerList.h"
 #include "Common/ReplaySimulation.h"
 #include "Common/AIMatch.h"
+#include "Common/AssistMatch.h"
 #include "Common/Registry.h"
 #include "Common/Team.h"
 #include "Common/WorkingDirectory.h"
@@ -546,6 +547,11 @@ static Bool runGame( Int &exitcode )
 	{
 		// Headless: the test bench plays its match in a blocking loop.
 		exitcode = AIMatch::run();
+	}
+	else if (AssistMatch::isRequested())
+	{
+		// Headless as well: the player assist test bench plays its scripted match in a blocking loop.
+		exitcode = AssistMatch::run();
 	}
 	else if (!TheGlobalData->m_simulateReplays.empty())
 	{

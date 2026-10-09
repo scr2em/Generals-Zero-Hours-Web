@@ -106,6 +106,10 @@ public:
 
 	/// Test aid (AssistTest.cpp): create the units of "-assistTest" in the first frames of a match.
 	void runTestSpec();
+	/// Test aid (AssistTest.cpp): create the units of one "-assistTest" entry (player:template:count[:ref:dx:dy]) now.
+	/// 'origin', when given, is where the first unit stands instead of the base of "ref" shifted by dx, dy.  The ids of
+	/// the new units are added to 'created' when given.  Returns the number of units created.
+	static Int createTestUnits( const char *entry, const Coord3D *origin, std::vector<ObjectID> *created, Int atFrame = -1 );
 
 	/// A command of the player arrived (from the logic message dispatcher).  'group' is the player's selection.
 	Bool onMessage( GameMessage *msg, Player *player, AIGroup *group );

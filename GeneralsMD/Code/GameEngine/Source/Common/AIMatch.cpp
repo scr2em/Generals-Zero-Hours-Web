@@ -40,6 +40,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/AIMatch.h"
+#include "Common/AIMatchShared.h"
 
 #include "Common/GameEngine.h"
 #include "Common/GlobalData.h"
@@ -68,28 +69,8 @@
 #include <vector>
 
 
-namespace
+namespace AIMatchShared
 {
-
-const char *const kSchema = "zh-aibench-1";
-
-// Defaults of the intervals, in logic frames (30 per second).
-const UnsignedInt kDefaultCrcInterval = 300;			// 10 s
-const UnsignedInt kDefaultSampleInterval = 300;		// 10 s
-const UnsignedInt kDefaultIdleInterval = 15;			// 0.5 s
-const UnsignedInt kDefaultProgressInterval = 1800;	// 1 min
-const UnsignedInt kDefenceCheckInterval = 5;			// how often defeats are noticed
-const UnsignedInt kDefaultMaxMinutes = 30;				// game time
-
-// Safety nets against a match that never advances or never starts.
-const UnsignedInt kMaxUpdatesToStart = 100;
-const UnsignedInt kMaxUpdatesWithoutProgress = 20000;
-
-Bool s_active = FALSE;
-Bool s_record = FALSE;
-
-// The variant tag of every slot, for AIMatch::getPlayerVariant().
-std::string s_variantBySlot[MAX_SLOTS];
 
 // ------------------------------------------------------------------------------------------------
 // Small string helpers
@@ -181,83 +162,60 @@ std::string normalizedMapPath(const std::string &path)
 	return r;
 }
 
-// ------------------------------------------------------------------------------------------------
-// JSON output. Compact, keys in the order written, numbers as integers where they are integers.
-// ------------------------------------------------------------------------------------------------
-class JsonWriter
+Bool parseUnsigned(const std::string &text, UnsignedInt &out)
 {
-public:
-	JsonWriter() : m_pendingKey(false) { m_needComma.push_back(false); }
-
-	void beginObject() { value(); m_out += '{'; m_needComma.push_back(false); }
-	void endObject() { m_needComma.pop_back(); m_out += '}'; }
-	void beginArray() { value(); m_out += '['; m_needComma.push_back(false); }
-	void endArray() { m_needComma.pop_back(); m_out += ']'; }
-
-	void key(const std::string &k)
+	if (text.empty())
+		return FALSE;
+	UnsignedInt v = 0;
+	for (size_t i = 0; i < text.size(); ++i)
 	{
-		comma();
-		appendString(k);
-		m_out += ':';
-		m_pendingKey = true;
+		if (text[i] < '0' || text[i] > '9')
+			return FALSE;
+		v = v * 10 + (UnsignedInt)(text[i] - '0');
 	}
+	out = v;
+	return TRUE;
+}
 
-	void str(const std::string &v) { value(); appendString(v); }
-	void num(Int v) { value(); m_out += format("%d", v); }
-	void num(UnsignedInt v) { value(); m_out += format("%u", v); }
-	void real(double v) { value(); m_out += format("%.4f", v); }
-	void boolean(Bool v) { value(); m_out += v ? "true" : "false"; }
-	void null() { value(); m_out += "null"; }
+Bool parseSigned(const std::string &text, Int &out)
+{
+	if (text.empty())
+		return FALSE;
+	Bool negative = text[0] == '-';
+	UnsignedInt v = 0;
+	if (!parseUnsigned(negative ? text.substr(1) : text, v))
+		return FALSE;
+	out = negative ? -(Int)v : (Int)v;
+	return TRUE;
+}
 
-	template <class T> void field(const char *k, T v) { key(k); put(v); }
-	void field(const char *k, const char *v) { key(k); str(v); }
-	void field(const char *k, const std::string &v) { key(k); str(v); }
+} // namespace AIMatchShared
 
-	const std::string &text() const { return m_out; }
 
-private:
-	void put(Int v) { num(v); }
-	void put(UnsignedInt v) { num(v); }
-	void put(double v) { real(v); }
-	void put(bool v) { boolean(v); }
+namespace
+{
 
-	void comma()
-	{
-		if (m_needComma.back())
-			m_out += ',';
-		m_needComma.back() = true;
-	}
-	// A value either follows a key (no comma) or is an element (comma).
-	void value()
-	{
-		if (m_pendingKey)
-			m_pendingKey = false;
-		else
-			comma();
-	}
-	void appendString(const std::string &s)
-	{
-		m_out += '"';
-		for (size_t i = 0; i < s.size(); ++i)
-		{
-			unsigned char c = (unsigned char)s[i];
-			if (c == '"' || c == '\\')
-			{
-				m_out += '\\';
-				m_out += (char)c;
-			}
-			else if (c < 0x20)
-				m_out += format("\\u%04x", (unsigned)c);
-			else
-				m_out += (char)c;
-		}
-		m_out += '"';
-	}
+using namespace AIMatchShared;
 
-	std::string m_out;
-	std::vector<bool> m_needComma;
-	bool m_pendingKey;
-};
+const char *const kSchema = "zh-aibench-1";
+
+// Defaults of the intervals, in logic frames (30 per second).
+const UnsignedInt kDefaultCrcInterval = 300;			// 10 s
+const UnsignedInt kDefaultSampleInterval = 300;		// 10 s
+const UnsignedInt kDefaultIdleInterval = 15;			// 0.5 s
+const UnsignedInt kDefaultProgressInterval = 1800;	// 1 min
+const UnsignedInt kDefenceCheckInterval = 5;			// how often defeats are noticed
+const UnsignedInt kDefaultMaxMinutes = 30;				// game time
+
+// Safety nets against a match that never advances or never starts.
+const UnsignedInt kMaxUpdatesToStart = 100;
+const UnsignedInt kMaxUpdatesWithoutProgress = 20000;
+
+Bool s_active = FALSE;
+Bool s_record = FALSE;
+
+// The variant tag of every slot, for AIMatch::getPlayerVariant().
+std::string s_variantBySlot[MAX_SLOTS];
 
 // ------------------------------------------------------------------------------------------------
 // Configuration, from the command line
@@ -299,33 +257,6 @@ struct Config
 	std::vector<std::pair<Int, UnsignedInt> > eliminations;	// (slot, frame): test hook, see the eliminate= option
 	Bool engineLoop;				// run the whole engine update (client included) instead of the game logic alone
 };
-
-Bool parseUnsigned(const std::string &text, UnsignedInt &out)
-{
-	if (text.empty())
-		return FALSE;
-	UnsignedInt v = 0;
-	for (size_t i = 0; i < text.size(); ++i)
-	{
-		if (text[i] < '0' || text[i] > '9')
-			return FALSE;
-		v = v * 10 + (UnsignedInt)(text[i] - '0');
-	}
-	out = v;
-	return TRUE;
-}
-
-Bool parseSigned(const std::string &text, Int &out)
-{
-	if (text.empty())
-		return FALSE;
-	Bool negative = text[0] == '-';
-	UnsignedInt v = 0;
-	if (!parseUnsigned(negative ? text.substr(1) : text, v))
-		return FALSE;
-	out = negative ? -(Int)v : (Int)v;
-	return TRUE;
-}
 
 // players=hard:Ironwood,normal:random:2:1:experiment
 Bool parsePlayers(const std::string &text, std::vector<PlayerSpec> &out, std::string &error)
@@ -1542,6 +1473,40 @@ void reportError(const Config &cfg, const std::string &message)
 }
 
 } // namespace
+
+// ================================================================================================
+namespace AIMatchShared
+{
+
+Bool findMapPath(const std::string &name, std::string &path, std::string &error)
+{
+	Config cfg;
+	cfg.map = name;
+	if (!findMap(cfg, error))
+		return FALSE;
+	path = cfg.mapPath;
+	return TRUE;
+}
+
+Bool findSideTemplate(const std::string &side, Int &templateIndex, std::string &error)
+{
+	PlayerSpec spec;
+	spec.side = side;
+	if (!findTemplate(spec, error))
+		return FALSE;
+	templateIndex = spec.templateIndex;
+	return TRUE;
+}
+
+void setBenchActive(Bool active)
+{
+	s_active = active;
+	s_record = FALSE;
+	for (Int i = 0; i < MAX_SLOTS; ++i)
+		s_variantBySlot[i].clear();
+}
+
+} // namespace AIMatchShared
 
 // ================================================================================================
 Bool AIMatch::isRequested()
