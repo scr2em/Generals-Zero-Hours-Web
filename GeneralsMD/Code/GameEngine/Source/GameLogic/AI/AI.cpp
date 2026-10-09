@@ -293,6 +293,10 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "ProtectCalmSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectCalmSeconds ) },
 			{ "ProtectMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectMaxSeconds ) },
 			{ "ProtectResponders",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_protectResponders ) },
+			{ "RepairAndHeal",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRepair ) },
+			{ "RepairBelow",					INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairBelow ) },
+			{ "RepairTripSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_repairTripSeconds ) },
+			{ "RepairDozerBelow",			INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairDozerBelow ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1259,6 +1263,10 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_protectCalmSeconds = 6.0f;
 	ex.m_protectMaxSeconds = 75.0f;
 	ex.m_protectResponders = 4;
+	ex.m_useRepair = true;
+	ex.m_repairBelow = 0.55f;
+	ex.m_repairTripSeconds = 30.0f;
+	ex.m_repairDozerBelow = 0.85f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1337,6 +1345,10 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_protectCalmSeconds );
 		xfer->xferReal( &sk.m_protectMaxSeconds );
 		xfer->xferInt( &sk.m_protectResponders );
+		xfer->xferBool( &sk.m_useRepair );
+		xfer->xferReal( &sk.m_repairBelow );
+		xfer->xferReal( &sk.m_repairTripSeconds );
+		xfer->xferReal( &sk.m_repairDozerBelow );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

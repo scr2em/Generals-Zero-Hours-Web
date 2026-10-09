@@ -151,6 +151,13 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_raidCooldown(0),
 	m_nextRaidCheck(0),
 	m_raidNoteFrame(0),
+	m_numPatients(0),
+	m_numSites(0),
+	m_nextSiteScan(0),
+	m_nextRepair(0),
+	m_repairTrips(0),
+	m_repairsDone(0),
+	m_dozerRepairs(0),
 	m_nextProtect(0),
 	m_protectActive(FALSE),
 	m_raidPartyValue(0.0f),
@@ -170,6 +177,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_ledger, 0, sizeof(m_ledger));
 	memset(m_steps, 0, sizeof(m_steps));
 	memset(m_raiders, 0, sizeof(m_raiders));
+	memset(m_patients, 0, sizeof(m_patients));
+	memset(m_sites, 0, sizeof(m_sites));
 	m_raidAim.zero();
 	m_scoutTarget.zero();
 	m_waveObjective.zero();
@@ -198,7 +207,8 @@ void AIStrategy::newMap()
 		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
 		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE },
 		{ "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE }, { "spread", AIPlayer::AIF_SPREAD },
-		{ "raid", AIPlayer::AIF_RAID }, { "protect", AIPlayer::AIF_PROTECT } };
+		{ "raid", AIPlayer::AIF_RAID }, { "protect", AIPlayer::AIF_PROTECT },
+		{ "repair", AIPlayer::AIF_REPAIR } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -315,6 +325,7 @@ void AIStrategy::update()
 				AI_TRACE("merge: %d new teams kept for the next wave, %d follow-up groups sent after the wave, %d reinforcements sent to the rally point", m_mergedTeams, m_followUps, m_mergedUnits);
 				AI_TRACE("raids: %d launched, %d gatherers killed, %d pulled back, %d raiders lost%s", m_raidsLaunched, m_raidKills, m_raidPullbacks, m_raidLosses, m_numRaiders ? " (a party is out)" : "");
 				AI_TRACE("protect: %d alarms, %d protectors sent, %d returned, %d away now", m_protect.numAlarms(), m_protect.numResponses(), m_protect.numReturns(), m_protect.numAway());
+				AI_TRACE("repair and heal: %d trips to pads, %d units mended, %d structure repairs by dozers, %d on their way, %d pads known", m_repairTrips, m_repairsDone, m_dozerRepairs, m_numPatients, m_numSites);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
@@ -340,6 +351,7 @@ void AIStrategy::update()
 	updateTactics();
 	updateRaid();
 	updateProtection();
+	updateRepair();
 
 	if (now >= m_nextPowers && skill().m_smartPowers)
 	{
@@ -2062,7 +2074,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 4;
+	XferVersion currentVersion = 5;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2130,6 +2142,15 @@ void AIStrategy::xfer( Xfer *xfer )
 		m_protect.xfer(xfer);
 		if (xfer->getXferMode() == XFER_LOAD)
 			m_protect.setTrace(m_trace, m_player->getPlayerIndex());
+	}
+	if (version >= 5)
+	{
+		xfer->xferInt(&m_numPatients);
+		xfer->xferUser(m_patients, sizeof(m_patients));
+		xfer->xferInt(&m_numSites);
+		xfer->xferUser(m_sites, sizeof(m_sites));
+		xfer->xferUnsignedInt(&m_nextSiteScan);
+		xfer->xferUnsignedInt(&m_nextRepair);
 	}
 }
 

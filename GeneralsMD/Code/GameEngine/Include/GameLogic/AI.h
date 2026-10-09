@@ -181,6 +181,12 @@ struct AISkillSettings
 	Real m_protectCalmSeconds;///< A response ends this long after the last hit when no enemy is near.
 	Real m_protectMaxSeconds;	///< Longest time a responder stays away.
 	Int  m_protectResponders;	///< Most units sent per alarm.
+
+	// ---- batch 2: repair and heal ----
+	Bool m_useRepair;					///< Damaged vehicles go to repair pads, damaged infantry to heal pads, and dozers repair far structures.
+	Real m_repairBelow;				///< A unit hurt below this share of its health (0..1) goes for repairs.
+	Real m_repairTripSeconds;	///< Longest trip to a pad, at the unit's speed.
+	Real m_repairDozerBelow;	///< A structure hurt below this share of its health is repaired by an idle dozer when it is out of the dozers' own reach.
 };
 
 class AISideBuildList : public MemoryPoolObject

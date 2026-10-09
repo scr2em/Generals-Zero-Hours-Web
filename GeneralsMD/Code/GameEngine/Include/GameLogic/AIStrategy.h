@@ -235,6 +235,19 @@ struct AIStepRecord
 	Int						m_phase;						///< 0: stepping away, 1: attacking again
 };
 
+/// A unit on its way to a repair or heal pad (or a dozer to a structure): it is not part of its team until it is mended.
+struct AIPatient
+{
+	ObjectID			m_unit;
+	ObjectID			m_site;							///< the pad, or the structure for a dozer
+	Int						m_kind;							///< 0: vehicle to a repair pad, 1: infantry to a heal pad, 2: dozer to a structure
+	Int						m_phase;						///< 0: going and being mended, 1: on its way back
+	UnsignedInt		m_start;
+	UnsignedInt		m_phaseFrame;
+	UnsignedInt		m_lastOrder;
+	Int						m_retries;
+};
+
 enum AIArmyState CPP_11(: Int)
 {
 	ARMY_GATHER = 0,				///< teams gather at the rally point and grow
@@ -369,6 +382,18 @@ private:
 	void orderRaiders( Object *target, const Coord3D *aim );
 	void dropDeadRaiders();
 
+	// repair and heal (AIRepair.cpp)
+	enum { MAX_PATIENTS = 6, MAX_SITES = 8 };
+	Bool repairOn() const;
+	Bool isPatient( ObjectID id ) const;
+	void refreshRepairSites();
+	Object *findRepairSite( Object *unit, Int kind ) const;
+	void sendPatientBack( Object *unit );
+	void dropPatient( Int index );
+	void updatePatients();
+	void tryStartRepairs();
+	void updateRepair();
+
 	// defend the workers (AITactics.cpp, AIProtect.cpp)
 	Bool protectOn() const;
 	void updateProtection();
@@ -461,6 +486,15 @@ private:
 	Int						m_raidKills;
 	Int						m_raidPullbacks;
 	Int						m_raidLosses;
+	AIPatient			m_patients[MAX_PATIENTS];		///< repair and heal trips
+	Int						m_numPatients;
+	ObjectID			m_sites[MAX_SITES];					///< repair and heal pads we own
+	Int						m_numSites;
+	UnsignedInt		m_nextSiteScan;
+	UnsignedInt		m_nextRepair;
+	Int						m_repairTrips;							///< statistics for the trace
+	Int						m_repairsDone;
+	Int						m_dozerRepairs;
 	AIProtect			m_protect;							///< protect relation: armed units that answer an attack on the gatherers and workers
 	UnsignedInt		m_nextProtect;
 	Bool					m_protectActive;

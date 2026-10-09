@@ -94,7 +94,7 @@ Bool AIStrategy::isDetached( ObjectID id ) const
 		if (m_raiders[i] == id)
 			return TRUE;
 	}
-	return m_protect.isAway(id);
+	return m_protect.isAway(id) || isPatient(id);
 }
 
 void AIStrategy::dropDeadRaiders()
