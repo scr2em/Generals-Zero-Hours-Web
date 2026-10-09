@@ -1,6 +1,7 @@
 # Enhancing the Zero Hour AI
 
-Status: in progress on branch `claude/ai-enhancement`.
+Status: first version done on branch `claude/ai-enhancement` (Expert difficulty and the
+test bench); Phase 3 and further tuning are future work. See "Results" at the end.
 
 ## Scope and constraints
 
@@ -77,3 +78,30 @@ difficulty driven by economy multipliers rather than skill.
 - Targets: the improved Hard AI wins at least 65-70% of matches against the
   original Hard AI over many seeds; zero determinism failures; AI update cost
   per logic frame stays within budget in the web build.
+
+## Results (first version)
+
+What exists:
+
+- **Expert AI** (new slot "Expert AI" in skirmish and LAN games, `SLOT_EXPERT_AI`). It plays
+  with Hard's economy, handicaps and data, so it wins only by playing better. Easy, Normal and
+  Hard are the original AI. All new behaviour is gated on the Expert slot.
+- **Strategy** (`AIStrategy.cpp`): army doctrine, scouting, attack waves that gather and
+  regroup, retreat of damaged units, economy (gatherers, starved factories), superweapon
+  targeting. **Combat model** (`AICombatModel.cpp`): weapon, armour and cost matchups for
+  counter picks. **Enemy model** (`AIEnemyModel.cpp`): only what the AI has seen. Focus fire
+  for Expert units (`AI.cpp`).
+- Tuning knobs in an `ExpertSkill` block of `AIData.ini` (code defaults otherwise).
+- **Test bench**: `-aiMatch` headless matches and `scripts/aibench` (batches, Wilson
+  confidence intervals, Elo, replay determinism check). See `scripts/aibench/README.md`.
+- Starter content AI fixed (it stopped after its first power plant): `TeamResourcesToStart`
+  was 100, and the skirmish scripts had no build-order actions for barracks and factory.
+
+Measured on the starter content (map Ironwood Crossing, 40 seeds, Expert vs. Hard, both
+Ironwood): Expert won 26 (65%, 95% CI 50-78%), Hard won 3 (8%), 11 timeouts (not counted as
+wins). Expert wins almost always from start position 1 and is about even from position 2.
+Replays were identical in the determinism check.
+
+The target of about 80% was relaxed to the current level for now. Open: the start-position
+asymmetry, Phase 3 (difficulty from skill), and tuning with the retail game data (run the
+bench with `--data <Zero Hour folder>` on a machine that has it).

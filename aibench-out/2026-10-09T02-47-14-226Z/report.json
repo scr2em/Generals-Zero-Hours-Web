@@ -1,0 +1,168 @@
+{
+ "schema": "zh-aibench-report-1",
+ "generated": "2026-10-09T02:47:35.455Z",
+ "options": {
+  "builds": [
+   {
+    "name": "candidate",
+    "dir": "/home/user/zh-ai/build/ai/GeneralsMD"
+   }
+  ],
+  "data": "starter",
+  "maps": [
+   "ironwood_crossing"
+  ],
+  "matchups": [
+   "expert:Ironwood,hard:Ironwood"
+  ],
+  "seeds": 2,
+  "seedStart": 1,
+  "minutes": 25,
+  "workers": 2,
+  "rotate": true
+ },
+ "builds": {
+  "candidate": {
+   "matches": 2,
+   "outcomes": {
+    "victory": 2,
+    "timeout": 0,
+    "draw": 0,
+    "error": 0
+   },
+   "headToHead": [
+    {
+     "x": "expert:Ironwood",
+     "y": "hard:Ironwood",
+     "played": 2,
+     "xWins": 1,
+     "yWins": 1,
+     "timeouts": 0,
+     "draws": 0,
+     "errors": 0,
+     "frames": [
+      14717,
+      24293
+     ],
+     "xCI": {
+      "p": 0.5,
+      "lo": 0.09452865480086614,
+      "hi": 0.9054713451991339
+     },
+     "yCI": {
+      "p": 0.5,
+      "lo": 0.09452865480086614,
+      "hi": 0.9054713451991339
+     },
+     "medianFrames": 19505
+    }
+   ],
+   "targets": [],
+   "matrix": {
+    "expert:Ironwood": {
+     "hard:Ironwood": {
+      "wins": 1,
+      "losses": 1,
+      "timeouts": 0,
+      "draws": 0,
+      "n": 2
+     }
+    },
+    "hard:Ironwood": {
+     "expert:Ironwood": {
+      "wins": 1,
+      "losses": 1,
+      "timeouts": 0,
+      "draws": 0,
+      "n": 2
+     }
+    }
+   },
+   "elo": {
+    "expert:Ironwood": {
+     "elo": 1000,
+     "games": 2
+    },
+    "hard:Ironwood": {
+     "elo": 1000,
+     "games": 2
+    }
+   },
+   "profiles": {
+    "expert:Ironwood": {
+     "games": 2,
+     "moneyGathered": 5060,
+     "moneySpent": 9810,
+     "peakArmyValue": 4175,
+     "finalArmyValue": 1325,
+     "idleFraction": 0.8357,
+     "unitsBuilt": 34,
+     "structuresBuilt": 4,
+     "unitsLost": 29.5,
+     "objectsKilled": 34.5,
+     "survivedFrames": 19505
+    },
+    "hard:Ironwood": {
+     "games": 2,
+     "moneyGathered": 6190,
+     "moneySpent": 10925,
+     "peakArmyValue": 3550,
+     "finalArmyValue": 1425,
+     "idleFraction": 0.82835,
+     "unitsBuilt": 42,
+     "structuresBuilt": 4,
+     "unitsLost": 32.5,
+     "objectsKilled": 31.5,
+     "survivedFrames": 19505
+    }
+   },
+   "speed": {
+    "matches": 2,
+    "logicFpsMean": 6708.93005,
+    "logicFpsMedian": 6708.93005,
+    "logicFpsMin": 6006.9388,
+    "setupMsMean": 2068.5,
+    "wallMsMean": 7561.5,
+    "framesMean": 19505
+   },
+   "startBias": {
+    "n": 2,
+    "byStart": {
+     "1": {
+      "games": 2,
+      "wins": 2
+     },
+     "2": {
+      "games": 2,
+      "wins": 0
+     }
+    }
+   },
+   "errors": []
+  }
+ },
+ "determinism": {
+  "checked": 2,
+  "identical": 2,
+  "runs": [
+   {
+    "id": "candidate-ironwood_crossing-m1-s1",
+    "build": "candidate",
+    "seed": 1,
+    "identical": true,
+    "divergence": null,
+    "frames": 14717,
+    "crcSamples": 50
+   },
+   {
+    "id": "candidate-ironwood_crossing-m1-s2",
+    "build": "candidate",
+    "seed": 2,
+    "identical": true,
+    "divergence": null,
+    "frames": 24293,
+    "crcSamples": 81
+   }
+  ]
+ }
+}
