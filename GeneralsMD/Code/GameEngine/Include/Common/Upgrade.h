@@ -244,6 +244,7 @@ public:
 	const UpgradeTemplate *findVeterancyUpgrade(VeterancyLevel level) const; ///< find and return upgrade by veterancy level
 
 	UpgradeTemplate *newUpgrade( const AsciiString& name );				///< allocate, link, and return new upgrade
+	Int getUpgradeCount() const { return m_nextTemplateMaskBit; }	///< how many upgrades exist (at most UPGRADE_MAX_COUNT)
 
 	/// does this player have all the necessary things to make this upgrade
 	Bool canAffordUpgrade( Player *player, const UpgradeTemplate *upgradeTemplate, Bool displayReason = FALSE ) const;

@@ -568,6 +568,7 @@ public:
 
 	AsciiString m_modDir;
 	AsciiString m_modBIG;
+	std::vector<AsciiString> m_armyPackages;	///< -army <path to a .zharmy> (repeatable); only the Zero Hour engine loads them
 
 	// the trailing '\' is included!
 	AsciiString getPath_UserData() const;

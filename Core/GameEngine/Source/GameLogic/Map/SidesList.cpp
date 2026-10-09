@@ -487,7 +487,7 @@ void SidesList::prepareForMP_or_Skirmish()
 	}
 	m_teamrec.clear();
 
-	for (i = 0; i < MAX_PLAYER_COUNT; i++) {
+	for (i = 0; i < MAX_PLAYER_COUNT + MAX_ARMY_SKIRMISH_SIDES; i++) {
 		m_skirmishSides[i].clear();
 	}
 	m_numSkirmishSides = 0;
@@ -565,6 +565,125 @@ void SidesList::prepareForMP_or_Skirmish()
 }
 
 
+//-------------------------------------------------------------------------------------------------
+// Army packages
+//-------------------------------------------------------------------------------------------------
+Bool SidesList::addArmySkirmishSide(const Dict* d)
+{
+	if (d == nullptr || m_numSkirmishSides >= MAX_PLAYER_COUNT + MAX_ARMY_SKIRMISH_SIDES)
+		return FALSE;
+	if (findSkirmishSideInfo(d->getAsciiString(TheKey_playerName)) != nullptr)
+		return FALSE;
+	m_skirmishSides[m_numSkirmishSides].init(d);
+	m_numSkirmishSides++;
+	return TRUE;
+}
+
+struct ArmyTeamsContext
+{
+	const std::vector<AsciiString> *allowed;
+	std::vector<Dict> teams;
+	AsciiString error;
+};
+
+static Bool isAllowedArmyPlayer(const std::vector<AsciiString> &allowed, const AsciiString &name)
+{
+	for (size_t i = 0; i < allowed.size(); i++)
+	{
+		if (allowed[i] == name)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+static Bool ParseArmyTeamsDataChunk(DataChunkInput &file, DataChunkInfo *info, void *userData)
+{
+	ArmyTeamsContext *ctx = (ArmyTeamsContext *)userData;
+	while (!file.atEndOfChunk()) {
+		Dict teamDict = file.readDict();
+		AsciiString owner = teamDict.getAsciiString(TheKey_teamOwner);
+		if (!isAllowedArmyPlayer(*ctx->allowed, owner)) {
+			if (ctx->error.isEmpty())
+				ctx->error.format("team '%s' belongs to player '%s', which is not a side of this package",
+					teamDict.getAsciiString(TheKey_teamName).str(), owner.str());
+			continue;
+		}
+		ctx->teams.push_back(teamDict);
+	}
+	return true;
+}
+
+Bool SidesList::mergeArmySkirmishScripts(ChunkInputStream &stream, const std::vector<AsciiString> &allowedPlayerNames, Bool validateOnly, AsciiString &error)
+{
+	error.clear();
+
+	Int i;
+	for (i = 0; i < MAX_PLAYER_COUNT; i++) {
+		static_readPlayerNames[i].clear();
+	}
+
+	ArmyTeamsContext ctx;
+	ctx.allowed = &allowedPlayerNames;
+
+	DataChunkInput file( &stream );
+	file.registerParser( "PlayerScriptsList", AsciiString::TheEmptyString, ScriptList::ParseScriptsDataChunk );
+	file.registerParser( "ScriptsPlayers", AsciiString::TheEmptyString, ParsePlayersDataChunk );
+	file.registerParser( "ScriptTeams", AsciiString::TheEmptyString, ParseArmyTeamsDataChunk );
+	ScriptList *scripts[MAX_PLAYER_COUNT];
+	if (!file.parse(&ctx)) {
+		error = "cannot read the skirmish script file";
+		Int partial = ScriptList::getReadScripts(scripts);
+		for (i = 0; i < partial; i++) {
+			deleteInstance(scripts[i]);
+		}
+		return FALSE;
+	}
+
+	Int count = ScriptList::getReadScripts(scripts);
+
+	// every player of the file must be a side of the package
+	Bool ok = ctx.error.isEmpty();
+	if (!ok)
+		error = ctx.error;
+	for (i = 0; i < count && ok; i++) {
+		if (!isAllowedArmyPlayer(allowedPlayerNames, static_readPlayerNames[i])) {
+			error.format("scripts for player '%s', which is not a side of this package", static_readPlayerNames[i].str());
+			ok = FALSE;
+		}
+	}
+
+	if (ok && !validateOnly) {
+		for (i = 0; i < count; i++) {
+			Int curSide = -1;
+			for (Int j = 0; j < m_numSkirmishSides; j++) {
+				if (m_skirmishSides[j].getDict()->getAsciiString(TheKey_playerName) == static_readPlayerNames[i]) {
+					curSide = j;
+					break;
+				}
+			}
+			if (curSide == -1)
+				continue;
+			deleteInstance(m_skirmishSides[curSide].getScriptList());
+			m_skirmishSides[curSide].setScriptList(scripts[i]);
+			scripts[i] = nullptr;
+		}
+		for (size_t t = 0; t < ctx.teams.size(); t++) {
+			AsciiString teamName = ctx.teams[t].getAsciiString(TheKey_teamName);
+			if (findSkirmishTeamInfo(teamName) == nullptr && findSkirmishSideInfo(ctx.teams[t].getAsciiString(TheKey_teamOwner)))
+				addSkirmishTeam(&ctx.teams[t]);
+		}
+	}
+
+	for (i = 0; i < count; i++) {
+		deleteInstance(scripts[i]);
+		scripts[i] = nullptr;
+	}
+	for (i = 0; i < MAX_PLAYER_COUNT; i++) {
+		static_readPlayerNames[i].clear();
+	}
+	return ok;
+}
+
 Bool SidesList::isPlayerDefaultTeam(TeamsInfo *t)
 {
 	// if our name is "teamfoo" and there is a player named "foo", we are a player-default team.
@@ -592,6 +711,8 @@ void SidesList::emptySides()
 	m_numSkirmishSides = 0;
 	for (i = 0; i < MAX_PLAYER_COUNT; i++) {
 		m_sides[i].clear();
+	}
+	for (i = 0; i < MAX_PLAYER_COUNT + MAX_ARMY_SKIRMISH_SIDES; i++) {
 		m_skirmishSides[i].clear();
 	}
 }

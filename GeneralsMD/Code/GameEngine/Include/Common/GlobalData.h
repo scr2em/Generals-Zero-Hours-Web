@@ -571,6 +571,7 @@ public:
 	Bool				m_breakTheMovie;								///< The user has hit escape!
 	AsciiString m_modDir;
 	AsciiString m_modBIG;
+	std::vector<AsciiString> m_armyPackages;	///< -army <path to a .zharmy> (repeatable), see docs/ARMY_PACKAGES.md
 
 	//-allAdvice feature
 	//Bool m_allAdvice;

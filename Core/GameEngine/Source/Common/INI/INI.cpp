@@ -76,6 +76,12 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 static Xfer *s_xfer = nullptr;
+static INIBlockGuard *s_blockGuard = nullptr;
+
+void INI::setBlockGuard( INIBlockGuard *guard )
+{
+	s_blockGuard = guard;
+}
 
 //-------------------------------------------------------------------------------------------------
 /** This is the table of data types we can have in INI files.  To add a new data type
@@ -391,6 +397,33 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
 	s_xfer = pXfer;
 	prepFile(filename, loadType);
 
+	return loadPrepared();
+}
+
+//-------------------------------------------------------------------------------------------------
+UnsignedInt INI::loadFromBuffer( AsciiString displayName, Char *buffer, Int size, INILoadType loadType, Xfer *pXfer )
+{
+	setFPMode();
+
+	if( m_readBuffer != nullptr )
+	{
+		delete[] buffer;
+		throw INI_FILE_ALREADY_OPEN;
+	}
+
+	s_xfer = pXfer;
+	m_readBufferNext = 0;
+	m_readBufferUsed = size;
+	m_readBuffer = buffer;
+	m_filename = displayName;
+	m_loadType = loadType;
+
+	return loadPrepared();
+}
+
+//-------------------------------------------------------------------------------------------------
+UnsignedInt INI::loadPrepared()
+{
 	try
 	{
 
@@ -410,6 +443,24 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
 				INIBlockParse parse = findBlockParse(token);
 				if (parse)
 				{
+					if (s_blockGuard != nullptr)
+					{
+						// the word after the block type, split the way the block parsers split it
+						AsciiString blockName;
+						{
+							AsciiString rest = currentLine;
+							AsciiString word;
+							rest.nextToken(&word, getSeps());	// the block type
+							rest.nextToken(&blockName, getSeps());
+						}
+						AsciiString guardError;
+						if (!s_blockGuard->checkBlock(token, blockName, guardError))
+						{
+							char buff[1024];
+							snprintf(buff, ARRAY_SIZE(buff), "%s (file '%s', line %d)\n", guardError.str(), m_filename.str(), getLineNum());
+							throw INIException(buff);
+						}
+					}
 					#ifdef DEBUG_CRASHING
 					static_assert(ARRAY_SIZE(m_curBlockStart) >= ARRAY_SIZE(m_buffer), "Incorrect array size");
 					strcpy(m_curBlockStart, m_buffer);

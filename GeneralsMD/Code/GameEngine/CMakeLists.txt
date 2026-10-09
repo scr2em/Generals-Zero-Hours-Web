@@ -42,6 +42,7 @@ set(GAMEENGINE_SRC
 #    Include/Common/GameAudio.h
 #    Include/Common/GameCommon.h
 #    Include/Common/GameDefines.h
+    Include/Common/ArmyPackages.h
     Include/Common/GameEngine.h
     Include/Common/GameLOD.h
 #    Include/Common/GameMemory.h
@@ -565,6 +566,7 @@ set(GAMEENGINE_SRC
 #    Source/Common/DamageFX.cpp
 #    Source/Common/Dict.cpp
 #    Source/Common/DiscreteCircle.cpp
+    Source/Common/ArmyPackages.cpp
     Source/Common/GameEngine.cpp
     Source/Common/GameLOD.cpp
     Source/Common/GameMain.cpp

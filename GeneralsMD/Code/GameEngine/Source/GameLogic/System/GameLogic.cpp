@@ -36,6 +36,7 @@
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
+#include "Common/ArmyPackages.h"
 #include "Common/GameLOD.h"
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
@@ -712,6 +713,7 @@ static void populateRandomSideAndColor( GameInfo *game )
 #define MORE_RANDOM
 #ifdef MORE_RANDOM
 	std::vector<Int> startSlots;
+	std::vector<Int> startSlotsAI;	// the same without the factions the computer may not play (see ArmyPackages)
 	for (i = 0; i < ThePlayerTemplateStore->getPlayerTemplateCount(); ++i)
 	{
 		const PlayerTemplate* ptTest = ThePlayerTemplateStore->getNthPlayerTemplate(i);
@@ -734,6 +736,10 @@ static void populateRandomSideAndColor( GameInfo *game )
 			continue;
 
 		startSlots.push_back(i);
+
+		// factions of army packages that the computer may not play
+		if (!TheArmyPackages || TheArmyPackages->canBePlayedByAI(ptTest))
+			startSlotsAI.push_back(i);
 	}
 #endif
 
@@ -746,6 +752,14 @@ static void populateRandomSideAndColor( GameInfo *game )
 
 		// clean up random factions
 		Int playerTemplateIdx = slot->getPlayerTemplate();
+
+		// a computer player never gets a faction that its army package does not offer to the computer
+		if (TheArmyPackages && slot->isAI() && playerTemplateIdx >= 0 && playerTemplateIdx < ThePlayerTemplateStore->getPlayerTemplateCount()
+			&& !TheArmyPackages->canBePlayedByAI(ThePlayerTemplateStore->getNthPlayerTemplate(playerTemplateIdx)))
+		{
+			slot->setPlayerTemplate(PLAYERTEMPLATE_RANDOM);
+			playerTemplateIdx = PLAYERTEMPLATE_RANDOM;
+		}
 		DEBUG_LOG(("Player %d has playerTemplate index %d", i, playerTemplateIdx));
 		while (playerTemplateIdx != PLAYERTEMPLATE_OBSERVER && (playerTemplateIdx < 0 || playerTemplateIdx >= ThePlayerTemplateStore->getPlayerTemplateCount()))
 		{
@@ -759,8 +773,9 @@ static void populateRandomSideAndColor( GameInfo *game )
 			{
 				GameLogicRandomValue(0, 1);	// ignore result
 			}
-			Int idxIdx = GameLogicRandomValue(0, 1000) % startSlots.size();
-			playerTemplateIdx = startSlots[idxIdx];
+			const std::vector<Int> &candidates = (slot->isAI() && !startSlotsAI.empty()) ? startSlotsAI : startSlots;
+			Int idxIdx = GameLogicRandomValue(0, 1000) % candidates.size();
+			playerTemplateIdx = candidates[idxIdx];
 #else
 			playerTemplateIdx = GameLogicRandomValue(0, ThePlayerTemplateStore->getPlayerTemplateCount()-1);
 #endif
@@ -1374,6 +1389,10 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		{
 			// Saves off any player, and resets the sides to 0 players so we can add the skirmish players.
 			TheSidesList->prepareForMP_or_Skirmish();
+
+			// The computer-playable factions of army packages have no skirmish side in the map: add theirs.
+			if (TheArmyPackages != nullptr)
+				TheArmyPackages->prepareSkirmishSides(TheSidesList);
 		}
 
 		//DEBUG_LOG(("Starting LAN game with %d players", game->getNumPlayers()));

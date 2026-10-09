@@ -40,6 +40,7 @@
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
 #include "Common/INI.h"
+#include "Common/ArmyPackages.h"
 #include "Common/INIException.h"
 #include "Common/MessageStream.h"
 #include "Common/ThingFactory.h"
@@ -262,6 +263,8 @@ GameEngine::~GameEngine()
 
 	delete TheMapCache;
 	TheMapCache = nullptr;
+
+	ArmyPackages::shutdown();
 
 //	delete TheShell;
 //	TheShell = nullptr;
@@ -659,6 +662,9 @@ void GameEngine::init()
 	DEBUG_LOG(("%s", Buf));////////////////////////////////////////////////////////////////////////////
 	#endif/////////////////////////////////////////////////////////////////////////////////////////////
 
+
+		// Army packages (-army): extra factions on top of the base data, loaded before the subsystems post process their data
+		ArmyPackages::load(&xferCRC);
 
 		xferCRC.close();
 		TheWritableGlobalData->m_iniCRC = xferCRC.getCRC();

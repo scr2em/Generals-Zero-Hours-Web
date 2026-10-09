@@ -35,6 +35,7 @@
 #include "Common/FileSystem.h"
 #include "Common/GameEngine.h"
 #include "Common/PlayerTemplate.h"
+#include "Common/ArmyPackages.h"
 #include "Common/QuotedPrintable.h"
 #include "Common/RandomValue.h"
 #include "Common/SkirmishBattleHonors.h"
@@ -845,6 +846,38 @@ void updateMapStartSpots( GameInfo *myGame, GameWindow *buttonMapStartPositions[
 	}
 }
 
+// Army packages: the factions offered to a computer slot differ from those of a human slot (a package can keep a faction
+// from the computer). Rebuilds the faction list of one slot and keeps its faction when it is still on offer.
+static void refreshTemplateChoicesForSlot(Int index)
+{
+	if (!TheArmyPackages || !TheArmyPackages->hasHumanOnlyFactions() || TheSkirmishGameInfo == nullptr)
+		return;
+	GameSlot *slot = TheSkirmishGameInfo->getSlot(index);
+	GameWindow *templateCombo = comboBoxPlayerTemplate[index];
+	if (slot == nullptr || templateCombo == nullptr)
+		return;
+
+	Int current = slot->getPlayerTemplate();
+	if (slot->isAI() && current >= 0 && current < ThePlayerTemplateStore->getPlayerTemplateCount()
+		&& !TheArmyPackages->canBePlayedByAI(ThePlayerTemplateStore->getNthPlayerTemplate(current)))
+	{
+		current = PLAYERTEMPLATE_RANDOM;
+	}
+
+	PopulatePlayerTemplateComboBox(index, comboBoxPlayerTemplate, TheSkirmishGameInfo, FALSE);
+	Int found = 0;	// "Random" is the first entry
+	for (Int idx = 0; idx < GadgetComboBoxGetLength(templateCombo); ++idx)
+	{
+		if ((Int)GadgetComboBoxGetItemData(templateCombo, idx) == current)
+		{
+			found = idx;
+			break;
+		}
+	}
+	GadgetComboBoxSetSelectedPos(templateCombo, found, TRUE);
+	slot->setPlayerTemplate((Int)GadgetComboBoxGetItemData(templateCombo, found));
+}
+
 static void handlePlayerSelection(int index)
 {
   if( index == 0 || index >=MAX_SLOTS)
@@ -862,8 +895,12 @@ static void handlePlayerSelection(int index)
 		GameSlot * slot = myGame->getSlot(index);
     if(!slot)
       return;
+		const Bool wasAI = slot->isAI();
     slot->setState(SlotState(playerType), title);
 
+		// Army packages: a faction that the computer may not play is not offered to (and is taken off) a computer slot.
+		if (wasAI != slot->isAI())
+			refreshTemplateChoicesForSlot(index);
 	}
   //skirmishUpdateSlotList();
 }
@@ -1307,6 +1344,13 @@ void SkirmishGameOptionsMenuInit( WindowLayout *layout, void *userData )
 	TheSkirmishGameInfo->setSlot(1, gSlot);
 
 	ParseAsciiStringToGameInfo(TheSkirmishGameInfo, prefs.getSlotList());
+	for (Int aiSlot = 0; aiSlot < MAX_SLOTS; ++aiSlot)
+	{
+		// slots restored as computer players get the faction list of a computer player
+		const GameSlot *restored = TheSkirmishGameInfo->getConstSlot(aiSlot);
+		if (restored && restored->isAI())
+			refreshTemplateChoicesForSlot(aiSlot);
+	}
 	TheSkirmishGameInfo->setSeed(GetTickCount());
 
 	UnsignedInt isPreorder = 0;

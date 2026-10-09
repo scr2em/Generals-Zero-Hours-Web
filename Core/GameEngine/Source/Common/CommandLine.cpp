@@ -1123,6 +1123,22 @@ Int parseMod(char *args[], Int num)
 	return 1;
 }
 
+// Army packages (docs/ARMY_PACKAGES.md): -army <path to a .zharmy file>, repeatable. The files are opened
+// and checked later, when the game data is loaded; here the paths are only collected.
+Int parseArmy(char *args[], Int num)
+{
+	if (num > 1)
+	{
+		AsciiString path = args[1];
+		if (path.isNotEmpty())
+		{
+			TheWritableGlobalData->m_armyPackages.push_back(path);
+		}
+		return 2;
+	}
+	return 1;
+}
+
 #ifdef DEBUG_LOGGING
 Int parseSetDebugLevel(char *args[], int num)
 {
@@ -1202,6 +1218,7 @@ static CommandLineParam paramsForEngineInit[] =
 	{ "-scriptDebug", parseScriptDebug },
 	{ "-playStats", parsePlayStats },
 	{ "-mod", parseMod },
+	{ "-army", parseArmy },
 	{ "-noshaders", parseNoShaders },
 	{ "-quickstart", parseQuickStart },
 	{ "-useWaveEditor", parseUseWaveEditor },

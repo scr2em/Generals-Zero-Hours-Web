@@ -43,6 +43,7 @@
 #include "GameLogic/GameLogic.h" // SUPERWEAPON_RESTRICT_COUNT
 #include "GameNetwork/GameInfo.h"
 #include "Common/PlayerTemplate.h"
+#include "Common/ArmyPackages.h"
 #include "GameNetwork/LANAPICallbacks.h" // for acceptTrueColor, etc
 #include "GameClient/ChallengeGenerals.h"
 
@@ -244,6 +245,14 @@ void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], Game
 
 	std::set<AsciiString> seenSides;
 
+	// the factions of an army package that the computer may not play are not offered to a computer slot
+	Bool slotIsAI = FALSE;
+	if (myGame && TheArmyPackages && comboBox >= 0 && comboBox < MAX_SLOTS)
+	{
+		const GameSlot *slot = myGame->getConstSlot(comboBox);
+		slotIsAI = (slot != nullptr && slot->isAI());
+	}
+
 	for (Int c=0; c<numPlayerTemplates; ++c)
 	{
 		const PlayerTemplate *fac = ThePlayerTemplateStore->getNthPlayerTemplate(c);
@@ -251,6 +260,9 @@ void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], Game
 			continue;
 
 		if (fac->getStartingBuilding().isEmpty())
+			continue;
+
+		if (slotIsAI && !TheArmyPackages->canBePlayedByAI(fac))
 			continue;
 
 		if ( myGame->oldFactionsOnly() && !fac->isOldFaction() )

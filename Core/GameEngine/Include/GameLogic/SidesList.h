@@ -37,6 +37,7 @@
 #include "Common/STLTypedefs.h"
 
 class DataChunkInput;
+class ChunkInputStream;
 struct DataChunkInfo;
 class DataChunkOutput;
 class BuildListInfo;
@@ -157,6 +158,18 @@ public:
 	SidesInfo *findSideInfo(AsciiString name, Int* index = nullptr);
 	SidesInfo *findSkirmishSideInfo(AsciiString name, Int* index = nullptr);
 
+	/// Army packages (docs/ARMY_PACKAGES.md): skirmish sides that do not come from the map. There is room for
+	/// MAX_ARMY_SKIRMISH_SIDES on top of the MAX_PLAYER_COUNT sides a map can carry.
+	enum { MAX_ARMY_SKIRMISH_SIDES = 8 };
+	/// Appends a skirmish side described by the dict (playerName, playerFaction). FALSE when there is no room or the name is taken.
+	Bool addArmySkirmishSide(const Dict* d);
+	/// Reads a skirmish script file (SkirmishScripts.scb layout) of an army package. Only the players named in
+	/// allowedPlayerNames are accepted: scripts for any other player, or teams owned by another player, are an error and
+	/// nothing is changed. With validateOnly the file is only checked; otherwise the scripts are given to the matching
+	/// skirmish sides (which must exist) and the teams are added to the skirmish teams.
+	Bool mergeArmySkirmishScripts(ChunkInputStream &stream, const std::vector<AsciiString> &allowedPlayerNames, Bool validateOnly, AsciiString &error);
+	TeamsInfo *findSkirmishTeamInfo(AsciiString name, Int* index = nullptr) { return m_skirmishTeamrec.findTeamInfo(name, index); }
+
 	void prepareForMP_or_Skirmish(); // After a map is loaded, save & clear any players.
 
 	Int getNumTeams() { return m_teamrec.getNumTeams(); }
@@ -194,7 +207,7 @@ protected:
 	SidesInfo		m_sides[MAX_PLAYER_COUNT];
 
 	Int					m_numSkirmishSides;
-	SidesInfo		m_skirmishSides[MAX_PLAYER_COUNT];
+	SidesInfo		m_skirmishSides[MAX_PLAYER_COUNT + MAX_ARMY_SKIRMISH_SIDES];
 
 	TeamsInfoRec	m_teamrec;
 	TeamsInfoRec	m_skirmishTeamrec;
