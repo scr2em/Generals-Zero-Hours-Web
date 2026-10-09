@@ -201,6 +201,16 @@ struct AISkillSettings
 	Real m_baseDefenceMinValue;///< Value of seen armed enemies in the zone (or damage to our objects there) that counts as a threat.
 	Real m_baseDefenceMinAdvantage;///< The teams at home go out to a threat that is not hitting anything of ours only when they are worth this share of it.
 	Real m_baseDefenceClearSeconds;///< The base is clear when no threat was seen for this long; the teams then go back to their role.
+
+	// ---- terrain-aware defence ----
+	Bool m_useGeo;						///< Ways into the base from the pathfinder: defences are placed at them, the army waits on the main one.
+	Bool m_useLayout;					///< The base layout (build list) turns to face the enemy start instead of one turn for every start position.
+	Real m_geoRing;						///< The perimeter where the ways in are looked for is the base radius plus this.
+	Real m_geoChokeWidth;			///< A place on the way in where the passable ground is at most this wide is a chokepoint.
+	Real m_geoLookOut;				///< Chokepoints are looked for this far out along the way in.
+	Real m_geoReach;					///< Defence structures are placed within the base radius plus this of the base center.
+	Real m_geoRallyOut;				///< The army waits this far outside the base radius on the main way in (open ground).
+	Real m_geoRallyOffset;		///< When terrain closes the perimeter: the army waits this far from the chokepoint of the main way in (positive: outside it, on the side of the enemy).
 };
 
 class AISideBuildList : public MemoryPoolObject

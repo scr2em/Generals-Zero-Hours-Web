@@ -157,6 +157,19 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bdDamageFrame(0),
 	m_nextBaseDefence(0),
 	m_bdWeakFrame(0),
+	m_numEntrances(0),
+	m_geoReady(FALSE),
+	m_geoWall(FALSE),
+	m_geoTries(0),
+	m_geoMain(-1),
+	m_nextGeo(0),
+	m_nextGeoWeights(0),
+	m_geoMoved(0),
+	m_geoRing(0.0f),
+	m_numGeoSites(0),
+	m_geoPlaced(0),
+	m_geoPlacedFixed(0),
+	m_geoRallyMoves(0),
 	m_bdValue(0.0f),
 	m_bdAlarms(0),
 	m_bdOrders(0),
@@ -203,6 +216,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_patients, 0, sizeof(m_patients));
 	memset(m_route, 0, sizeof(m_route));
 	m_bdPos.zero();
+	memset(m_entrances, 0, sizeof(m_entrances));
+	memset(m_geoSites, 0, sizeof(m_geoSites));
 	m_bdDamagePos.zero();
 	memset(m_breachers, 0, sizeof(m_breachers));
 	memset(m_breachTargets, 0, sizeof(m_breachTargets));
@@ -220,10 +235,8 @@ AIStrategy::~AIStrategy()
 }
 
 //-------------------------------------------------------------------------------------------------
-void AIStrategy::newMap()
+void AIStrategy::applyVariant()
 {
-	AICombatModel::reset();
-	m_enemy.reset();
 	// Test bench variant, a list of words joined by '+': "trace" prints decisions; "off-focus+wave+..." disables single
 	// features for A/B runs ("off-" starts the list of features to switch off); "on-kite" switches on a feature that is off by
 	// default (a word that follows "on-" or "off-" without a prefix of its own belongs to the same list).
@@ -237,7 +250,9 @@ void AIStrategy::newMap()
 		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE },
 		{ "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE }, { "spread", AIPlayer::AIF_SPREAD },
 		{ "raid", AIPlayer::AIF_RAID }, { "protect", AIPlayer::AIF_PROTECT },
-		{ "repair", AIPlayer::AIF_REPAIR }, { "route", AIPlayer::AIF_ROUTE }, { "basedef", AIPlayer::AIF_BASEDEF } };
+		{ "repair", AIPlayer::AIF_REPAIR }, { "route", AIPlayer::AIF_ROUTE }, { "basedef", AIPlayer::AIF_BASEDEF },
+		{ "geo", AIPlayer::AIF_GEO }, { "layout", AIPlayer::AIF_LAYOUT },
+		{ "georally", AIPlayer::AIF_GEORALLY }, { "geosites", AIPlayer::AIF_GEOSITES } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -266,6 +281,13 @@ void AIStrategy::newMap()
 	}
 	m_ai->setFeaturesOff(off);
 	m_ai->setFeaturesOn(on);
+}
+
+void AIStrategy::newMap()
+{
+	AICombatModel::reset();
+	m_enemy.reset();
+	applyVariant();
 	m_bdActive = FALSE;
 	m_bdDamageFrame = 0;
 	m_protect.reset();
@@ -358,6 +380,7 @@ void AIStrategy::update()
 				AI_TRACE("protect: %d alarms, %d protectors sent, %d returned, %d away now", m_protect.numAlarms(), m_protect.numResponses(), m_protect.numReturns(), m_protect.numAway());
 				AI_TRACE("repair and heal: %d trips to pads, %d units mended, %d structure repairs by dozers, %d on their way, %d pads known", m_repairTrips, m_repairsDone, m_dozerRepairs, m_numPatients, m_numSites);
 				AI_TRACE("base defence: %d alarms (%d idle units near the rally point at the moments they began), %d team orders, %s now", m_bdAlarms, m_bdIdleAtAlarm, m_bdOrders, m_bdActive ? "ALARM" : "quiet");
+				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
 				AI_TRACE("routes: %d waves routed around defences, %d breaches started (%d with the defences down)", m_routesPlanned, m_breachesStarted, m_breachKills);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
@@ -369,6 +392,7 @@ void AIStrategy::update()
 	}
 
 	updateBaseDefence();
+	updateGeo();
 
 	if (now >= m_nextTeamEval)
 	{
@@ -1194,6 +1218,9 @@ Bool AIStrategy::rallyPoint( Coord3D *pos )
 		m_rally.x = base.x + dx / len * out;
 		m_rally.y = base.y + dy / len * out;
 		m_rally.z = TheTerrainLogic->getGroundHeight(m_rally.x, m_rally.y);
+		Coord3D geoPos;
+		if (geoRally(&geoPos))
+			m_rally = geoPos;
 		m_rallySet = TRUE;
 	}
 	*pos = m_rally;
@@ -2143,7 +2170,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 7;
+	XferVersion currentVersion = 8;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2249,6 +2276,21 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferCoord3D(&m_bdPos);
 		xfer->xferCoord3D(&m_bdDamagePos);
 		xfer->xferReal(&m_bdValue);
+	}
+	if (version >= 8)
+	{
+		xfer->xferInt(&m_numEntrances);
+		xfer->xferUser(m_entrances, sizeof(m_entrances));
+		xfer->xferBool(&m_geoReady);
+		xfer->xferBool(&m_geoWall);
+		xfer->xferInt(&m_geoTries);
+		xfer->xferInt(&m_geoMain);
+		xfer->xferUnsignedInt(&m_nextGeo);
+		xfer->xferUnsignedInt(&m_nextGeoWeights);
+		xfer->xferUnsignedInt(&m_geoMoved);
+		xfer->xferReal(&m_geoRing);
+		xfer->xferInt(&m_numGeoSites);
+		xfer->xferUser(m_geoSites, sizeof(m_geoSites));
 	}
 }
 

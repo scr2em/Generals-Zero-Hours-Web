@@ -1,0 +1,6 @@
+{
+ "description": "Adds the map Ironwood Gates (maps/gates.py): every base lies in a basin with a cliff rim that has four gaps (a wide one facing the enemy, two narrow ones at the sides, one behind). Play it with --map ironwood_gates.",
+ "edits": [
+  { "generate": "maps/gates.py" }
+ ]
+}

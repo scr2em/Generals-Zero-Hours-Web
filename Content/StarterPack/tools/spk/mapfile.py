@@ -107,7 +107,8 @@ def write_map(m):
         w.bytes(bytes(2 * n))               # blend tiles: none
         w.bytes(bytes(2 * n))               # extra blend tiles: none
         w.bytes(bytes(2 * n))               # cliff info: none
-        w.bytes(bytes(((m.width + 7) // 8) * m.height))
+        cliffs = getattr(m, "cliffs", None)             # cliff state bits (one per cell, a row is (width+7)//8 bytes); none by default
+        w.bytes(bytes(cliffs) if cliffs is not None else bytes(((m.width + 7) // 8) * m.height))
         w.int(m.num_tiles)
         w.int(1)                            # blended tiles (index 0 is the opaque default)
         w.int(1)                            # cliff infos

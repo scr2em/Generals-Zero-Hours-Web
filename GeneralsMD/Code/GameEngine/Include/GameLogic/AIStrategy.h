@@ -64,6 +64,22 @@ enum AIRole CPP_11(: Int)
  * The combat figures of a thing template, distilled once from the weapon, armor and body data.
  * A pure function of the game data, so every client computes the same numbers.
  */
+/// A way into the base found from the terrain (AIGeo.cpp).
+struct AIEntrance
+{
+	Coord3D	m_cross;			///< where the way in crosses the perimeter
+	Coord3D	m_choke;			///< narrowest place on the way in (the crossing itself on open ground)
+	Coord3D	m_rally;			///< a place just inside the base on the way in: where the army waits
+	Real		m_width;			///< passable span at the chokepoint
+	Real		m_prior;			///< expected share of the attacks from the paths of the enemy
+	Real		m_weight;			///< the prior mixed with what the enemy model has seen
+	Real		m_seen;				///< value of enemy ground units seen near the way in (decays)
+	Int			m_defences;		///< defence structures placed for it
+	Bool		m_choked;			///< a narrow place was found
+	Bool		m_bridge;			///< the way in crosses a bridge
+};
+struct GeoPoly;
+
 struct AICombatFigures
 {
 	Bool		m_valid;
@@ -320,6 +336,17 @@ public:
 	Bool isDetached( ObjectID id ) const;
 	/// One of the player's objects took damage (called by the body module; feeds the protect relation).
 	void onObjectDamaged( Object *victim, ObjectID attacker, Real amount ) { m_protect.onDamaged(victim, attacker, amount); noteBaseDamage(victim, attacker, amount); }
+	void geoReset();
+	/// Reads the test bench variant (the feature switches); the build list code needs them before newMap().
+	void applyVariant();
+	/// Turn of the base layout for a start position that faces the enemy ("layout"); false: the original turn.
+	Bool layoutAngle( const Coord3D &start, Real *angle ) const;
+	/// A site for a defence structure at the ways into the base ("geo"); false: keep the original place.
+	Bool geoDefenceSite( const ThingTemplate *tmpl, Coord3D *pos, Real *angle );
+	/// Moves the defence structures of the build list that are not built yet to the ways in.
+	void geoPlaceBuildList();
+	/// Where the army waits: on the main way in.
+	Bool geoRally( Coord3D *pos ) const;
 	/// Is the base under attack (an armed enemy force seen in it, or damage to our objects there)?  Base defence has priority over every hold.
 	Bool baseUnderThreat() const { return m_bdActive; }
 
@@ -410,6 +437,15 @@ private:
 	void updatePatients();
 	void tryStartRepairs();
 	void updateRepair();
+
+	// terrain-aware defence (AIGeo.cpp)
+	Bool geoOn() const;
+	Bool layoutOn() const;
+	Bool geoPrepare();
+	Bool geoCompute();
+	Int geoEnemyStarts( Coord3D *out, Int maxStarts, const Coord3D *notNear ) const;
+	void geoFindChoke( const GeoPoly &poly, Int crossIdx, AIEntrance &e, Real maxFromCross ) const;
+	void updateGeo();
 
 	// base defence priority (AIBaseDefence.cpp)
 	Bool baseDefenceOn() const;
@@ -542,6 +578,22 @@ private:
 	UnsignedInt		m_bdDamageFrame;								///< latest damage to one of our objects inside the zone by an enemy
 	UnsignedInt		m_nextBaseDefence;
 	UnsignedInt		m_bdWeakFrame;									///< last trace line about a threat that the teams at home do not go out to
+	enum { GEO_MAX_ENTRANCES = 4, GEO_MAX_SITES = 16 };
+	Int						m_numEntrances;									///< terrain-aware defence: the ways into the base
+	AIEntrance		m_entrances[GEO_MAX_ENTRANCES];
+	Bool					m_geoReady;
+	Bool					m_geoWall;											///< terrain closes the perimeter into gaps
+	Int						m_geoTries;
+	Int						m_geoMain;											///< index of the way in with the largest expected threat
+	UnsignedInt		m_nextGeo;
+	UnsignedInt		m_nextGeoWeights;
+	UnsignedInt		m_geoMoved;											///< build list entries (by position in the list) that were looked at
+	Real					m_geoRing;
+	Int						m_numGeoSites;
+	Coord3D				m_geoSites[GEO_MAX_SITES];
+	Int						m_geoPlaced;										///< statistics for the trace
+	Int						m_geoPlacedFixed;
+	Int						m_geoRallyMoves;
 	Coord3D				m_bdPos;
 	Coord3D				m_bdDamagePos;
 	Real					m_bdValue;

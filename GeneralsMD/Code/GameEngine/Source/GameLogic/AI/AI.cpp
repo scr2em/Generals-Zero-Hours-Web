@@ -307,6 +307,14 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "BaseDefenceMinValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_baseDefenceMinValue ) },
 			{ "BaseDefenceMinAdvantage",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceMinAdvantage ) },
 			{ "BaseDefenceClearSeconds",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceClearSeconds ) },
+			{ "TerrainDefence",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useGeo ) },
+			{ "OrientLayout",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useLayout ) },
+			{ "GeoRing",							INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRing ) },
+			{ "GeoChokeWidth",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoChokeWidth ) },
+			{ "GeoLookOut",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoLookOut ) },
+			{ "GeoReach",							INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoReach ) },
+			{ "GeoRallyOut",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOut ) },
+			{ "GeoRallyOffset",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOffset ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1287,6 +1295,14 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_baseDefenceMinValue = 150.0f;
 	ex.m_baseDefenceMinAdvantage = 0.6f;
 	ex.m_baseDefenceClearSeconds = 5.0f;
+	ex.m_useGeo = true;
+	ex.m_useLayout = true;
+	ex.m_geoRing = 60.0f;
+	ex.m_geoChokeWidth = 200.0f;
+	ex.m_geoLookOut = 450.0f;
+	ex.m_geoReach = 300.0f;
+	ex.m_geoRallyOut = 140.0f;
+	ex.m_geoRallyOffset = 90.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1379,6 +1395,14 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_baseDefenceMinValue );
 		xfer->xferReal( &sk.m_baseDefenceMinAdvantage );
 		xfer->xferReal( &sk.m_baseDefenceClearSeconds );
+		xfer->xferBool( &sk.m_useGeo );
+		xfer->xferBool( &sk.m_useLayout );
+		xfer->xferReal( &sk.m_geoRing );
+		xfer->xferReal( &sk.m_geoChokeWidth );
+		xfer->xferReal( &sk.m_geoLookOut );
+		xfer->xferReal( &sk.m_geoReach );
+		xfer->xferReal( &sk.m_geoRallyOut );
+		xfer->xferReal( &sk.m_geoRallyOffset );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

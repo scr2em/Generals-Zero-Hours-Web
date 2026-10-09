@@ -723,6 +723,17 @@ void AISkirmishPlayer::buildAIBaseDefenseStructure(const AsciiString &thingName,
 		DEBUG_CRASH(("Couldn't find base defense structure '%s' for side %s", thingName.str(), m_player->getSide().str()));
 		return;
 	}
+	// Expert: at the ways into the base, not at fixed angles.
+	if (m_strategy)
+	{
+		Coord3D geoPos;
+		Real geoAngle;
+		if (m_strategy->geoDefenceSite(tTemplate, &geoPos, &geoAngle))
+		{
+			m_player->addToPriorityBuildList(thingName, &geoPos, geoAngle);
+			return;
+		}
+	}
 	do {
 		AsciiString pathLabel;
 		if (flank) {
@@ -1167,6 +1178,12 @@ void AISkirmishPlayer::adjustBuildList(BuildListInfo *list)
 
 	angle += 3*PI/4;
 
+	// Expert: the layout faces the enemy start.  (Without the map option "RotateSkirmishBases" the turn above is the same for every
+	// start position, which suits one of the starts of a 2 player map and turns the base the wrong way round at the other one.)
+	Real facing;
+	if (!TheAI->getAiData()->m_rotateSkirmishBases && m_strategy && m_strategy->layoutAngle(startPos, &facing))
+		angle = facing;
+
 	Real s = sin(angle);
 	Real c = cos(angle);
 
@@ -1200,6 +1217,11 @@ void AISkirmishPlayer::adjustBuildList(BuildListInfo *list)
  */
 void AISkirmishPlayer::newMap()
 {
+	if (m_strategy)
+	{
+		m_strategy->applyVariant();		// the feature switches decide how the build list is turned and where defences go
+		m_strategy->geoReset();
+	}
 
 	/* Get our proper build list. */
 	AsciiString mySide = m_player->getSide();
@@ -1216,6 +1238,10 @@ void AISkirmishPlayer::newMap()
 		build = build->m_next;
 	}
 	DEBUG_ASSERTLOG(build!=nullptr, ("Couldn't find build list for skirmish player."));
+
+	// Expert: defence structures of the build list go to the ways into the base (before anything is built).
+	if (m_strategy)
+		m_strategy->geoPlaceBuildList();
 
 	// Build any with the initially built flag.
 	for( BuildListInfo *info = m_player->getBuildList(); info; info = info->getNext() )
