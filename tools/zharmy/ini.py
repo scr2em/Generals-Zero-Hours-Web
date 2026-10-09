@@ -42,6 +42,7 @@ FX_NUGGETS = frozenset(["Sound", "RayEffect", "Tracer", "LightPulse", "ViewShake
                         "ParticleSystem", "FXListAtBonePos"])
 OCL_NUGGETS = frozenset(["CreateObject", "CreateDebris", "ApplyRandomForce", "DeliverPayload", "FireWeapon",
                          "Attack"])
+AIDATA_BLOCKS = frozenset(["ExpertSkill"])        # AI::parseSkillSettings: a block of plain fields
 SKILLSETS = frozenset(["SkillSet1", "SkillSet2", "SkillSet3", "SkillSet4", "SkillSet5"])
 
 # top level types we understand structurally. Everything else in theTypeTable is skipped as an opaque block.
@@ -109,11 +110,19 @@ def split_line(text):
     return m.group(1), m.group(2)
 
 
+_CTRL = re.compile(r"[\x01-\x1f]")
+
+
 def clean(raw):
+    """One line as the engine's ``INI::readLine`` sees it: cut at the first ``;`` (comment) or NUL, every other
+    control character (tab, CR, form feed, Ctrl-Z ...) becomes a space."""
     cut = raw.find(";")
     if cut >= 0:
         raw = raw[:cut]
-    return raw.replace("\t", " ").replace("\r", "").strip()
+    cut = raw.find("\0")
+    if cut >= 0:
+        raw = raw[:cut]
+    return _CTRL.sub(" ", raw).strip()
 
 
 class _Line:
@@ -207,7 +216,11 @@ def _child_context(ctx, name, args):
             return "SideInfo"
         if name == "SkirmishBuildList":
             return "SkirmishBuildList"
+        if name in AIDATA_BLOCKS:
+            return "Plain"
         return None
+    if ctx == "EvaEvent":
+        return "Plain" if name == "SideSounds" else None
     if ctx == "SideInfo":
         return "SkillSet" if name in SKILLSETS else None
     if ctx == "SkirmishBuildList":
@@ -224,6 +237,8 @@ def _top_context(type_name):
         return "OCL"
     if type_name == "AIData":
         return "AIData"
+    if type_name == "EvaEvent":
+        return "EvaEvent"
     return "Plain"
 
 
@@ -268,6 +283,7 @@ class Parser:
                 else:
                     children.append(Node(name, args, None, ln.no, ln.file, "="))
 
+        last = [None]       # the top level block parsed last: (type, name, line), until something else happens
         while True:
             ln = peek()
             if ln is None:
@@ -285,8 +301,14 @@ class Parser:
                     result.opaque.append((name, args.split()[0] if args.split() else ""))
                     node.style = "opaque"
                 result.blocks.append(node)
+                last[0] = (name, args.split()[0] if args.split() else "", ln.no)
             else:
-                result.errors.append((ln.no, "unknown block %r" % name))
+                msg = "unknown block %r" % name
+                if last[0] is not None:
+                    msg += " (right after %s %s from line %d, which probably ended early: a nested block the " \
+                           "converter does not know?)" % last[0]
+                    last[0] = None
+                result.errors.append((ln.no, msg))
         return result
 
     @staticmethod

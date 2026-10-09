@@ -17,7 +17,7 @@ import functools
 import os
 from collections import deque
 
-from . import w3d
+from . import search, w3d
 
 TEXTURE_EXTS = (".dds", ".tga")
 
@@ -75,9 +75,11 @@ class AssetPlanner:
         self.audio = {"AudioFile": {}, "TrackFile": {}, "SpeechFile": {}}   # lower token -> new token
         self.files = {}                 # package path -> bytes
         self.report = {"copied": [], "reference": [], "missing": [], "invalid": []}
-        self._audio_index = None
         self._tex_status = {}
         self._zhc_lost = []
+        self.settings = search.audio_settings(mod)
+        self._lang_index = None
+        self.duplicates = []            # (name, [files]) W3D names defined by more than one copied file
 
     # ---- input ------------------------------------------------------------------------------------------
     def add(self, kind, token):
@@ -89,14 +91,31 @@ class AssetPlanner:
     def _same_as_base(self, path):
         return self.use_base and self.mod.same_file(self.base, path)
 
-    def _record(self, kind, status, old, new=None, path=None):
-        self.report[status].append({"kind": kind, "name": old, "new": new, "path": path})
+    def _record(self, kind, status, old, new=None, path=None, hint=None):
+        rec = {"kind": kind, "name": old, "new": new, "path": path}
+        if hint:
+            rec["hint"] = hint
+        self.report[status].append(rec)
+
+    def _hint(self, kind, token):
+        """Why a file may be missing although it exists somewhere the engine does not look."""
+        if self._lang_index is None:
+            self._lang_index = search.language_index(self.mod)
+        other = search.other_language_hint(self._lang_index, kind, token)
+        if other:
+            return "exists as %s, but the engine reads that folder only for its language (searched: %s)" % (
+                other, self.language)
+        if kind == "Texture":
+            alt = search.same_stem_other_extension(self.mod, token)
+            if alt:
+                return "%s exists, but the engine does not substitute the other texture extension" % alt
+        return None
 
     # ---- W3D ----------------------------------------------------------------------------------------------
     def _w3d_queue(self):
         queue = deque()
         for tok in sorted(self.needs["Model"]):
-            queue.append((tok, True))
+            queue.append((search.w3d_stem("Model", tok), True))
         for tok in sorted(self.needs["Anim"]):
             hier, _, anim = tok.partition(".")
             if anim:
@@ -109,9 +128,9 @@ class AssetPlanner:
             stem = stem.lower()
             if stem in self.w3d:
                 continue
-            path = "art/w3d/%s.w3d" % stem
-            if not self.mod.exists(path):
-                self.w3d[stem] = W3dEntry("missing", path)
+            path = search.first_existing(self.mod, search.w3d_paths(stem, self.language))
+            if path is None:
+                self.w3d[stem] = W3dEntry("missing", "art/w3d/%s.w3d" % stem)
                 continue
             if self._same_as_base(path):
                 self.w3d[stem] = W3dEntry("base", path)
@@ -146,9 +165,9 @@ class AssetPlanner:
         for s in copies:
             for t in self.w3d[s].scan.textures:
                 stem, _ext = split_ext(t)
-                tex_wanted.setdefault(stem.lower(), stem)
+                tex_wanted.setdefault(stem.lower(), t)
         for stem in sorted(tex_wanted):
-            self._plan_texture(stem, tex_wanted[stem], short=True)
+            self._plan_texture(tex_wanted[stem], short=True)
         # unresolved external names
         for s in copies:
             for x in sorted(self.w3d[s].scan.external()):
@@ -164,17 +183,33 @@ class AssetPlanner:
             elif e.status == "base":
                 self._record("Model", "reference", s, None, e.path)
             elif e.status == "missing":
-                if s in self.needs["Model"] or any(t.partition(".")[2] == s for t in self.needs["Anim"]):
-                    self._record("Model", "missing", s, None, e.path)
+                if any(search.w3d_stem("Model", t) == s for t in self.needs["Model"]) or \
+                        any(t.partition(".")[2] == s for t in self.needs["Anim"]):
+                    self._record("Model", "missing", s, None, e.path, self._hint("Model", s))
 
-    def _plan_texture(self, stem, orig, short):
+    def _texture_files(self, token):
+        """The files the engine would load for a texture request: all variants (dds, tga) it may use, from the first
+        directory (localized folder, then Art/Textures) that has one."""
+        paths = search.texture_paths(token, self.language)
+        per_dir = {}
+        for p in paths:
+            per_dir.setdefault(p.rsplit("/", 1)[0], []).append(p)
+        for d, ps in per_dir.items():
+            found = [p for p in ps if self.mod.exists(p)]
+            if found:
+                return found
+        return []
+
+    def _plan_texture(self, token, short):
+        stem, ext = split_ext(token)
+        orig = stem
         key = stem.lower()
         if key in self._tex_status:
             return
-        cands = [("art/textures/%s%s" % (key, ext)) for ext in TEXTURE_EXTS if self.mod.exists("art/textures/%s%s" % (key, ext))]
+        cands = self._texture_files(token)
         if not cands:
             self._tex_status[key] = "missing"
-            self._record("Texture", "missing", orig, None, "art/textures/%s.*" % key)
+            self._record("Texture", "missing", token, None, "art/textures/%s.*" % key, self._hint("Texture", token))
             return
         if all(self._same_as_base(p) for p in cands):
             self._tex_status[key] = "base"
@@ -191,58 +226,30 @@ class AssetPlanner:
         self.tex[key] = new
         self._tex_status[key] = "copy"
         for p in cands:
-            ext = os.path.splitext(p)[1]
-            out = "art/textures/%s%s" % (new.lower(), ext)
+            pext = os.path.splitext(p)[1]
+            out = "art/textures/%s%s" % (new.lower(), pext)
             self.files[out] = functools.partial(self.mod.read, p)
             self._record("Texture", "copied", orig, new, out)
 
     # ---- audio ------------------------------------------------------------------------------------------
-    def _audio_paths(self):
-        if self._audio_index is None:
-            idx = {}
-            for p in self.mod.all_paths():
-                if p.startswith("data/audio/"):
-                    parts = p.split("/")
-                    if len(parts) >= 4:
-                        idx.setdefault((parts[2], parts[-1]), []).append(p)
-            self._audio_index = idx
-        return self._audio_index
-
-    def _find_audio(self, folder, filename):
-        """Best path for ``filename`` in a data/audio/<folder>, preferring the chosen language."""
-        base = "data/audio/%s/" % folder
-        direct = base + filename
-        lang = base + self.language + "/" + filename
-        if self.mod.exists(lang):
-            return lang
-        if self.mod.exists(direct):
-            return direct
-        others = sorted(self._audio_paths().get((folder, filename), []))
-        return others[0] if others else None
+    def _find_audio(self, kind, token):
+        """The file the engine plays for this reference: the localized copy first, then the plain one."""
+        return search.first_existing(self.mod, search.audio_paths(kind, token, self.language, self.settings))
 
     def _plan_audio(self):
-        for tok in sorted(self.needs["AudioFile"]):
-            orig = self.needs["AudioFile"][tok]
-            path = None
-            for ext in (".wav", ".mp3"):
-                path = self._find_audio("sounds", tok + ext)
-                if path:
-                    break
-            self._take_audio("AudioFile", tok, orig, path, "data/audio/sounds/", strip_ext=True)
-        for kind, folder in (("TrackFile", "tracks"), ("SpeechFile", "speech")):
+        folders = {"AudioFile": "data/audio/sounds/", "TrackFile": "data/audio/tracks/",
+                   "SpeechFile": "data/audio/speech/"}
+        for kind in ("AudioFile", "TrackFile", "SpeechFile"):
             for tok in sorted(self.needs[kind]):
                 orig = self.needs[kind][tok]
-                path = self._find_audio(folder, tok)
-                if not path and "." not in tok:
-                    for ext in (".wav", ".mp3"):
-                        path = self._find_audio(folder, tok + ext)
-                        if path:
-                            break
-                self._take_audio(kind, tok, orig, path, "data/audio/%s/" % folder, strip_ext=False)
+                path = self._find_audio(kind, tok)
+                self._take_audio(kind, tok, orig, path, folders[kind], strip_ext=(kind == "AudioFile"))
 
     def _take_audio(self, kind, tok, orig, path, folder, strip_ext):
         if not path:
-            self._record(kind, "missing", orig, None, folder + orig)
+            tried = search.audio_paths(kind, tok, self.language, self.settings)
+            self._record(kind, "missing", orig, None, folder + orig,
+                         "searched " + ", ".join(tried))
             return
         # keep it a reference when the ruleset has the same file at the same path
         if self._same_as_base(path):
@@ -261,9 +268,24 @@ class AssetPlanner:
     def plan(self):
         self._plan_w3d()
         for tok in sorted(self.needs["Texture"]):
-            stem, _ext = split_ext(self.needs["Texture"][tok])
-            self._plan_texture(stem, stem, short=False)
+            self._plan_texture(self.needs["Texture"][tok], short=False)
         self._plan_audio()
+        # a name that two copied files both define cannot stay in both (the package allows one definition):
+        # one file keeps it (the file named like it, else the first), the others get names of their own
+        owners = {}
+        for s in sorted(self.w3d):
+            if self.w3d[s].status == "copy":
+                for d in self.w3d[s].scan.defined:
+                    owners.setdefault(d, []).append(s)
+        local = {}
+        for d in sorted(owners):
+            ss = owners[d]
+            if len(ss) > 1:
+                keep = d if d in ss else ss[0]
+                self.duplicates.append((d, ss, keep))
+                for s in ss:
+                    if s != keep:
+                        local.setdefault(s, {})[d] = self.namer.next()
         for s in sorted(self.w3d):
             e = self.w3d[s]
             if e.status != "copy":
@@ -274,7 +296,11 @@ class AssetPlanner:
                 new = self.tex.get(stem.lower())
                 if new:
                     textures[t.lower()] = new + ext
-            w3d.rename(e.chunks, self.names, textures)
+            names = self.names
+            if s in local:
+                names = dict(self.names)
+                names.update(local[s])
+            w3d.rename(e.chunks, names, textures)
             self.files["art/w3d/%s.w3d" % self.names[s].lower()] = w3d.serialize(e.chunks)
         if self._zhc_lost:
             self.warn("%d house-colour texture(s) (names starting with ZHC) lost their team colour because package "
@@ -285,8 +311,11 @@ class AssetPlanner:
     def map_token(self, kind, token):
         low = token.lower()
         if kind == "Model":
-            new = self.names.get(low)
-            return new
+            if "." in low:
+                head, _, rest = token.partition(".")      # "FILE.PART": the part before the dot names the file
+                new = self.names.get(head.lower())
+                return None if new is None else new + "." + rest
+            return self.names.get(low)
         if kind == "Anim":
             hier, dot, anim = token.partition(".")
             if not dot:

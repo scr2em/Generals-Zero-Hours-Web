@@ -7,11 +7,12 @@ downloads game or mod data; the tool runs on files the player already owns.
 ```
 cd tools
 python3 -m zharmy --help                  # or: python3 tools/zharmy/zharmy.py --help
-python3 -m zharmy archives  <game folder> [--mod-archives GLOB...]
-python3 -m zharmy inspect   <mod...> [--base <ruleset...>] [--mod-archives GLOB...]
+python3 -m zharmy archives  <game folder> [--mod-archives auto|GLOB...]
+python3 -m zharmy find      <folder...> <glob>          # which archive / loose file provides matching paths
+python3 -m zharmy inspect   <mod...> [--base <ruleset...>] [--mod-archives auto|GLOB...] [--ini-problems]
 python3 -m zharmy convert   <mod...> --base <ruleset...> --faction <PlayerTemplate> --tag <TAG> -o out.zharmy
 python3 -m zharmy convert-all <mod...> --base <ruleset...> --out-dir <dir> [--tag-prefix CTR]
-python3 -m zharmy validate  <pkg...> [--base <ruleset...>] [--with <other.zharmy>]
+python3 -m zharmy validate  <pkg...> [--base <ruleset...>] [--mod <mod...> | --mod-archives auto] [--with <other.zharmy>]
 tools/zharmy/run_tests.sh                 # all unit tests, about 40 s (20 s of that builds the starter pack)
 ```
 
@@ -28,6 +29,8 @@ below it.
 * A mod loaded on top of a game (`-mod`) goes the other way: later archives replace earlier ones. `zharmy` uses this
   when you give a mod folder and a different `--base` folder.
 * A lone folder (no `--base`) or the same folder as `--base` is treated as a game as installed (first wins).
+* A folder with the Zero Hour and the Generals install as sub folders is layered Zero Hour first, Generals second;
+  loose files of the Generals folder are not visible to the engine.
 * `Data/INI/INIZH.big` (the duplicate some installs carry) is skipped like the engine does.
 
 INI files are loaded in the engine's order: `Data/INI/Default/<Type>.ini`, `Data/INI/<Type>.ini`, then the files
@@ -35,40 +38,79 @@ below `Data/INI/<Type>/` (folder first, then sub folders, each sorted). A mod IN
 retail one hides the retail file completely (whole-file shadowing, like the game); mods that only add files below
 `Data/INI/<Type>/` keep the retail definitions. The last definition of a name wins.
 
-## Mod installed into the Zero Hour folder
+## Mod installed into the game folder (example: Silent Death)
 
-Typical case: `D:\Games\ZeroHour` holds the retail archives (`INIZH.big`, `W3DZH.big`, `EnglishZH.big`, ...) and
-the mod's archives next to them. Use the same folder as mod and as ruleset and tell the tool which archives are the
-mod's. Patterns are matched case-insensitively against the file name or the path relative to the folder, `*` `?`
-`[ ]` allowed.
+Typical case: the game folder holds the retail archives (`INIZH.big`, `W3DZH.big`, `EnglishZH.big`, ...) and the
+mod's archives next to them. It may also hold the Zero Hour install and the base Generals install as sub folders
+(`command and conquer generals zero hour/`, `command and conquer generals/`): the tool detects that, says so, and
+layers them like the engine does (Zero Hour's loose files and archives first, then the archives of the base game;
+`StdBIGFileSystem::init` loads the working directory, then the Generals install path). Use the same folder as mod and
+as ruleset (`--base`). The mod's archives are found **automatically**: every archive whose file name is not a known
+retail archive name (`INIZH.big`, `W3DZH.big`, `TexturesZH.big`, `AudioEnglishZH.big`, `Music.big`, `INI.big`, ...,
+language variants like `AudioGermanZH.big`) belongs to the mod, e.g. `!00egypatch.big`, `00lsf0118.big`. `auto` is the
+default when mod and `--base` are the same folder; the tool prints the archives it picked.
 
 ```
 cd tools
+ZH="D:\Games\Command and Conquer Generals Zero Hour complete"      # holds both install sub folders
 
-# 1. which archives are there, in the order the engine loads them, and which does a pattern select?
-python3 -m zharmy archives "D:\Games\ZeroHour" --mod-archives "!Contra*.big" "Contra*.big"
+# 1. the archives in engine load order, which ones are the mod's (MOD) and which are retail names
+python3 -m zharmy archives "$ZH"
 
-# 2. the playable factions of the mod (name, side, build list and scripts present?)
-python3 -m zharmy inspect  "D:\Games\ZeroHour" --base "D:\Games\ZeroHour" --mod-archives "!Contra*.big" "Contra*.big"
+# 2. the playable factions (name, side, build list, scripts), the string table language, INI problems
+python3 -m zharmy inspect "$ZH" --base "$ZH"
+python3 -m zharmy inspect "$ZH" --base "$ZH" --ini-problems       # every INI problem as file:line
 
-# 3. every playable faction, one package each, with a summary table
-python3 -m zharmy convert-all "D:\Games\ZeroHour" --base "D:\Games\ZeroHour" ^
-    --mod-archives "!Contra*.big" "Contra*.big" --out-dir "D:\armies" --tag-prefix CTR ^
-    --mod-name Contra --mod-version "009 Final" --report-dir "D:\armies\reports" --validate
+# 3. every playable faction, one package each, with a summary table and a report per package
+python3 -m zharmy convert-all "$ZH" --base "$ZH" --out-dir ~/armies --tag-prefix SD \
+    --mod-name "Silent Death" --report-dir ~/armies/reports --validate
 
 # 4. one faction, own tag and id
-python3 -m zharmy convert "D:\Games\ZeroHour" --base "D:\Games\ZeroHour" --mod-archives "!Contra*.big" ^
-    --faction FactionChinaNuke --tag CNUK --id contra.china-nuke --name "Nuke General" -o nuke.zharmy --validate
+python3 -m zharmy convert "$ZH" --base "$ZH" --faction FactionChinaNuke --tag CNUK \
+    --id sd.china-nuke --name "Nuke General" -o nuke.zharmy --validate
+
+# 5. when something is not found: which archive or loose file provides a path?
+python3 -m zharmy find "$ZH" '*skirmishscripts*'
+python3 -m zharmy find "$ZH" 'art/w3d/cwcusac130*'
 ```
 
-(`^` continues a line in the Windows command prompt, use `\` in a Unix shell. In bash put the `!` patterns in
-single quotes: `'!Contra*.big'`.)
+Name the mod's archives yourself with patterns instead of `auto` (matched case-insensitively against the file name
+or the path relative to the folder, `*` `?` `[ ]` allowed; in bash put `!` patterns in single quotes):
+`--mod-archives '!00egypatch.big' '00lsf0118.big'`. **A pattern that matches no file is an error** that lists the
+archives. If mod and `--base` are the same folder and nothing would be selected the tool stops, because everything
+would look like retail data; `--mod-archives` with no value means "none" on purpose. Loose mod files can be named too
+(`--mod-archives 'Data/INI/*'`).
 
-What happens: the ruleset is the folder *without* the archives that match; the mod as played is the whole folder
-under the engine rule above. A definition counts as the mod's when it is new, or differs from the ruleset's text,
-or points (directly or through other definitions) to something that does, or uses a model, texture or sound file
-the mod changed. Everything else stays a reference to the ruleset. If the mod folder and `--base` are the same and
-`--mod-archives` is missing the tool says so: everything would look like retail.
+What happens: the ruleset is the folder *without* the mod's archives; the mod as played is the whole folder under the
+engine rule above. A definition counts as the mod's when it is new, or differs from the ruleset's text, or points
+(directly or through other definitions) to something that does, or uses a model, texture or sound file the mod
+changed. Everything else stays a reference to the ruleset.
+
+**String table language.** The tool uses the language of the string table the mod brings: English if the mod ships an
+English table, else the language of its own table (a Chinese mod without an English table: `Data/Chinese/Generals.csf`),
+else the game's English one. The choice is printed (`String tables: chinese (the mod provides only a chinese string
+table)`); `--language <name>` overrides. Packages hold single-byte `Strings.str` text, so characters outside Latin-1
+(Chinese labels) are replaced by `?` with a warning; the faction's display name in the manifest keeps its characters.
+
+**Where files are looked up.** Like the engine: `Data/<Language>/Art/W3D/` then `Art/W3D/` for models (`FILE.PART`
+loads `FILE.w3d`), `Data/<Language>/Art/Textures/` then `Art/Textures/` for textures (a `.tga` request is served by a
+`.dds` first; a `.dds` request does not find a `.tga`), `Data/Audio/Sounds/<Language>/` then `Data/Audio/Sounds/` for
+sounds with `.wav` appended (`AudioSettings.ini` can change the folders and the extension), tracks and speech by file
+name. `SkirmishScripts.scb` is read from `Data/Scripts/SkirmishScripts.scb`: a loose file first, then the archives of
+the Zero Hour install, then those of the base game (also decompressed when it carries a `ZL1`..`ZL9` tag).
+
+**Dangling references.** Mods often refer to particle systems, models, sounds, labels or objects that the mod itself
+does not have; the engine tolerates that (it stores a null or looks the name up later). A reference that does not
+resolve in the mod as played either is a *pre-existing dangling reference*: a warning, counted in its own column of the
+summary (`dangling`) and listed in the report (`danglingReferences`), and `validate` accepts the package when it
+knows the mod (`--mod <folder>` or `--mod-archives`; `convert-all --validate` knows it). Only three kinds are resolved
+while the INI files are read and make the engine throw when missing: sciences, command buttons in command sets and
+locomotors in locomotor sets. A faction with such a reference "cannot be converted" (reported, no package written),
+and a faction whose `StartingBuilding` / `StartingUnit` does not exist in the mod is skipped as unplayable.
+
+**Output volume.** Warnings are grouped by kind on the console (the first three of each kind, then "and N more");
+the full list is in the report JSON (`--report`, `--report-dir`): `warnings` (all), `warningGroups` (by kind),
+`danglingReferences`.
 
 A mod that is a separate folder (not installed into the game):
 
@@ -87,11 +129,12 @@ their directories are held in memory, file data is read when a package needs it)
 
 | command | does |
 | --- | --- |
-| `archives` | lists `.big` files in load order, optionally marking the mod's |
-| `inspect` | lists playable factions: template, side, display name, build list, scripts, whether the ruleset has it |
+| `archives` | lists `.big` files in load order (both installs of a combined folder), marks the mod's (default `auto`) and the retail names |
+| `find` | `find <folder...> <glob>`: which archive or loose file provides matching paths, `->` marks the one the engine uses |
+| `inspect` | lists playable factions: template, side, display name, build list, scripts, whether the ruleset has it, unplayable ones; layout, language, INI problem summary (`--ini-problems`: all) |
 | `convert` | one faction to one package; `--requires zerohour|starter|none`, `--id`, `--name`, `--version`, `--author`, `--license`, `--mod-name`, `--mod-version`, `--mod-url`, `--language`, `--report file.json`, `--validate` |
 | `convert-all` | every playable faction (or `--faction X` repeated); tags `PREFIX1..n` or derived from the names |
-| `validate` | the rules of the format document; `--base` for ruleset checks, `--with` for other loaded packages |
+| `validate` | the rules of the format document; `--base` for ruleset checks, `--mod` / `--mod-archives` for the mod as played (references it lacks are warnings), `--with` for other loaded packages |
 
 ## What a conversion does
 
@@ -149,6 +192,8 @@ itself did not, the model counts as unchanged.
 ```
 __init__.py __main__.py zharmy.py cli.py     entry points
 bigfile.py vfs.py                            BIGF/BIG4 reader + writer; layered case-insensitive file system
+layout.py search.py                          game folder layout, retail archive names, mod archive selection;
+                                             where the engine looks for models, textures, sounds
 ini.py gamedata.py                           INI dialect parser/writer; definitions in engine load order
 schema.py schema_data.py gen_schema.py       reference schema (data generated from the engine sources)
 refs.py assets.py w3d.py                     finding / rewriting references; file collection; W3D chunks

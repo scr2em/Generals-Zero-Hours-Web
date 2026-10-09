@@ -11,7 +11,8 @@ import re
 
 from . import ini as inimod
 from . import refs as refsmod
-from . import schema, scb as scbmod, strings as stringsmod, w3d
+from . import layout as layoutmod
+from . import schema, scb as scbmod, search, strings as stringsmod, w3d
 from .gamedata import BLOCK_FILE, KIND_OF_BLOCK, GameData
 from .package import FORMAT, Package, PackageError
 from .vfs import Vfs, glob_matcher
@@ -22,6 +23,11 @@ DEF_KINDS = frozenset(schema.DEFINITION_KINDS)
 ALLOWED_BLOCKS = frozenset(BLOCK_FILE) - {"AIData"}
 KNOWN_RULESETS = ("zerohour", "starter")
 SOFT = refsmod.SKIP_TOKENS
+# kinds the engine resolves while reading the INI files and rejects when missing (see convert.FATAL_KINDS);
+# any other missing reference is tolerated by the engine, so one the mod itself lacks is only a warning
+FATAL_KINDS = frozenset(["Science", "CommandButton", "Locomotor"])
+# a definition name in a package: the engine accepts any characters except white space and = , ;
+NAME_RE = re.compile(r"^[^\s=,;]+$")
 
 
 class Result:
@@ -30,7 +36,10 @@ class Result:
         self.errors = []
         self.warnings = []
         self.notes = []
+        self.dangling = []         # references the ruleset lacks and the mod as played lacks too
         self.manifest = None
+        self.env = None
+        self.strict_missing = 0    # errors that would be warnings if the mod as played were known
 
     @property
     def ok(self):
@@ -49,7 +58,7 @@ class Result:
     def as_dict(self):
         return {"package": self.path, "ok": self.ok,
                 "errors": [{"rule": r, "message": m} for r, m in self.errors],
-                "warnings": self.warnings, "notes": self.notes}
+                "warnings": self.warnings, "notes": self.notes, "dangling": self.dangling}
 
 
 def format_result(res):
@@ -58,22 +67,85 @@ def format_result(res):
         lines.append("  error [%s]: %s" % (rule, msg))
     for msg in res.warnings:
         lines.append("  warning: " + msg)
+    if res.dangling:
+        lines.append("  warning: %d pre-existing dangling reference%s (the mod as played lacks the target too; the "
+                     "engine tolerates them):" % (len(res.dangling), "" if len(res.dangling) == 1 else "s"))
+        for msg in res.dangling[:3]:
+            lines.append("    " + msg)
+        if len(res.dangling) > 3:
+            lines.append("    ... and %d more (validate --json lists all)" % (len(res.dangling) - 3))
     for msg in res.notes:
         lines.append("  note: " + msg)
     return "\n".join(lines) + "\n"
 
 
-def _load_base(base_paths, mod_archives=None):
+class Env:
+    """What a package is checked against: the ruleset (``base_vfs``/``base_data``) and, when known, the mod as
+    played (``played_vfs``, definitions loaded when first needed)."""
+
+    def __init__(self, base_vfs=None, played_vfs=None, notes=(), base_data=None, played_data=None):
+        self.base_vfs = base_vfs
+        self.base_data = base_data if base_data is not None else (
+            GameData(base_vfs, "base") if base_vfs is not None else None)
+        self.played_vfs = played_vfs
+        self._played_data = played_data
+        self.notes = list(notes)
+        self._base_tails = None
+        self._played_tails = None
+
+    @property
+    def played_known(self):
+        return self.played_vfs is not None
+
+    def played_has(self, kind, token):
+        if self._played_data is None:
+            self._played_data = GameData(self.played_vfs, "mod")
+        return self._played_data.has(kind, token)
+
+    def base_tails(self):
+        if self._base_tails is None and self.base_vfs is not None:
+            self._base_tails = search.localized_tails(self.base_vfs)
+        return self._base_tails
+
+    def played_tails(self):
+        if self._played_tails is None and self.played_vfs is not None:
+            self._played_tails = search.localized_tails(self.played_vfs)
+        return self._played_tails
+
+
+def _load_env(base_paths, mod_archives=None, mod_paths=None, world=None):
+    """Build the Env. ``world`` is an (already built) convert.World, as convert-all has it."""
+    if world is not None:
+        # a convert.Context (or World): the file systems and definitions are already loaded
+        return Env(world.base_vfs, world.mod_vfs, (), getattr(world, "base", None), getattr(world, "mod", None))
     if not base_paths:
-        return None, None
-    vfs = Vfs()
-    exclude = glob_matcher(mod_archives) if mod_archives else None
-    for p in base_paths:
-        vfs.add_tree(p, overwrite=False, exclude=exclude)
-    return vfs, GameData(vfs, "base")
+        return Env()
+    if mod_archives is None and not mod_paths:
+        # the mod as played is not known: --base is taken as the ruleset as it is
+        vfs = Vfs()
+        for p in base_paths:
+            layoutmod.add_game_tree(vfs, p, overwrite=False)
+        notes = []
+        extra = []
+        for p in base_paths:
+            if os.path.isdir(p):
+                extra.extend(a.name for a in layoutmod.list_archives(p) if not a.retail)
+        if extra:
+            notes.append("--base holds archives that are not retail ones (%s); if they are a mod, give "
+                         "--mod-archives auto so they are not part of the ruleset" % ", ".join(extra[:5]))
+        return Env(vfs, None, notes)
+    from .convert import ConvertError, build_world
+    try:
+        w = build_world(mod_paths or base_paths, base_paths, mod_archives)
+    except ConvertError as exc:
+        raise PackageError(str(exc))
+    return Env(w.base_vfs, w.mod_vfs, w.notes)
 
 
-def validate(path, base_paths=None, zhc_names=True, others=(), mod_archives=None):
+def validate(path, base_paths=None, zhc_names=True, others=(), mod_archives=None, mod_paths=None, world=None):
+    """Check a package. ``base_paths``: the ruleset. ``mod_archives`` / ``mod_paths`` say where the mod as played is
+    (installed in the ruleset folder, or separate folders): references that the ruleset lacks and the mod as played
+    lacks too are warnings (pre-existing dangling references); without them every such reference is an error."""
     # ZHC<TAG> names for house-colour textures are part of rule 4; the argument is kept for old callers
     zhc_names = True
     res = Result(path)
@@ -93,8 +165,20 @@ def validate(path, base_paths=None, zhc_names=True, others=(), mod_archives=None
             res.manifest = manifest
             _check_manifest(pkg, manifest, res)
             if res.manifest and TAG_RE.match(str(manifest.get("tag", ""))):
-                base_vfs, base_data = _load_base(base_paths, mod_archives)
-                _check_content(pkg, manifest, res, base_vfs, base_data, zhc_names, others)
+                try:
+                    env = _load_env(base_paths, mod_archives, mod_paths, world)
+                except PackageError as exc:
+                    res.error("environment", str(exc))
+                    return res
+                res.env = env
+                for n in env.notes:
+                    res.note(n)
+                _check_content(pkg, manifest, res, env.base_vfs, env.base_data, zhc_names, others)
+                if res.strict_missing and not env.played_known:
+                    res.note("%d reference(s) found in neither the package nor the ruleset are errors because the "
+                             "mod as played is not known (give --mod <folder> or --mod-archives, so that what the "
+                             "mod itself lacks is reported as a pre-existing dangling reference instead)"
+                             % res.strict_missing)
     finally:
         pkg.close()
     return res
@@ -275,7 +359,7 @@ def _check_content(pkg, m, res, base_vfs, base_data, zhc, others):
             if stem not in pkg_textures:
                 res.error("rule 4", "%s uses texture %s, which is not in the package" % (n, t))
         elif not stem.startswith("zhc"):
-            _need_ruleset_file(res, base_vfs, rel, ["art/textures/%s.dds" % stem, "art/textures/%s.tga" % stem],
+            _need_ruleset_file(res, base_vfs, rel, search.texture_paths(t, ""),
                                "texture %s used by %s" % (t, n))
     # --- strings -----------------------------------------------------------------------------------------
     labels = {}
@@ -308,6 +392,9 @@ def _check_content(pkg, m, res, base_vfs, base_data, zhc, others):
                 res.error("definitions", "%s line %d: %s has no name" % (n, block.line, block.name))
                 continue
             name = toks[0]
+            if not NAME_RE.match(name):
+                res.error("rule 1", "%s: bad %s name %r (names may use any characters except white space and = , ;)"
+                          % (n, block.name, name))
             if not name.lower().startswith(prefix):
                 res.error("rule 1", "%s: %s %s does not start with %s_" % (n, block.name, name, tag))
             kind = KIND_OF_BLOCK[block.name]
@@ -406,14 +493,35 @@ def _check_content(pkg, m, res, base_vfs, base_data, zhc, others):
         op.close()
 
 
-def _need_ruleset_file(res, base_vfs, rel, candidates, what):
+def _tolerated_missing(res, kind, token, plain_paths=None, what=None):
+    """The ruleset lacks it. If the mod as played lacks it too and the engine tolerates that, record a pre-existing
+    dangling reference and return True; otherwise count it as an error candidate (returns False)."""
+    env = res.env
+    if env is None or not env.played_known or kind in FATAL_KINDS:
+        res.strict_missing += 1
+        return False
+    if plain_paths is not None:
+        if search.exists_any(env.played_vfs, plain_paths, env.played_tails()):
+            return False
+    elif env.played_has(kind, token):
+        return False
+    res.dangling.append(what or "%s %s" % (kind, token))
+    return True
+
+
+def _need_ruleset_file(res, base_vfs, rel, candidates, what, kind="File"):
     if not rel:
+        if _tolerated_missing(res, kind, "", candidates, "%s (not in the mod as played either)" % what):
+            return
         res.error("rule 2", "%s is not in the package (the package relies on no ruleset)" % what)
         return
     if base_vfs is None:
         res.warn("%s was not checked: give --base <ruleset data>" % what)
         return
-    if not any(base_vfs.exists(c) for c in candidates):
+    tails = res.env.base_tails() if res.env is not None else None
+    if not search.exists_any(base_vfs, candidates, tails):
+        if _tolerated_missing(res, kind, "", candidates, "%s (not in the mod as played either)" % what):
+            return
         res.error("rule 2", "%s is in neither the package nor the ruleset" % what)
 
 
@@ -429,6 +537,9 @@ def _check_def_ref(res, kind, token, where, pkg_defs, base_data, rel, prefix, st
     if not strict:
         return
     if not rel:
+        if _tolerated_missing(res, kind, token, None, "%s refers to %s %s (not in the mod as played either)"
+                              % (where, kind, token)):
+            return
         res.error("rule 2", "%s refers to %s %s, which is not in the package (requires is empty)"
                   % (where, kind, token))
         return
@@ -436,6 +547,9 @@ def _check_def_ref(res, kind, token, where, pkg_defs, base_data, rel, prefix, st
         unchecked[0] = True
         return
     if not base_data.has(kind, token):
+        if _tolerated_missing(res, kind, token, None, "%s refers to %s %s (not in the mod as played either)"
+                              % (where, kind, token)):
+            return
         res.error("rule 2", "%s refers to %s %s, which is in neither the package nor the ruleset"
                   % (where, kind, token))
 
@@ -478,23 +592,15 @@ def _check_refs(res, kind, name, block, pkg, pkg_defs, base_vfs, base_data, rel,
 def _check_asset_ref(res, kind, tok, where, pkg, base_vfs, rel, tag, zhc):
     t = tok.lower()
     if kind == "Model":
-        stem = t
-        cands = ["art/w3d/%s.w3d" % stem]
+        stem = search.w3d_stem("Model", tok)
     elif kind == "Anim":
         stem = t.partition(".")[2] or t
-        cands = ["art/w3d/%s.w3d" % stem]
     elif kind == "Texture":
         stem = os.path.splitext(t)[0]
-        cands = ["art/textures/%s.dds" % stem, "art/textures/%s.tga" % stem]
-    elif kind == "AudioFile":
-        stem = t
-        cands = ["data/audio/sounds/%s.wav" % t, "data/audio/sounds/%s.mp3" % t]
-    elif kind == "TrackFile":
-        stem = t
-        cands = ["data/audio/tracks/%s" % t]
     else:
         stem = t
-        cands = ["data/audio/speech/%s" % t, "data/audio/speech/%s.wav" % t]
+    # the engine's search in the package (plain paths) and the ruleset (plain or localized)
+    cands = search.asset_paths(kind, tok if kind != "Anim" else (t if "." in t else "x." + t), "")
     if any(pkg.has(c) for c in cands):
         return
     if stem.startswith(tag.lower()) or (zhc and stem.startswith("zhc" + tag.lower())):
@@ -502,4 +608,5 @@ def _check_asset_ref(res, kind, tok, where, pkg, base_vfs, rel, tag, zhc):
         return
     if kind == "Anim" and "." not in t:
         return
-    _need_ruleset_file(res, base_vfs, rel, cands, "%s: %s %s" % (where, kind.lower(), tok))
+    label = {"AudioFile": "sound", "TrackFile": "music", "SpeechFile": "speech"}.get(kind, kind.lower())
+    _need_ruleset_file(res, base_vfs, rel, cands, "%s: %s %s" % (where, label, tok), kind)

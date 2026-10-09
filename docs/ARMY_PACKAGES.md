@@ -145,12 +145,20 @@ Rules (the engine checks them and refuses a package that breaks one):
    `<TAG>_` (exactly this spelling) and has something after it. A package never redefines or
    modifies a definition of the ruleset or of another package: a name that exists already
    (case-insensitive for the stores that are case-insensitive) refuses the package, also when it
-   starts with the prefix. `AIData` is the one exception, see below.
+   starts with the prefix. A name may use any characters except white space and `=` `,` `;`
+   (`TK-XLocomotor` is fine). `AIData` is the one exception, see below.
 2. **References** may point to the package's own names, or to names the ruleset is
    guaranteed to have (only if `requires` is non-empty). The engine does not check references
    itself: the INI reader throws on the ones it resolves while reading (for example a science
    that does not exist), and `zharmy validate` is the place that checks all of them. A package
-   that fails this way stops the game (see "Loading").
+   that fails this way stops the game (see "Loading"). Only three kinds of reference are
+   resolved while reading, and so must exist: a science (`INI::scanScience`), a command button in
+   a command set and a locomotor in a locomotor set. Every other kind (object, weapon, armor,
+   FX list, OCL, particle system, upgrade, special power, mapped image, audio event, damage FX,
+   string label, model, texture, sound file) is stored as a null or looked up later and is
+   tolerated when missing, so mods often carry dead references. `zharmy validate` reports a
+   reference that is missing in the ruleset *and* in the mod as played (`--mod` /
+   `--mod-archives`) as a "pre-existing dangling reference" warning, not an error.
 3. **Sides**: each faction has its own side name `<TAG>_<Name>`; its objects use that
    side. A package does not add objects to other sides: every `Side =` of an `Object` and the
    `Side` of the `PlayerTemplate` must be one of the manifest's sides. Every `PlayerTemplate`
@@ -237,17 +245,30 @@ Rules (the engine checks them and refuses a package that breaks one):
 ## Converter (`tools/zharmy`)
 
 Python 3, standard library only, runs on the player's machine (and later in the
-browser).
+browser). `tools/zharmy/README.md` has the commands and the details.
 
-- `zharmy inspect <mod folder | .big files>...`: lists the playable factions of a mod.
-- `zharmy convert <mod> --base <ruleset data> --faction <PlayerTemplate> --tag <TAG> -o <file>`:
-  follows every reference from the faction's `PlayerTemplate` (command sets, buttons,
-  units and buildings, weapons, locomotors, armour, upgrades, sciences, special
-  powers, OCLs, FX, particle systems, models, textures, sounds, strings, AI build list
-  and scripts), keeps what the ruleset already has as references, copies and renames
-  the rest into the package, and writes a report of anything it could not carry over.
-- `zharmy validate <file> [--base <ruleset data>]`: checks a package against the
-  rules above, the same way the engine does.
+- `zharmy archives <game folder>`: lists the `.big` files in the order the engine loads them
+  (Zero Hour's archives, then the base game's) and shows which would be taken as the mod's.
+- `zharmy find <folder...> <glob>`: lists which archive or loose file provides matching paths.
+- `zharmy inspect <mod folder | .big files>... [--base ...] [--mod-archives ...]`: lists the playable
+  factions of a mod, the string table language chosen, and a summary of INI problems
+  (`--ini-problems` lists them all).
+- `zharmy convert <mod> --base <ruleset data> --faction <PlayerTemplate> --tag <TAG> -o <file>`
+  and `zharmy convert-all`: follow every reference from the faction's `PlayerTemplate` (command
+  sets, buttons, units and buildings, weapons, locomotors, armour, upgrades, sciences, special
+  powers, OCLs, FX, particle systems, models, textures, sounds, strings, AI build list and
+  scripts), keep what the ruleset already has as references, copy and rename the rest into the
+  package, and write a report of anything it could not carry over. A mod installed in the game
+  folder is selected with `--mod-archives auto` (every archive that has no retail file name;
+  the default in that case) or with name patterns; a pattern that matches nothing is an error.
+  Files are looked up where the engine looks (language folders, `.dds` before `.tga`, `.wav`
+  sounds, `FILE.PART` model names). References the mod itself cannot resolve are warnings counted
+  apart as pre-existing dangling references, except sciences, command buttons and locomotors,
+  which make the faction "cannot be converted"; a faction whose starting building or unit does
+  not exist is skipped.
+- `zharmy validate <file> [--base <ruleset data>] [--mod <mod> | --mod-archives auto]`: checks
+  a package against the rules above, the same way the engine does. Without `--mod` /
+  `--mod-archives` every missing reference is an error (the mod as played is not known).
 
 ## Not in v1
 

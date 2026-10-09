@@ -195,6 +195,59 @@ class StringTable:
         return self._lower.get(label.lower())
 
 
+def table_languages(vfs):
+    """{language: path of its table} for the Data/<Language>/Generals.csf (preferred) and .str files of a VFS."""
+    csf, strf = {}, {}
+    for path in vfs.all_paths():
+        parts = path.split("/")
+        if len(parts) == 3 and parts[0] == "data":
+            if parts[2] == "generals.csf":
+                csf[parts[1]] = path
+            elif parts[2] == "generals.str":
+                strf[parts[1]] = path
+    out = dict(strf)
+    out.update(csf)
+    return out
+
+
+def mod_languages(mod_vfs, base_vfs):
+    """Languages whose string table the mod provides: a table the ruleset lacks or that differs from the ruleset's."""
+    out = []
+    for lang, path in sorted(table_languages(mod_vfs).items()):
+        if base_vfs is None or not base_vfs.exists(path) or not mod_vfs.same_file(base_vfs, path):
+            out.append(lang)
+    return out
+
+
+def choose_language(mod_vfs, base_vfs, explicit=None):
+    """(language or None, why). ``explicit`` (``--language``) wins. Otherwise the language of the mod's own string
+    table: English when the mod ships an English one, else its only (or alphabetically first) language; a mod that
+    ships no table of its own uses the game's (English preferred)."""
+    have = table_languages(mod_vfs)
+    if explicit:
+        lang = norm(explicit)
+        if lang in have:
+            return lang, "--language %s" % lang
+        return lang, "--language %s (but no string table for it was found; found: %s)" % (
+            lang, ", ".join(sorted(have)) or "none")
+    if mod_vfs.exists("Data/Generals.str"):
+        return None, "Data/Generals.str (language independent)"
+    own = mod_languages(mod_vfs, base_vfs)
+    if own:
+        if "english" in own:
+            return "english", "the mod provides an English string table"
+        if len(own) == 1:
+            return own[0], "the mod provides only a %s string table (no English one)" % own[0]
+        return own[0], "the mod provides string tables for %s; using %s (use --language to choose)" % (
+            ", ".join(own), own[0])
+    if "english" in have:
+        return "english", "the mod has no string table of its own; the game's English one"
+    if have:
+        lang = sorted(have)[0]
+        return lang, "the game only has a %s string table" % lang
+    return None, "no string table found"
+
+
 def load_strings(vfs, language=None):
     """Find and parse the string table of a VFS the way the engine does.
 

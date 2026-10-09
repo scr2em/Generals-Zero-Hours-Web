@@ -248,10 +248,12 @@ class ConvertAll(World):
         with self.assertRaises(ConvertError):
             derive_tags(["A", "B"], "TOOLONGPREFIX")
 
-    def test_same_folder_without_mod_archives_warns(self):
+    def test_same_folder_without_mod_archives_selects_automatically(self):
+        # the mod archives have no retail names: --mod-archives defaults to auto for an installed mod
         out = os.path.join(self.out, "same.zharmy")
         c, rep = convert([self.installed], [self.installed], Options(tag="SAME", faction="FactionModAlpha"), out)
-        self.assertTrue(any("same folder" in w for w in rep["warnings"]))
+        self.assertIn("MAlphaHQ", rep["definitionsCopied"]["Object"])
+        self.assertTrue(any("!ModMain.big" in n for n in rep["setup"]))
 
 
 class ValidateNegative(World):
@@ -375,7 +377,7 @@ class CliTests(World):
         code, out = self.run_cli("archives", self.installed, "--mod-archives", "!Mod*.big", "zMod*.big")
         self.assertEqual(code, 0)
         self.assertIn("MOD", out)
-        self.assertLess(out.index("!modmain.big"), out.index("inizh.big"))
+        self.assertLess(out.lower().index("!modmain.big"), out.lower().index("inizh.big"))
         code, out = self.run_cli("inspect", self.installed, "--base", self.installed, "--mod-archives", *MOD_GLOBS,
                                  "-q")
         self.assertIn("3 playable factions", out)

@@ -127,7 +127,7 @@ class Vfs:
     def add_memory(self, files, label="memory"):
         return self.add_source(MemorySource(files, label))
 
-    def add_tree(self, path, overwrite=True, exclude=None):
+    def add_tree(self, path, overwrite=True, exclude=None, loose=True):
         """Add a mod or game location: a ``.big`` file, or a folder (loose files plus the ``.big`` files in it).
 
         Loose files win over the archives of the same folder. ``overwrite`` follows the engine: for mod
@@ -156,7 +156,8 @@ class Vfs:
             bigs.reverse()              # first loaded must end up with the highest priority
         for big in bigs:
             self.add_big(big)
-        self.add_folder(path, exclude)
+        if loose:
+            self.add_folder(path, exclude)
 
     # -- queries --------------------------------------------------------------------------------------
     def _find(self, path):

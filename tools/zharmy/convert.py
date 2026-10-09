@@ -23,11 +23,12 @@ from collections import OrderedDict, deque
 from . import __version__
 from . import assets as assetsmod
 from . import ini as inimod
+from . import layout as layoutmod
 from . import refs as refsmod
-from . import schema, scb as scbmod, strings as stringsmod
-from .gamedata import BLOCK_FILE, KIND_OF_BLOCK, GameData
+from . import schema, scb as scbmod, search, strings as stringsmod
+from .gamedata import BLOCK_FILE, KIND_OF_BLOCK, GameData, format_ini_problems, group_ini_problems
 from .package import write_package
-from .vfs import Vfs, glob_matcher, norm
+from .vfs import Vfs, norm
 
 TAG_RE = re.compile(r"^[A-Z][A-Z0-9]{1,5}$")
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{2,63}$")
@@ -37,6 +38,23 @@ ASSET_KINDS = frozenset(schema.ASSET_KINDS)
 
 class ConvertError(Exception):
     pass
+
+
+class CannotConvert(ConvertError):
+    """The faction cannot become a valid package (the engine would reject what it needs)."""
+
+
+class Unplayable(ConvertError):
+    """The faction cannot be played in the mod itself."""
+
+
+# reference kinds the engine resolves while it reads the INI files and rejects (throws) when they are missing:
+# INI::scanScience (ScienceStore::friend_lookupScience), CommandSet::parseCommandButton and
+# AIUpdateModuleData::parseLocomotorSet. Every other kind is stored as a null pointer or looked up later by name and
+# tolerated when missing (parseThingTemplate, parseWeaponTemplate, parseArmorTemplate, parseDamageFX, parseFXList,
+# parseObjectCreationList, parseParticleSystemTemplate, parseUpgradeTemplate, parseSpecialPowerTemplate,
+# parseMappedImage, the audio events, command set names, crate names, labels).
+FATAL_KINDS = frozenset(["Science", "CommandButton", "Locomotor"])
 
 
 class Options:
@@ -61,53 +79,126 @@ class Options:
             setattr(self, k, v)
 
 
-def build_vfs(mod_paths, base_paths, mod_archives=None):
-    """Returns (mod_vfs, base_vfs or None).
+class World:
+    """The file systems of a conversion: ``mod_vfs`` (the mod as played), ``base_vfs`` (the ruleset or None), the
+    ``selection`` of the mod's archives and the lines that describe the set-up."""
+
+    def __init__(self):
+        self.mod_vfs = None
+        self.base_vfs = None
+        self.selection = None
+        self.notes = []
+
+
+def build_world(mod_paths, base_paths, mod_archives=None):
+    """Build the file systems.
 
     The mod file system is what the game sees with the mod installed: the base layers with the mod on top.
     Normally ``mod_paths`` are separate folders / archives that go on top of the base (they win, like ``-mod``).
     When the mod is installed *into* the game folder, give that folder as ``--base`` (and as the mod) and name the
-    mod's archives with ``mod_archives`` (glob patterns on the path relative to the folder, or the file name): the
-    ruleset is then the folder without those files, the mod file system is the whole folder under the engine's
-    rule for one folder (loose files first, then archives in alphabetical order, the first archive holding a file
-    wins; that is why mod archives are often called ``!something.big``).
+    mod's archives with ``mod_archives`` (glob patterns on the path relative to the folder, or the file name, or
+    ``auto`` for every archive without a retail name; ``auto`` is the default in this case): the ruleset is then the
+    folder without those files, the mod file system is the whole folder under the engine's rule for one folder
+    (loose files first, then archives in alphabetical order, the first archive holding a file wins; that is why mod
+    archives are often called ``!something.big``). A folder that holds the Zero Hour and the Generals install as
+    sub folders is layered like the engine does (Zero Hour first).
     """
-    exclude = glob_matcher(mod_archives) if mod_archives else None
     real = lambda p: os.path.realpath(p)
     base_real = {real(p) for p in (base_paths or [])}
+    same = bool(base_paths) and any(real(p) in base_real for p in mod_paths)
+    try:
+        sel = layoutmod.resolve_mod_archives(list(base_paths or []), mod_archives, same)
+    except layoutmod.SelectionError as exc:
+        raise ConvertError(str(exc))
+    exclude = sel.predicate()
+    w = World()
+    w.selection = sel
+    w.notes = list(sel.notes)
     base = None
     if base_paths:
         base = Vfs()
         for p in base_paths:
-            base.add_tree(p, overwrite=False, exclude=exclude)
+            layoutmod.add_game_tree(base, p, overwrite=False, exclude=exclude)
     mod = Vfs()
     if base_paths:
         if exclude is not None:
             for p in base_paths:
-                mod.add_tree(p, overwrite=False)       # the whole installed game
+                layoutmod.add_game_tree(mod, p, overwrite=False)       # the whole installed game
         else:
             mod.layers.extend(base.layers)
     for p in mod_paths:
         if real(p) in base_real:
             continue                                   # the installed folder is already part of the base layers
         # a folder on top of a ruleset is a mod loaded with overwrite; a lone folder is a game as installed
-        mod.add_tree(p, overwrite=bool(base_paths))
-    return mod, base
+        if base_paths:
+            mod.add_tree(p, overwrite=True)
+        else:
+            layoutmod.add_game_tree(mod, p, overwrite=False)
+    w.mod_vfs, w.base_vfs = mod, base
+    return w
+
+
+def build_vfs(mod_paths, base_paths, mod_archives=None):
+    """Returns (mod_vfs, base_vfs or None); see ``build_world``."""
+    w = build_world(mod_paths, base_paths, mod_archives)
+    return w.mod_vfs, w.base_vfs
 
 
 class Report:
     def __init__(self):
-        self.warnings = []
+        self._items = []           # (kind, message)
+        self._seen = set()
         self.infos = []
         self.data = OrderedDict()
 
-    def warn(self, msg):
-        if msg not in self.warnings:
-            self.warnings.append(msg)
+    def warn(self, msg, kind="other"):
+        if msg not in self._seen:
+            self._seen.add(msg)
+            self._items.append((kind, msg))
+
+    @property
+    def warnings(self):
+        return [m for _k, m in self._items]
+
+    def kinds(self):
+        out = OrderedDict()
+        for k, m in self._items:
+            out.setdefault(k, []).append(m)
+        return out
 
     def info(self, msg):
         if msg not in self.infos:
             self.infos.append(msg)
+
+
+# warning kinds that are pre-existing dangling references: they do not resolve in the mod as played either
+DANGLING_PREFIX = "dangling "
+
+
+def _warning_digest(rep, per_kind=3, limit=40):
+    """Warnings for the manifest: the first few of each kind, then a count."""
+    out = []
+    for kind, msgs in rep.kinds().items():
+        out.extend(msgs[:per_kind])
+        if len(msgs) > per_kind:
+            out.append("... and %d more %s warning%s" % (len(msgs) - per_kind, kind, "" if len(msgs) - per_kind == 1
+                                                         else "s"))
+    return out[:limit]
+
+
+def unplayable_reason(data, tmpl):
+    """None, or why a PlayerTemplate cannot be played in the mod itself: its StartingBuilding / StartingUnit<n>
+    objects do not exist anywhere (the original is broken in the same way)."""
+    missing = []
+    for c in tmpl.node.children or ():
+        if c.is_block or not (c.name == "StartingBuilding" or re.match(r"^StartingUnit\d+$", c.name)):
+            continue
+        toks = c.args.split()
+        if toks and toks[0].lower() != "none" and data.get("Object", toks[0]) is None:
+            missing.append("%s = %s" % (c.name, toks[0]))
+    if missing:
+        return "%s does not exist in any INI file of the mod or the game" % ", ".join(missing)
+    return None
 
 
 def slug(text):
@@ -125,18 +216,18 @@ class Context:
         self.base_paths = list(base_paths or [])
         self.requires = requires
         self.use_base = requires != "none"
-        self.language = language
-        self.warnings = []
+        self.language_option = language
+        self.warnings = []             # (kind, message)
+        self.notes = []                # lines describing the set-up (printed by the command line)
         if self.use_base and not self.base_paths:
             raise ConvertError("--requires %s needs the ruleset data (--base); use --requires none for a fully "
                                "self-contained package" % requires)
-        real = [os.path.realpath(p) for p in self.mod_paths]
-        if self.base_paths and not mod_archives and set(real) & {os.path.realpath(p) for p in self.base_paths}:
-            self.warnings.append("the mod folder and --base are the same folder and --mod-archives is not given: "
-                                 "every definition looks like a ruleset definition. Name the mod's archives with "
-                                 "--mod-archives '<glob>'.")
         self.progress("reading archive directories")
-        self.mod_vfs, self.base_vfs = build_vfs(self.mod_paths, self.base_paths, mod_archives)
+        world = build_world(self.mod_paths, self.base_paths, mod_archives)
+        self.mod_vfs, self.base_vfs, self.selection = world.mod_vfs, world.base_vfs, world.selection
+        self.notes.extend(world.notes)
+        for line in world.notes:
+            self.progress(line)
         self.progress("loading mod definitions (%d archives/folders)" % len(self.mod_vfs.layers))
         self.mod = GameData(self.mod_vfs, "mod")
         self.base = None
@@ -146,29 +237,60 @@ class Context:
         for vfs in (self.mod_vfs, self.base_vfs):
             for path, msg in (vfs.problems if vfs is not None else ()):
                 w = "archive %s was skipped: %s" % (path, msg)
-                if w not in self.warnings:
-                    self.warnings.append(w)
+                if ("archive", w) not in self.warnings:
+                    self.warnings.append(("archive", w))
         self.progress("%d mod INI files, %d definitions" % (len(self.mod.files),
                                                             sum(len(t) for t in self.mod.defs.values())))
-        self.mod_strings = stringsmod.load_strings(self.mod_vfs, language)
-        self.base_strings = (stringsmod.load_strings(self.base_vfs, language)
+        if self.mod.errors:
+            groups = group_ini_problems(self.mod.errors)
+            top = "; ".join("%d x %s" % (len(items), kind) for kind, items in groups[:3])
+            msg = ("%d INI problems while reading the mod's files (%s); definitions in the affected blocks may be "
+                   "missing. Details: zharmy inspect ... --ini-problems" % (len(self.mod.errors), top))
+            self.warnings.append(("ini", msg))
+            self.notes.append(msg)
+        # string tables: the language of the mod's own table unless --language says otherwise
+        self.language_name, why = stringsmod.choose_language(self.mod_vfs, self.base_vfs, language)
+        self.language_why = why
+        line = "String tables: %s (%s)" % (self.language_name or "language independent", why)
+        self.notes.append(line)
+        self.progress(line)
+        self.language = self.language_name or "english"
+        self.mod_strings = stringsmod.load_strings(self.mod_vfs, self.language_name)
+        self.base_strings = (stringsmod.load_strings(self.base_vfs, self.language_name)
                              if self.base_vfs is not None else stringsmod.StringTable())
+        self.audio_settings = search.audio_settings(self.mod_vfs)
         self.ref_cache = {}
         self._identity_ready = False
         self._scb = None
 
     def skirmish_scb(self):
-        """(parsed SkirmishScripts.scb or None, problem text or None)"""
+        """(parsed SkirmishScripts.scb or None, problem text or None).
+
+        The engine reads ``Data\\Scripts\\SkirmishScripts.scb`` with ``FileSystem::openFile``
+        (``SidesList::loadSkirmishScripts`` / ``CachedFileInputStream``): the local file system first (a loose file
+        below the game folder), then the archives (Zero Hour's, then the base game's), case-insensitive, decompressed
+        when it carries a compression tag. The mod file system here has exactly these layers.
+        """
         if self._scb is None:
             path = "data/scripts/skirmishscripts.scb"
             if not self.mod_vfs.exists(path):
-                self._scb = (None, "no Data/Scripts/SkirmishScripts.scb in the mod: the computer gets no unit "
-                                   "scripts")
+                similar = [p for p in self.mod_vfs.all_paths() if "skirmishscripts" in p or
+                           (p.endswith(".scb") and p.startswith("data/scripts/"))][:6]
+                n_arch = sum(1 for l in self.mod_vfs.layers if hasattr(l, "archive"))
+                msg = ("no Data/Scripts/SkirmishScripts.scb found: looked like the engine does (loose files, then "
+                       "%d archives in load order; paths are case-insensitive) in %s%s. The computer gets no unit "
+                       "scripts. Debug with: zharmy find <folder> '*skirmishscripts*'"
+                       % (n_arch, ", ".join(self.base_paths + self.mod_paths) or "the mod",
+                          "; similar files: " + ", ".join(similar) if similar else ""))
+                self._scb = (None, msg)
             else:
+                where = self.mod_vfs.source_of(path)
                 try:
                     self._scb = (scbmod.read_scb(self.mod_vfs.read(path)), None)
+                    self.notes.append("SkirmishScripts.scb read from %s" % (where,))
                 except (scbmod.ScbError, ValueError, IndexError, Exception) as exc:
-                    self._scb = (None, "SkirmishScripts.scb could not be read (%s); no AI scripts carried over" % exc)
+                    self._scb = (None, "SkirmishScripts.scb (%s) could not be read (%s); no AI scripts carried over"
+                                 % (where, exc))
         return self._scb
 
     # references --------------------------------------------------------------------------------------------
@@ -252,7 +374,7 @@ class Context:
         fields, _h = self.refs_of(d)
         for r in fields:
             for kind in r.kinds:
-                for path in Converter._asset_paths(kind, r.token):
+                for path in search.asset_paths(kind, r.token, self.language, self.audio_settings):
                     if self.mod_vfs.exists(path) and not self.mod_vfs.same_file(self.base_vfs, path):
                         return True
         return False
@@ -264,8 +386,8 @@ class Converter:
         self.o = options
         self.progress = progress or ctx.progress
         self.rep = Report()
-        for w in ctx.warnings:
-            self.rep.warn(w)
+        for kind, w in ctx.warnings:
+            self.rep.warn(w, kind)
         if not options.tag or not TAG_RE.match(options.tag):
             raise ConvertError("tag %r must be 2-6 characters, [A-Z][A-Z0-9]*" % options.tag)
         if options.id is not None and not ID_RE.match(options.id):
@@ -295,11 +417,15 @@ class Converter:
         side = (tmpl.node.first("Side") or "").strip()
         if not side:
             raise ConvertError("PlayerTemplate %s has no Side" % tmpl.name)
+        reason = unplayable_reason(self.mod, tmpl)
+        if reason:
+            raise Unplayable("%s is not playable in the mod itself: %s" % (tmpl.name, reason))
         self.side = side
         self.new_side = self.prefix + side
         playable = (tmpl.node.first("PlayableSide") or "No").strip().lower() == "yes"
         if not playable:
-            rep.warn("PlayerTemplate %s is not playable in the mod (PlayableSide is not Yes)" % tmpl.name)
+            rep.warn("PlayerTemplate %s is not playable in the mod (PlayableSide is not Yes)" % tmpl.name,
+                     "playable")
         self.tmpl = tmpl
         self.ai_roots = []
         self._prepare_ai()
@@ -325,12 +451,13 @@ class Converter:
         self.scb_player = None
         self.scb_scripts_roots = []
         if self.build_list is None:
-            self.rep.warn("no SkirmishBuildList for side %s in AIData: the computer cannot play this army" % self.side)
+            self.rep.warn("no SkirmishBuildList for side %s in AIData: the computer cannot play this army" % self.side,
+                          "ai")
         if self.side_info is None:
             self.rep.info("no SideInfo for side %s in AIData" % self.side)
         self.scb, problem = self.ctx.skirmish_scb()
         if problem:
-            self.rep.warn(problem)
+            self.rep.warn(problem, "ai scripts")
         if self.scb is not None:
             for cand in ("Skirmish" + self.side, self.tmpl.name, "Skirmish" + self.tmpl.name):
                 sl, teams, pname = scbmod.extract_for_player(self.scb, cand)
@@ -338,7 +465,7 @@ class Converter:
                     self.scb_list, self.scb_teams, self.scb_player = sl, teams, pname
                     break
             if self.scb_list is None:
-                self.rep.warn("SkirmishScripts.scb has no script list for Skirmish%s" % self.side)
+                self.rep.warn("SkirmishScripts.scb has no script list for Skirmish%s" % self.side, "ai scripts")
             else:
                 import copy
                 r = scbmod.Renamer(self.prefix, {})
@@ -374,30 +501,14 @@ class Converter:
                 self.must_copy.add(("Object", d.key))
         self.identical = self.ctx.identical_for(self.must_copy) if self.use_base else set()
 
-    @staticmethod
-    def _asset_paths(kind, token):
-        t = token.lower()
-        if kind == "Model":
-            return ["art/w3d/%s.w3d" % t]
-        if kind == "Anim":
-            return ["art/w3d/%s.w3d" % t.partition(".")[2]] if "." in t else []
-        if kind == "Texture":
-            stem = os.path.splitext(t)[0]
-            return ["art/textures/%s.dds" % stem, "art/textures/%s.tga" % stem]
-        if kind == "AudioFile":
-            return ["data/audio/sounds/%s.wav" % t, "data/audio/sounds/%s.mp3" % t]
-        if kind == "TrackFile":
-            return ["data/audio/tracks/%s" % t]
-        if kind == "SpeechFile":
-            return ["data/audio/speech/%s" % t]
-        return []
-
     # ---- the walk ------------------------------------------------------------------------------------------------------
     def _walk(self):
         self.progress("following references")
         self.copy = OrderedDict()          # (kind, key) -> Def
         self.refs = OrderedDict()          # (kind, key) -> Def kept as references
         self.unresolved = []
+        self.dangling = []                 # references that do not resolve in the mod as played either
+        self.fatal = []
         self.labels = OrderedDict()        # lower -> original label
         self.asset_requests = []           # (kind, token)
         self.unknown_fields = OrderedDict()
@@ -439,16 +550,39 @@ class Converter:
                         found = True
                     elif kind == "Side":
                         found = True
-                if not found and self._strict_missing(r):
-                    self.unresolved.append((d.kind, d.name, r.field.name, r.token, "/".join(r.kinds)))
+                if not found:
+                    if self._fatal_missing(r):
+                        self.fatal.append((d.kind, d.name, r.field.name, r.token, "/".join(r.kinds)))
+                    elif self._strict_missing(r):
+                        self.unresolved.append((d.kind, d.name, r.field.name, r.token, "/".join(r.kinds)))
             unk = refsmod.unknown_fields(d.node)
             if unk:
                 self.unknown_fields[(d.kind, d.name)] = sorted(set(unk))
+        if self.fatal:
+            raise CannotConvert(self._fatal_text())
+        for kind, name, fld, tok, expected in self.unresolved:
+            self.rep.warn("%s %s: %s = %s does not exist in the mod as played either (%s); left as it is"
+                          % (kind, name, fld, tok, expected), DANGLING_PREFIX + expected.split("/")[0])
+            self.dangling.append({"what": expected.split("/")[0], "name": tok, "in": "%s %s" % (kind, name),
+                                  "field": fld})
         # redefinitions in the mod of things we use
         for kind, name, f1, f2, same in self.mod.redefined:
             if (kind, name.lower()) in self.copy and not same:
                 self.rep.info("%s %s is defined more than once (%s, %s); the last definition is used"
                               % (kind, name, f1, f2))
+
+    def _fatal_text(self):
+        ex = "; ".join("%s %s: %s = %s (%s)" % f for f in self.fatal[:3])
+        return ("cannot be converted: %d reference(s) to names the engine resolves while it reads the INI files and "
+                "rejects when they are missing (Science, CommandButton, Locomotor) found nothing in the mod as "
+                "played, e.g. %s%s. The mod itself could not start with this; if it does, an INI file of it was not "
+                "read correctly (check zharmy inspect --ini-problems)"
+                % (len(self.fatal), ex, " and %d more" % (len(self.fatal) - 3) if len(self.fatal) > 3 else ""))
+
+    @staticmethod
+    def _fatal_missing(r):
+        """A name of a kind the engine resolves while reading the INI files (and rejects when it is missing)."""
+        return len(r.kinds) == 1 and r.kinds[0] in FATAL_KINDS and not refsmod.is_keyword(r.token)
 
     @staticmethod
     def _strict_missing(r):
@@ -477,14 +611,25 @@ class Converter:
     def _plan_assets(self):
         self.progress("collecting model, texture and sound files")
         ap = assetsmod.AssetPlanner(self.mod_vfs, self.base_vfs, self.tag, self.use_base,
-                                    self.mod_strings.language or self.o.language or "english",
-                                    self.o.zhc_names, self.rep.warn, self.rep.info)
+                                    self.ctx.language, self.o.zhc_names,
+                                    lambda m: self.rep.warn(m, "assets"), self.rep.info)
         for kind, tok in self.asset_requests:
             ap.add(kind, tok)
         ap.plan()
         self.assets = ap
+        for d, files, keep in ap.duplicates:
+            self.rep.warn("W3D name %s is defined by %d files (%s); %s keeps it, the others got names of their own"
+                          % (d, len(files), ", ".join(files[:4]), keep), "w3d names")
+        what = {"Model": "model", "Anim": "animation", "Texture": "texture", "AudioFile": "sound",
+                "TrackFile": "music", "SpeechFile": "speech"}
         for rec in ap.report["missing"]:
-            self.rep.warn("%s file not found in the mod: %s" % (rec["kind"], rec["name"]))
+            kind = what.get(rec["kind"], rec["kind"])
+            msg = "%s file %s is not in the mod as played either (the reference is left as it is)" % (kind, rec["name"])
+            if rec.get("hint"):
+                msg += "; " + rec["hint"]
+            self.rep.warn(msg, DANGLING_PREFIX + kind)
+            self.dangling.append({"what": kind, "name": rec["name"], "path": rec.get("path"),
+                                  "hint": rec.get("hint")})
 
     # ---- strings ----------------------------------------------------------------------------------------------------------
     def _plan_strings(self):
@@ -511,7 +656,9 @@ class Converter:
             self.string_entries[new] = text
             self.label_report["copied"].append(label)
         for label in self.label_report["missing"]:
-            self.rep.warn("string label %s is in no string table of the mod; the reference is left as it is" % label)
+            self.rep.warn("string label %s is in no string table of the mod (%s); the reference is left as it is"
+                          % (label, self.ctx.language_name or "language independent"), DANGLING_PREFIX + "string label")
+            self.dangling.append({"what": "string label", "name": label})
 
     # ---- mapping of one token ----------------------------------------------------------------------------------------
     def _mapper(self, kind, token):
@@ -700,7 +847,7 @@ class Converter:
         manifest["converter"] = OrderedDict([("tool", "zharmy"), ("version", __version__),
                                              ("warnings", [])])
         self.ai_flag = ai
-        manifest["converter"]["warnings"] = self.rep.warnings[:100]
+        manifest["converter"]["warnings"] = _warning_digest(self.rep)
         return manifest
 
     # ---- report ------------------------------------------------------------------------------------------------------------
@@ -742,7 +889,12 @@ class Converter:
         d["unknownFields"] = [{"kind": k, "name": n, "fields": f} for (k, n), f in self.unknown_fields.items()]
         d["unresolvedReferences"] = [{"kind": k, "name": n, "field": f, "value": v, "expected": e}
                                      for k, n, f, v, e in self.unresolved]
+        d["danglingReferences"] = self.dangling
         d["warnings"] = rep.warnings
+        d["warningsByKind"] = OrderedDict((k, len(v)) for k, v in rep.kinds().items())
+        d["warningGroups"] = OrderedDict(rep.kinds())
+        d["language"] = OrderedDict([("name", self.ctx.language_name), ("why", self.ctx.language_why)])
+        d["setup"] = list(self.ctx.notes)
         d["notes"] = rep.infos
         if self.mod.extensions:
             d["iniExtensions"] = {f: e for f, e in self.mod.extensions.items()}
@@ -788,18 +940,16 @@ def format_report(report):
         L.append("  %-14s %4d  %s" % (kind, len(names), _short(names)))
     if report["modifiedStockDefinitions"]:
         L.append("Ruleset definitions the mod changed (copied under the new tag):")
-        for e in report["modifiedStockDefinitions"][:60]:
+        for e in report["modifiedStockDefinitions"][:20]:
             L.append("  %s %s" % (e["kind"], e["name"]))
-        if len(report["modifiedStockDefinitions"]) > 60:
-            L.append("  ... %d more (see --report)" % (len(report["modifiedStockDefinitions"]) - 60))
+        if len(report["modifiedStockDefinitions"]) > 20:
+            L.append("  ... and %d more (see --report)" % (len(report["modifiedStockDefinitions"]) - 20))
     if report["copiedBecauseTheyPointToChangedDefinitions"]:
         L.append("Unchanged ruleset definitions copied only because they point to changed ones: %d (see --report)"
                  % len(report["copiedBecauseTheyPointToChangedDefinitions"]))
     a = report["assets"]
-    L.append("Files: %d copied, %d kept as references, %d missing" % (
+    L.append("Files: %d copied, %d kept as references, %d missing in the mod as played" % (
         len(a["copied"]), len(a["keptAsReferences"]), len(a["missing"])))
-    for rec in a["missing"]:
-        L.append("  missing %s: %s" % (rec["kind"], rec["name"]))
     s = report["strings"]
     L.append("Strings: %d copied, %d kept as references, %d missing" % (
         len(s["copied"]), len(s["reference"]), len(s["missing"])))
@@ -808,25 +958,45 @@ def format_report(report):
         "yes" if ai["skirmishBuildList"] else "no", "yes" if ai["sideInfo"] else "no", "yes" if ai["scripts"] else "no"))
     if report["notCarried"]:
         L.append("Could not be carried over:")
-        for e in report["notCarried"]:
+        for e in report["notCarried"][:20]:
             L.append("  %s (%s): %s" % (e["what"], e["in"], e["detail"]))
+        if len(report["notCarried"]) > 20:
+            L.append("  ... and %d more (see --report)" % (len(report["notCarried"]) - 20))
     if report["unknownFields"]:
-        L.append("Unknown fields (kept as written; the engine ignores or rejects them):")
-        for e in report["unknownFields"][:40]:
+        L.append("Unknown fields (kept as written; the engine ignores or rejects them): %d definitions, e.g."
+                 % len(report["unknownFields"]))
+        for e in report["unknownFields"][:5]:
             L.append("  %s %s: %s" % (e["kind"], e["name"], ", ".join(e["fields"])))
-        if len(report["unknownFields"]) > 40:
-            L.append("  ... %d more definitions" % (len(report["unknownFields"]) - 40))
-    if report["unresolvedReferences"]:
-        L.append("References to names found nowhere:")
-        for e in report["unresolvedReferences"][:40]:
-            L.append("  %s %s: %s = %s (%s)" % (e["kind"], e["name"], e["field"], e["value"], e["expected"]))
-    if report["warnings"]:
+        if len(report["unknownFields"]) > 5:
+            L.append("  ... and %d more definitions (see --report)" % (len(report["unknownFields"]) - 5))
+    groups = report.get("warningGroups") or {"other": report["warnings"]}
+    dangling = [(k, v) for k, v in groups.items() if k.startswith(DANGLING_PREFIX)]
+    plain = [(k, v) for k, v in groups.items() if not k.startswith(DANGLING_PREFIX)]
+    if plain:
         L.append("Warnings:")
-        for w in report["warnings"]:
-            L.append("  " + w)
+        for kind, msgs in plain:
+            for m in msgs[:3]:
+                L.append("  " + m)
+            if len(msgs) > 3:
+                L.append("  ... and %d more %s warnings (see --report)" % (len(msgs) - 3, kind))
+    if dangling:
+        total = sum(len(v) for _k, v in dangling)
+        L.append("Pre-existing dangling references: %d things the mod itself refers to but does not have (the "
+                 "engine tolerates them; they are left as they are):" % total)
+        for kind, msgs in dangling:
+            L.append("  %s: %d" % (kind[len(DANGLING_PREFIX):], len(msgs)))
+            for m in msgs[:3]:
+                L.append("    " + m)
+            if len(msgs) > 3:
+                L.append("    ... and %d more (see --report)" % (len(msgs) - 3))
     if report["notes"]:
         L.append("Notes: %d (use --report to see them)" % len(report["notes"]))
     return "\n".join(L) + "\n"
+
+
+def format_setup(ctx):
+    """The lines that say how the folders were read (layout, archives chosen as the mod's, language)."""
+    return "".join(line + "\n" for line in ctx.notes)
 
 
 def _short(names, limit=6):
@@ -885,7 +1055,11 @@ def derive_tags(names, prefix=None):
 
 def convert_all(mod_paths, base_paths, out_dir, tag_prefix=None, requires="zerohour", language=None,
                 mod_archives=None, template=None, progress=None, only=None):
-    """Convert every playable faction. Returns (rows, contexts) where each row is a dict for the summary table."""
+    """Convert every playable faction. Returns (rows, contexts) where each row is a dict for the summary table.
+
+    A faction that cannot be played in the mod itself (its starting building or units do not exist) is skipped
+    (``row["skipped"]``, no package); one the engine would reject (``row["cannot"]``) gets no package either.
+    """
     import time
     progress = progress or (lambda m: None)
     ctx = Context(mod_paths, base_paths, requires, language, mod_archives, progress)
@@ -911,11 +1085,23 @@ def convert_all(mod_paths, base_paths, out_dir, tag_prefix=None, requires="zeroh
         try:
             c = Converter(ctx, opts, progress)
             report = c.run(out)
+        except Unplayable as exc:
+            row["skipped"] = str(exc)
+            _remove(out)
+            rows.append(row)
+            continue
+        except CannotConvert as exc:
+            row["cannot"] = str(exc)
+            _remove(out)
+            rows.append(row)
+            continue
         except ConvertError as exc:
             row["error"] = str(exc)
             rows.append(row)
             continue
         asset = lambda kinds: len({r["path"] for r in report["assets"]["copied"] if r["kind"] in kinds})
+        groups = report.get("warningGroups", {})
+        n_dangling = sum(len(v) for k, v in groups.items() if k.startswith(DANGLING_PREFIX))
         row.update({
             "sizeMB": os.path.getsize(out) / 1048576.0,
             "objects": len(report["definitionsCopied"].get("Object", [])),
@@ -923,7 +1109,8 @@ def convert_all(mod_paths, base_paths, out_dir, tag_prefix=None, requires="zeroh
             "models": asset(("Model",)),
             "textures": asset(("Texture",)),
             "sounds": asset(("AudioFile", "TrackFile", "SpeechFile")),
-            "warnings": len(report["warnings"]),
+            "warnings": len(report["warnings"]) - n_dangling,
+            "dangling": n_dangling,
             "seconds": time.time() - t0,
             "report": report,
         })
@@ -931,22 +1118,39 @@ def convert_all(mod_paths, base_paths, out_dir, tag_prefix=None, requires="zeroh
     return rows, ctx
 
 
+def _remove(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def format_summary(rows):
-    head = "%-30s %-6s %-30s %8s %7s %7s %6s %6s %6s %5s" % (
-        "faction", "tag", "package", "size MB", "objects", "weapons", "models", "tex", "sounds", "warn")
+    head = "%-30s %-6s %-30s %8s %7s %7s %6s %6s %6s %5s %8s" % (
+        "faction", "tag", "package", "size MB", "objects", "weapons", "models", "tex", "sounds", "warn",
+        "dangling")
     L = [head, "-" * len(head)]
-    tot = dict(sizeMB=0.0, objects=0, weapons=0, models=0, textures=0, sounds=0, warnings=0)
+    tot = dict(sizeMB=0.0, objects=0, weapons=0, models=0, textures=0, sounds=0, warnings=0, dangling=0)
     for r in rows:
         if "error" in r:
             L.append("%-30s %-6s FAILED: %s" % (r["faction"], r["tag"], r["error"]))
             continue
-        L.append("%-30s %-6s %-30s %8.2f %7d %7d %6d %6d %6d %5d" % (
+        if "cannot" in r:
+            L.append("%-30s %-6s %s" % (r["faction"], r["tag"], r["cannot"]))
+            continue
+        if "skipped" in r:
+            L.append("%-30s %-6s SKIPPED (no package written): %s" % (r["faction"], r["tag"], r["skipped"]))
+            continue
+        L.append("%-30s %-6s %-30s %8.2f %7d %7d %6d %6d %6d %5d %8d" % (
             r["faction"], r["tag"], os.path.basename(r["file"]), r["sizeMB"], r["objects"], r["weapons"],
-            r["models"], r["textures"], r["sounds"], r["warnings"]))
+            r["models"], r["textures"], r["sounds"], r["warnings"], r["dangling"]))
         for k in tot:
             tot[k] += r[k]
     L.append("-" * len(head))
-    L.append("%-30s %-6s %-30s %8.2f %7d %7d %6d %6d %6d %5d" % (
-        "total (%d)" % len(rows), "", "", tot["sizeMB"], tot["objects"], tot["weapons"], tot["models"],
-        tot["textures"], tot["sounds"], tot["warnings"]))
+    done = sum(1 for r in rows if "report" in r)
+    L.append("%-30s %-6s %-30s %8.2f %7d %7d %6d %6d %6d %5d %8d" % (
+        "total (%d)" % done if done == len(rows) else "total (%d of %d)" % (done, len(rows)), "", "", tot["sizeMB"], tot["objects"], tot["weapons"], tot["models"],
+        tot["textures"], tot["sounds"], tot["warnings"], tot["dangling"]))
+    L.append("warn = warnings that need a look; dangling = references the mod itself has no target for (the "
+             "engine tolerates them; counted apart, listed in the per-package report)")
     return "\n".join(L) + "\n"

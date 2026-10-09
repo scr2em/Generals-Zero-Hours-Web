@@ -190,3 +190,43 @@ class GameData:
                 if c.name == "SkirmishBuildList" and c.args.split()[:1] and c.args.split()[0].lower() == side.lower():
                     found = c
         return found
+
+
+# ---- INI problems ---------------------------------------------------------------------------------------------
+def problem_kind(msg):
+    if msg.startswith("unknown block"):
+        return "unknown top level line (a block that ended early, or text outside any block)"
+    if msg.startswith("missing End"):
+        return "block without End"
+    if msg.startswith("#unresolved-include"):
+        return "#include that could not be found"
+    return msg.split(":")[0][:60]
+
+
+def group_ini_problems(errors):
+    """errors: [(file, line, message)] -> [(kind, [errors])], most frequent kind first."""
+    groups = {}
+    for e in errors:
+        groups.setdefault(problem_kind(e[2]), []).append(e)
+    return sorted(groups.items(), key=lambda kv: -len(kv[1]))
+
+
+def format_ini_problems(errors, examples=3, full=False):
+    """Text summary of INI problems: per kind the count and the files, first examples as file:line, or all of
+    them when ``full``."""
+    if not errors:
+        return "No INI problems.\n"
+    lines = ["%d INI problem%s:" % (len(errors), "" if len(errors) == 1 else "s")]
+    for kind, items in group_ini_problems(errors):
+        files = {}
+        for f, _l, _m in items:
+            files[f] = files.get(f, 0) + 1
+        top = ", ".join("%s (%d)" % kv for kv in sorted(files.items(), key=lambda kv: -kv[1])[:4])
+        lines.append("  %s: %d in %d file%s, mostly %s" % (kind, len(items), len(files),
+                                                             "" if len(files) == 1 else "s", top))
+        shown = items if full else items[:examples]
+        for f, l, m in shown:
+            lines.append("    %s:%d: %s" % (f, l, m))
+        if not full and len(items) > examples:
+            lines.append("    ... and %d more" % (len(items) - examples))
+    return "\n".join(lines) + "\n"

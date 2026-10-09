@@ -267,7 +267,30 @@ def _read_script(r, version, off, size):
     return s
 
 
+def decompress(data):
+    """The engine's ``CachedFileInputStream::open`` decompresses data chunk files that start with a compression tag
+    (``CompressionManager``: ``ZL1\\0``..``ZL9\\0`` zlib; ``NOX``/``EAR``/``EAB``/``EAH`` other codecs). zlib is
+    supported here, the others are reported."""
+    if len(data) >= 8 and data[3:4] == b"\0":
+        tag = data[:3]
+        if tag[:2] == b"ZL" and tag[2:3] in (b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8", b"9"):
+            import zlib
+            (size,) = struct.unpack_from("<i", data, 4)
+            try:
+                out = zlib.decompress(data[8:])
+            except zlib.error as exc:
+                raise ScbError("zlib data cannot be decompressed (%s)" % exc)
+            if len(out) != size:
+                raise ScbError("decompressed size %d differs from the size in the header (%d)" % (len(out), size))
+            return out
+        if tag in (b"NOX", b"EAR", b"EAB", b"EAH"):
+            raise ScbError("the file is compressed with %s, which this tool cannot decompress" %
+                           tag.decode("ascii"))
+    return data
+
+
 def read_scb(data):
+    data = decompress(data)
     r = _Reader(data)
     scb = Scb()
     for name, version, off, size in r.chunks(r.start, len(data)):
