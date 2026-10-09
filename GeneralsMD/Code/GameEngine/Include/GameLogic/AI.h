@@ -217,6 +217,11 @@ struct AISkillSettings
 	Real m_garrisonThreatValue;///< Value of armed enemies in the base that makes the infantry take cover.
 	Real m_garrisonHoldSeconds;///< The garrison stays in this long after the last enemy was seen in the base.
 	Bool m_garrisonClear;			///< Units bring down enemy structures that hold garrisons.
+
+	// ---- batch 2: unit abilities ----
+	Bool m_useAbilities;			///< Units with targeted special powers use them on good targets.
+	Real m_abilityRange;			///< Targets are looked for this far from the unit.
+	Real m_abilityMinValue;		///< Least value of a target (cost of the enemy, or of the hurt friend scaled by its damage) that a power is used on.
 };
 
 class AISideBuildList : public MemoryPoolObject

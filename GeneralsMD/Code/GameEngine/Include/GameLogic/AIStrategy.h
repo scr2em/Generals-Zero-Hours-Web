@@ -42,6 +42,7 @@ class TeamPrototype;
 class ThingTemplate;
 class TAiData;
 class SpecialPowerTemplate;
+class CommandButton;
 struct AISkillSettings;
 
 //-------------------------------------------------------------------------------------------------
@@ -275,6 +276,13 @@ struct AIGarrisonRecord
 	Int						m_phase;						///< 0: entering, 1: inside, 2: leaving
 };
 
+/// When a unit last used a targeted power (the power may need a moment before it shows as used).
+struct AIAbilityUse
+{
+	ObjectID			m_unit;
+	UnsignedInt		m_frame;
+};
+
 enum AIArmyState CPP_11(: Int)
 {
 	ARMY_GATHER = 0,				///< teams gather at the rally point and grow
@@ -449,6 +457,16 @@ private:
 	void tryStartRepairs();
 	void updateRepair();
 
+	// unit abilities (AIAbility.cpp)
+	enum { ABILITY_MEMORY = 12 };
+	Bool abilityOn() const;
+	Bool abilityRecentlyUsed( ObjectID unit ) const;
+	void noteAbilityUsed( ObjectID unit );
+	Object *pickAbilityTarget( Object *unit, const CommandButton *button, Bool wantEnemy, Bool wantAlly, Real *score ) const;
+	Bool pickAbilityPlace( Object *unit, const CommandButton *button, Coord3D *where, Real *score ) const;
+	void useAbilities( Object *unit );
+	void updateAbilities();
+
 	// garrisons (AIGarrison.cpp)
 	enum { MAX_GARRISONED = 12, MAX_CLEANERS = 4 };
 	Bool garrisonOn() const;
@@ -598,6 +616,11 @@ private:
 	UnsignedInt		m_bdDamageFrame;								///< latest damage to one of our objects inside the zone by an enemy
 	UnsignedInt		m_nextBaseDefence;
 	UnsignedInt		m_bdWeakFrame;									///< last trace line about a threat that the teams at home do not go out to
+	AIAbilityUse	m_abilityUsed[ABILITY_MEMORY];
+	Int						m_abilityTeam;									///< round robin over the units of the field teams
+	Int						m_abilityUnit;
+	UnsignedInt		m_nextAbility;
+	Int						m_abilityUses;									///< statistics for the trace
 	AIGarrisonRecord m_garrisoned[MAX_GARRISONED];	///< infantry that hold structures of ours against an attack
 	Int						m_numGarrisoned;
 	UnsignedInt		m_garrisonLastThreat;

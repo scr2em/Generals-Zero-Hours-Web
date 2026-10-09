@@ -204,7 +204,7 @@ public:
 	virtual void setExpert(Bool expert) {m_expert = expert;}
 	Bool isExpert() const {return m_expert;}
 	/// Switches of single Expert features, for A/B tests on the test bench (player variant "off:focus+wave..."; AIFeature bits). Not saved: only the bench sets them.
-	enum AIFeature { AIF_FOCUS = 1, AIF_WAVE = 2, AIF_RETREAT = 4, AIF_SCOUT = 8, AIF_COUNTER = 16, AIF_SAVE = 32, AIF_STARVE = 64, AIF_SIEGE = 128, AIF_DEFEND = 256, AIF_SPLIT = 512, AIF_THREAT = 1024, AIF_KITE = 2048, AIF_FIGHT = 4096, AIF_MERGE = 8192, AIF_SPREAD = 16384, AIF_RAID = 32768, AIF_PROTECT = 65536, AIF_REPAIR = 131072, AIF_ROUTE = 262144, AIF_BASEDEF = 8388608, AIF_GEO = 16777216, AIF_LAYOUT = 33554432, AIF_GEORALLY = 67108864, AIF_GEOSITES = 134217728, AIF_GARRISON = 524288, AIF_CLEAR = 4194304 };
+	enum AIFeature { AIF_FOCUS = 1, AIF_WAVE = 2, AIF_RETREAT = 4, AIF_SCOUT = 8, AIF_COUNTER = 16, AIF_SAVE = 32, AIF_STARVE = 64, AIF_SIEGE = 128, AIF_DEFEND = 256, AIF_SPLIT = 512, AIF_THREAT = 1024, AIF_KITE = 2048, AIF_FIGHT = 4096, AIF_MERGE = 8192, AIF_SPREAD = 16384, AIF_RAID = 32768, AIF_PROTECT = 65536, AIF_REPAIR = 131072, AIF_ROUTE = 262144, AIF_BASEDEF = 8388608, AIF_GEO = 16777216, AIF_LAYOUT = 33554432, AIF_GEORALLY = 67108864, AIF_GEOSITES = 134217728, AIF_GARRISON = 524288, AIF_CLEAR = 4194304, AIF_ABILITY = 1048576 };
 	/// What a target pick of the Expert target selection was like (bits of the 'flags' of expertAssignDamage; for the trace statistics).
 	enum { PICK_SPLIT = 1, PICK_THREAT = 2, PICK_SUPPORT = 4, PICK_LONGRANGE = 8 };
 	Bool isFeatureOff(Int f) const {return (m_featureOff & f) != 0;}

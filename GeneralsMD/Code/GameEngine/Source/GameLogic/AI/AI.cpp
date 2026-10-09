@@ -319,6 +319,9 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "GarrisonThreatValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonThreatValue ) },
 			{ "GarrisonHoldSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonHoldSeconds ) },
 			{ "GarrisonClear",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_garrisonClear ) },
+			{ "UnitAbilities",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAbilities ) },
+			{ "AbilityRange",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityRange ) },
+			{ "AbilityMinValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityMinValue ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1311,6 +1314,9 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_garrisonThreatValue = 300.0f;
 	ex.m_garrisonHoldSeconds = 8.0f;
 	ex.m_garrisonClear = true;
+	ex.m_useAbilities = true;
+	ex.m_abilityRange = 400.0f;
+	ex.m_abilityMinValue = 150.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1415,6 +1421,9 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_garrisonThreatValue );
 		xfer->xferReal( &sk.m_garrisonHoldSeconds );
 		xfer->xferBool( &sk.m_garrisonClear );
+		xfer->xferBool( &sk.m_useAbilities );
+		xfer->xferReal( &sk.m_abilityRange );
+		xfer->xferReal( &sk.m_abilityMinValue );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

@@ -157,6 +157,10 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bdDamageFrame(0),
 	m_nextBaseDefence(0),
 	m_bdWeakFrame(0),
+	m_abilityTeam(0),
+	m_abilityUnit(0),
+	m_nextAbility(0),
+	m_abilityUses(0),
 	m_numGarrisoned(0),
 	m_garrisonLastThreat(0),
 	m_nextGarrison(0),
@@ -230,6 +234,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bdPos.zero();
 	memset(m_entrances, 0, sizeof(m_entrances));
 	memset(m_garrisoned, 0, sizeof(m_garrisoned));
+	memset(m_abilityUsed, 0, sizeof(m_abilityUsed));
 	memset(m_cleaners, 0, sizeof(m_cleaners));
 	memset(m_geoSites, 0, sizeof(m_geoSites));
 	m_bdDamagePos.zero();
@@ -267,7 +272,8 @@ void AIStrategy::applyVariant()
 		{ "repair", AIPlayer::AIF_REPAIR }, { "route", AIPlayer::AIF_ROUTE }, { "basedef", AIPlayer::AIF_BASEDEF },
 		{ "geo", AIPlayer::AIF_GEO }, { "layout", AIPlayer::AIF_LAYOUT },
 		{ "georally", AIPlayer::AIF_GEORALLY }, { "geosites", AIPlayer::AIF_GEOSITES },
-		{ "garrison", AIPlayer::AIF_GARRISON }, { "clear", AIPlayer::AIF_CLEAR } };
+		{ "garrison", AIPlayer::AIF_GARRISON }, { "clear", AIPlayer::AIF_CLEAR },
+		{ "ability", AIPlayer::AIF_ABILITY } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -397,6 +403,7 @@ void AIStrategy::update()
 				AI_TRACE("base defence: %d alarms (%d idle units near the rally point at the moments they began), %d team orders, %s now", m_bdAlarms, m_bdIdleAtAlarm, m_bdOrders, m_bdActive ? "ALARM" : "quiet");
 				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
 				AI_TRACE("garrisons: %d infantry entered (%d unit-seconds inside, %d of them firing), %d structures of the enemy attacked (%d brought down), %d holding now", m_garrisonEntered, m_garrisonSeconds, m_garrisonFiring, m_garrisonClearJobs, m_garrisonClears, m_numGarrisoned);
+				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
 				AI_TRACE("routes: %d waves routed around defences, %d breaches started (%d with the defences down)", m_routesPlanned, m_breachesStarted, m_breachKills);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
@@ -410,6 +417,7 @@ void AIStrategy::update()
 	updateBaseDefence();
 	updateGeo();
 	updateGarrison();
+	updateAbilities();
 
 	if (now >= m_nextTeamEval)
 	{
@@ -2187,7 +2195,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 9;
+	XferVersion currentVersion = 10;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2320,6 +2328,13 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferObjectID(&m_clearTarget);
 		xfer->xferUnsignedInt(&m_clearStart);
 		xfer->xferUnsignedInt(&m_nextClearSearch);
+	}
+	if (version >= 10)
+	{
+		xfer->xferUser(m_abilityUsed, sizeof(m_abilityUsed));
+		xfer->xferInt(&m_abilityTeam);
+		xfer->xferInt(&m_abilityUnit);
+		xfer->xferUnsignedInt(&m_nextAbility);
 	}
 }
 
