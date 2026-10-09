@@ -103,8 +103,7 @@ Ironwood): Expert won 26 (65%, 95% CI 50-78%), Hard won 3 (8%), 11 timeouts (not
 wins). Expert wins almost always from start position 1 and is about even from position 2.
 Replays were identical in the determinism check.
 
-The target of about 80% was relaxed to the current level for now. Open: the start-position
-asymmetry, Phase 3 (difficulty from skill), and tuning with the retail game data (run the
+The target of about 80% was relaxed to the current level for now. Open: Phase 3 (difficulty from skill), and tuning with the retail game data (run the
 bench with `--data <Zero Hour folder>` on a machine that has it).
 
 ## Results (tactics: split fire, threat targets, kiting, fight check, merge, spread)
@@ -191,3 +190,125 @@ radiation as blast sources, and kiting against faster enemies. They follow the s
 
 Bench additions: `--keep-logs`, `--overlay` with the fixtures `towers`, `strictfight` and `splash` (`scripts/aibench/fixtures/`),
 `on-`/`off-` words in the player variant. See `scripts/aibench/README.md`.
+
+## Results (batch 2: base defence, terrain, economy, garrisons, abilities)
+
+Ten more behaviours, again each with a switch for the bench (`expert:Ironwood:off-<word>`; `on-<word>` for a feature that is off by
+default), tuning values in the code defaults and in the optional `ExpertSkill` block of `AIData.ini`, a line in the `trace` output, and
+state that is saved with the game (`AIStrategy::xfer` version 12). Easy, Normal and Hard are unchanged. Everything uses synchronised
+state only (frame counters, the pathfinder, `GameLogicRandom`; no wall clock, no pointer-keyed iteration), the enemy through the enemy model
+(what the player has seen) and the start positions of the map (public in a skirmish), and generic data of templates and modules (KindOf,
+weapons, contain modules, special powers, locomotors, command sets): no unit names. The work is spread over frames (the largest single
+job, the ways into the base, is one pass of a few pathfinder queries).
+
+### Base defence has priority, and terrain-aware defence (asked for by users)
+
+**Base defence priority** (`basedef`, `AIBaseDefence.cpp`). The user's report: the Expert kept its units waiting at the rally point while the
+base was being attacked (the holds of the fight check and of the merge, added in the tactics batch, sat on top of the engine's defence).
+Reproduced with the trace before the change (`expert:Ironwood:trace+off-basedef` against Hard, the alarm line is printed with the response off):
+
+```
+BASEDEF alarm 3: enemy force 600 at (729,820) in the base zone; 4 of 4 units near the rally point stand idle; army state gather; response OFF
+```
+
+A threat is armed enemy units seen inside the base zone (the base radius plus `BaseDefenceMargin` 120) worth at least `BaseDefenceMinValue`
+(150), or damage by an enemy to one of our objects inside it (`ActiveBody` reports it through `Player::aiObjectDamaged`). While there is one:
+the teams that are at home (gathering, held by the fight check, merged reinforcements, a wave that has not got far) go for it together
+(attack-move; `sendTeamToBase`), they are not sent back to the rally point, no wave is launched and raiders come home, and when nothing
+was seen in the zone for `BaseDefenceClearSeconds` (5) they go back to their role. A threat that is much stronger than the force at home
+(`BaseDefenceMinAdvantage` 0.6) and is not hitting anything of ours does not draw the teams out one by one: they stay together at the rally
+point. A wave that is deep in enemy territory only turns round when the fight check says so (the combat model), as before.
+First version (zone +250, threshold 100, one team per order): 15/40 wins and 23 timeouts, the teams chased single scouts at the edge of the
+zone; the tuned version: 23/40 (57%, 95% CI 42-71%), Hard 1 win, 16 timeouts, against the same Expert with `off-basedef` 22/40 (55%, 40-69%),
+Hard 9 wins, 9 timeouts (seeds 1-40, determinism 4/4): the same win rate, and the Expert no longer loses games to early attacks.
+
+**Terrain-aware defence** (`geo`, `layout`; `AIGeo.cpp`). `geo`: the ways into the base come from the pathfinder. The ground reachable from the
+base is flooded (`groundOpen` = the pathfinder cell is passable); if a ring around the base is mostly closed by terrain (cliffs, water,
+buildings), the gaps in it are the ways in, every gap that the enemy start can reach by a ground path counts, and its share of the expected
+attacks falls with the length of that path (`(shortest/length)^3`); on open ground the crossing of the path from each enemy start with the
+perimeter is the way in. On each way in the path is walked outwards and the passable span across it is measured every 10 units: the
+narrowest place (at most `GeoChokeWidth` 200 and under 75% of the widest) or a bridge is the chokepoint. The share of a way in is mixed
+with what the enemy model has seen of enemy ground forces near it (up to half). Uses: (1) defence structures (a template with KindOf
+FS_BASE_DEFENSE that hits ground units) of the build list that are not built yet, and the ones the script action "build base defence" asks for,
+are put where they cover the chokepoint of the way in with the fewest defences for its share (candidates around the chokepoint at 40-80%
+of the weapon range, within the base radius plus `GeoReach` of the base, reachable on foot from the way in, legal to build, away from other
+defences; higher ground and the inner side of the chokepoint score higher); (2) the rally point is on the main way in, beside the
+chokepoint (`GeoRallyOffset` outside it; on open ground `GeoRallyOut` outside the base radius, on the path itself, not on the straight
+line to the enemy start). Waiting inside the gap was tried first and was a bad idea (the army blocks its own way out and the enemy goes
+round to the other gaps): 3 wins against 38 for the default rally point on the map with gates. `layout`: the original code turns the
+build list of every start position by the same 135 degrees (`RotateSkirmishBases = No`), which is right for one start of a two player
+map and turns the base the wrong way round at the other. The Expert turns the layout to face the enemy start(s) (direction to them plus 90
+degrees, which is the original turn for the first start). Trace of the ways in on the map with gates (`--overlay gates,geotowers --map ironwood_gates`):
+
+```
+GEO: terrain closes the perimeter around the base (radius 173, perimeter 293): 3 way(s) in
+GEO: way in 1: crosses at (468,466) bearing 42 deg; chokepoint at (480,470) width 100; expected 52% of the attacks; army waits at (440,441)
+GEO: way in 2: crosses at (64,493) bearing 130 deg; chokepoint at (60,500) width 51; expected 24% of the attacks; army waits at (91,461)
+GEO: way in 3: crosses at (476,80) bearing -40 deg; chokepoint at (476,80) width 51; expected 24% of the attacks; ...
+GEO: defence IronwoodGeoTower (range 200) at (424,414) height 16 for way in 1 (chokepoint at (480,470), 1 defence(s) there now)
+GEO: build list IronwoodGeoTower moved from (174,386) to (424,414)
+```
+
+(the fourth gap, behind the base, leads into a dead end and is dropped). Fixtures: `gates` (a bench-only map with cliff-rimmed basins, generated by
+`scripts/aibench/fixtures/maps/gates.py`) and `geotowers` (three towers on the build list, built by the skirmish build code).
+
+Start positions, Expert against Hard, seeds 1-40 (Expert's wins / losses / timeouts, by the Expert's start position):
+
+| configuration | start 1 | start 2 |
+|---|---|---|
+| before base defence (`off-basedef`) | 18 / 0 / 2 | 4 / 9 / 7 |
+| base defence | 17 / 0 / 3 | 6 / 1 / 13 |
+| base defence + `geo` + `layout` (final) | 17 / 0 / 3 | 7 / 0 / 13 |
+
+and Expert against Expert (`on-layout` against the default, 40 seeds in each order; wins / losses / timeouts of the player by his start): default at start 1
+6 / 3 / 31, default at start 2 1 / 30 / 9; layout at start 1 30 / 1 / 9, layout at start 2 3 / 6 / 31. So the layout was the cause of the
+weakness at the second start: with it the Expert at the second start no longer loses (9 lost games became 0 against Hard, and the mirror
+match is even), but those games now end in timeouts: the Hard AI at the first start still has the layout that was made for it and holds its
+position (the timeouts are mostly stalemates, as between two equal Experts). The Hard AI keeps the old layout at both starts (the change is
+Expert only), so it is still the weaker side at the second start.
+
+A note on the method: in a mirror match (Expert against Expert) the player in the first slot is favoured or not by the engine's player order, so every A/B was played in both slot orders and the wins added (a null test with two identical configurations gave 7 against 13 in one order). The report of the bench lists the wins by start position (`startBias`).
+
+Per feature (head to head against the default Expert; each row from both slot orders, wins of the feature / wins of the default):
+
+| feature | overlay, map | wins on / off | timeouts |
+|---|---|---|---|
+| `geo` | none, Ironwood Crossing | 28 / 29 | 23 of 80 |
+| `geo` | `geotowers`, Crossing | 13 / 5 | 62 of 80 |
+| `geo` | `gates,geotowers`, Gates | 14 / 7 | 59 of 80 |
+| `geo` sites only | `gates,geotowers`, Gates | 12 / 10 | 58 of 80 |
+| `geo` rally inside the gap (rejected) | `gates,geotowers`, Gates | 3 / 38 | 39 of 80 |
+| `layout` | none, Crossing | 33 / 7 | 40 of 80 |
+
+### The other features
+
+| # | feature | word | what it does | tuning (`ExpertSkill`) | code |
+|---|---|---|---|---|---|
+| 7 | Economic raids | `raid` | A party of up to `RaidUnits` (3) of the fastest armed units of the field teams (at least `RaidSpeedFactor` = 1.25 times the army's average speed, healthy, teams that are not on a wave or retreating, weapons that hurt the target by their damage against its armour) goes after a gatherer the enemy model has seen (units of the economy role that are not structures: supply trucks, harvesters, workers). The target must be safe: no known ground defence covers it, and the armed units seen around it or on the way to it are worth less than `RaidGuardShare` (0.3) of the party. The party attacks the target while it is in sight, goes to where it was seen when it is not, takes the next gatherer in reach when it is down, and comes home when the fight check (weighed twice a second around the party) says the defenders are too strong (`RaidPullbackAdvantage` 0.9), when it is hurt (under 45% health), when `RaidMaxSeconds` (75) are over, or when no gatherer is in reach. While out, the party is detached from its teams (team orders skip it, the tactics skip it). | `RaidEconomy`, `RaidUnits`, `RaidSpeedFactor`, `RaidStartSeconds` (120), `RaidMaxSeconds`, `RaidCooldownSeconds` (30), `RaidPullbackAdvantage`, `RaidGuardShare` | `AIRaid.cpp` |
+| 8 | Defend workers | `protect` | A protect relation (`AIProtect.h/.cpp`, independent of the strategic AI): protectors are assigned to protected objects (`assign`); the damage code reports a hit on a protected object by an enemy (`AIProtectNotifyDamage` from `ActiveBody`); the nearest suitable protectors (armed, able to hurt the attacker, not losing the exchange badly) go for the attacker, or to the place when it is out of sight, enough of them for the armed value seen around the object (at most `ProtectResponders`); they stay within the leash of their post (`ProtectLeashRadius`), take the next enemy when the attacker is down, and go home when things are calm for `ProtectCalmSeconds`, when they have strayed too far, or after `ProtectMaxSeconds`. A human Protect command can use the same interface (`assign`, `releaseProtector`, `update`, the damage hook). The Expert AI protects its gatherers and workers (KindOf HARVESTER or DOZER) with the armed units of the teams that are at home, refreshed every two seconds. | `ProtectWorkers`, `ProtectLeashRadius` (450), `ProtectResponseRadius` (500), `ProtectCalmSeconds` (6), `ProtectMaxSeconds` (75), `ProtectResponders` (4) | `AIProtect.h/.cpp`, `updateProtection` in `AITactics.cpp`, hook in `ActiveBody.cpp` |
+| 9 | Repair and heal | `repair` | A damaged vehicle (below `RepairBelow` of its health, nothing armed of the enemy within 260) goes to the nearest repair pad of ours (an object with KindOf REPAIR_PAD, e.g. a war factory with a RepairDockUpdate), a damaged infantryman to a heal pad (HEAL_PAD: a HealContain building or an ambulance-like unit); the action manager (`canGetRepairedAt`, `canGetHealedAt`) says whether the unit may use the pad, trips are limited to `RepairTripSeconds` at the unit's speed and two visitors per pad. The unit is detached from its team on the trip and while it is mended, and returns to its team (or the wave's objective) afterwards. Idle dozers repair damaged structures (`RepairDozerBelow`) that are farther away than their own bored-repair range. | `RepairAndHeal`, `RepairBelow` (55%), `RepairTripSeconds` (30), `RepairDozerBelow` (85%) | `AIRepair.cpp` |
+| 10 | Avoid static defences | `route` | The reach of every defence in the enemy model (an armed structure that shoots ground units; its weapon range plus `RouteMargin`) is a circle to stay out of. Before a wave goes, `AIPlanDetour` (`AIRoute.cpp`, a shortest path over a small visibility graph: eight points around every circle) plans up to three waypoints from the army to the objective; the wave moves from point to point and gathers at each one (a team that stands at the current waypoint waits for the others, `routeHolds`; the wave goes on when 70% of its value is there or after 15 s). A way more than `RouteMaxDetour` times the straight way is not taken. Defences that cover the objective itself cannot be avoided: units whose weapon out-ranges the longest of them by `BreachRangeFactor` and that can hurt structures (up to six, the longest range first) become breachers: they go to a firing spot at the edge of their range, outside the reach of the other defences, and shoot the defences while the wave waits at a staging point outside the reach (`BreachHoldSeconds`). Enemy troops that come for the breachers send them back to the wave until it is quiet. The wave goes in when the defences are down, the breachers are lost, or the time is up. | `AvoidDefences`, `RouteMargin` (60), `RouteMaxDetour` (1.8), `BreachRangeFactor` (1.12), `BreachHoldSeconds` (80) | `AIRoute.h/.cpp`, hooks in `updateArmy`, `evaluateTeam` |
+| 11 | Garrisons | `garrison` | Defence: armed enemy ground units worth `GarrisonThreatValue` (300) in the base zone make the infantry that are at home (teams that are not on a wave or retreating, near the base) enter the structures of the base whose contain module is a garrison (`isGarrisonable`; the standing posts of the bunker feature are left to that feature) and that are within 450 of the attackers, as many as there are free places, but not when the attackers out-range the infantry by more than 1.3 times (a garrison could not answer) (`canEnterObject` asks the action manager); they leave `GarrisonHoldSeconds` (8) after the last enemy was seen, and go back to their teams. Attack: a visible enemy structure with a garrison and occupants does not shoot back at units that ignore it, so (only when the fight advantage there is at least 1.0) the (up to four) units with the best damage per second against it (`AICombatModel::damagePerSecond` against its armour) within 600 of it attack it until it is empty or down, or 45 s are over. | `UseGarrisons`, `GarrisonThreatValue`, `GarrisonHoldSeconds`, `GarrisonClear` (word `clear`) | `AIGarrison.cpp` |
+| 12 | Unit abilities | `ability` | A unit of a field team looks (a few units per frame, round robin) at the buttons of its command set: a SPECIAL_POWER button that asks for a target (`NEED_TARGET_ENEMY_OBJECT`, `NEED_TARGET_ALLY_OBJECT`, `NEED_TARGET_POS`) whose power module is ready and whose science the player has (`SpecialPowerStore::canUseSpecialPower`). The target must be valid for that power (`CommandButton::isValidToUseOn`, which asks the action manager and so applies the rules of that power's type) and in sight: for an object power the most valuable enemy within `AbilityRange` (cost, armed things first, structures count half), or the most hurt friend (below 80% health); for a position power the center of the most enemy value inside the power's radius with little of ours (friends count three times against). Targets worth less than `AbilityMinValue` are left. A unit that used a power is left alone for 6 s (it may walk to the target first). Powers without a target (deploy, stealth) are not touched. | `UnitAbilities`, `AbilityRange` (400), `AbilityMinValue` (150) | `AIAbility.cpp` |
+| 13 | Airborne insertion | `airborne` (**off by default**) | When the player owns a transport aircraft (KindOf AIRCRAFT with a contain module for passengers; it is kept out of the army's orders and does not stop its team from being managed) and a squad of at least two armed infantry or light units worth `AirMinSquadValue` that may board (`canEnterObject`) is at the rally point, it looks for a soft target in the enemy model: a superweapon structure (weight 2.5), power (1.4), production (1.2), gatherer (1.0), nearer is better. The drop point is one of eight points 110 units from the target that no known ground defence covers (armed units seen near it must be worth less than `AirGuardShare` of the squad) and that is outside every anti-air area (a seen weapon that can hit airborne units: unit or structure, range plus `AirMargin`). The way out and the way back are planned around those areas with `AIPlanDetour`; if there is no way (or none within `AirMaxDetour`) the aircraft stays home (trace: "no safe way"). The aircraft flies to the rally point, the squad boards, it flies the waypoints, evacuates at the drop point, the squad attacks the target (`AirAssaultSeconds`), and the aircraft returns the planned way. | `AirborneInsertion`, `AirMargin` (50), `AirGuardShare` (0.8), `AirMinSquadValue` (350), `AirMaxDetour` (2.2), `AirMaxSeconds` (100), `AirAssaultSeconds` (90), `AirCooldownSeconds` (45) | `AIAirborne.cpp` |
+| 14 | Standing garrisons | `bunker` | A defensive structure of ours (finished, not a clinic, tunnel or zero-slot container, with places, passengers allowed to fire, and either KindOf FS_BASE_DEFENSE, or armed, or not a production, power or other economic structure) is a post, whatever its contain module (a garrison, or a bunker: a `TransportContain` on a structure with `PassengersAllowedToFire`). It is filled and kept filled: every two seconds the posts are looked at, the one on the side of the expected attacks first (the ways in of `geo`, else near the rally point); the infantry at home that belong to no wave (units of teams that are not on a wave and units without a team) go in (`canEnterObject` decides), the mix follows what the enemy model has seen (anti-armour share = enemy vehicle value over vehicles plus infantry, 25-75%; a unit is anti-armour when its damage per second against the biggest seen enemy vehicle is at least 0.6 of that against the biggest seen enemy infantry; without sightings by the weapons' damage per shot); a man who goes in leaves his team (the scripts replace him), is detached from the waves, raids and regroups, and stays; when none is free the player trains infantry at a barracks-like structure (from its command set, the unit that suits the missing class best, money left at least `BunkerReserve` after it, at most two on order). The men in the posts are at most `BunkerArmyShare` (0.3) of the army (always two). Losses are replaced, a rebuilt structure is filled again. | `FillBunkers`, `BunkerReserve` (200), `BunkerArmyShare` (0.3) | `AIBunker.cpp` |
+
+Defaults: all on except `airborne`. Measured, head to head against the default Expert, each from both slot orders (wins of the feature / wins of the default, timeouts
+not counted as wins; the mirror matches of this map are mostly stalemates, so the numbers are small), with the overlay that lets the feature trigger:
+
+| feature | overlay | wins on / off | result |
+|---|---|---|---|
+| raids | `openmap,haulers,raiders` | 20 / 19 | neutral |
+| protect | `haulers` | 8 / 6 | neutral |
+| repair | `repairpads` | 2 / 6 | within the noise (72 of 80 timeouts) |
+| route (breach, defences that out-range the army) | `openmap,towers,longrockets` | 6 / 5 | neutral (49 timeouts); the first version was 4 / 10 and got the skip rule and the firing spots |
+| route (defences on the way) | `openmap,outposts` | 24 / 14 | positive |
+| garrisons | `openmap,garrison` | 0 / 4 | neutral (76 timeouts); the first version, that garrisoned against attackers that out-range infantry, was 0 / 17 |
+| abilities | `ability` | 60 / 0 | the defector power of the fixture wins every game |
+| airborne | `openmap,airlift` | 7 / 22 | **negative**: the squad is lost with the helicopter; off by default |
+| bunker | `bunker` | 4 / 2 | slightly positive: units built 94 against 97, lost 77 against 86, killed 87 against 78, army at the end 2781 against 1625. The first version took the men out of their team members (the scripts did not replace them: units built 64 against 85) and was 8 / 17 |
+
+On the plain starter content (no overlay) the features of the table do not trigger, and the final default is: seeds 1-40 24/40 = 60% (45-74%), Hard 0 wins, 16 timeouts; seeds 41-120 45/80 = 56% (45-67%), Hard 0 wins, 35 timeouts; all 120 seeds 69/120 = 57.5% against 66/120 = 55% for the previous final default (and 72/120 = 60% before the tactics batch), Hard won 0 of 120 (24 before). By start position (wins / losses / timeouts of the Expert): seeds 1-40 start 1 17 / 0 / 3, start 2 7 / 0 / 13; seeds 41-120 start 1 39 / 0 / 1, start 2 6 / 0 / 34 (before: 6 / 14 / 20).
+Replays were identical in the determinism checks (40 seeds: 4 of 4; 80 seeds: 2 of 2; the 10-seed runs after each feature: 2 of 2). What could not be tested here: airborne insertion against anti-air in the sky of a real map (the fixture's
+anti-air `antiair` is only a trace check), the script action "build base defence" (the starter scripts never call it; the hook is the same placement function as for the
+build list), bridges and ramps as chokepoints (only the code path; the bench maps have none), abilities other than the defector kind, and everything with the retail game data.
