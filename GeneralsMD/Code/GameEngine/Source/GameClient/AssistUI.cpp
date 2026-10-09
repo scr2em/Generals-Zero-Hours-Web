@@ -1118,6 +1118,18 @@ NameKeyType AssistUI::optionsButtonId( const char *layoutName )
 }
 
 //-------------------------------------------------------------------------------------------------
+// The look of an existing window for a new one. The copy must not take the window's own display strings or video
+// buffer: ~WinInstanceData frees them, which would leave the original window drawing freed memory (and corrupt the
+// heap when that memory is reused).
+static void copyLook( WinInstanceData *out, GameWindow *from )
+{
+	*out = *from->winGetInstanceData();
+	out->m_text = nullptr;
+	out->m_tooltip = nullptr;
+	out->m_videoBuffer = nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
 void AssistUI::setupOptionsButton( const char *layoutName, const char *likeButton )
 {
 	if (TheWindowManager == nullptr)
@@ -1156,7 +1168,8 @@ void AssistUI::setupOptionsButton( const char *layoutName, const char *likeButto
 		return;
 	GameWindow *like = defaults ? defaults : anchor;
 
-	WinInstanceData inst = *like->winGetInstanceData();
+	WinInstanceData inst;
+	copyLook( &inst, like );
 	inst.m_id = id;
 	Int x, y, w, h;
 	anchor->winGetPosition( &x, &y );
@@ -1198,7 +1211,8 @@ GameWindow *AssistUI::setupCheckbox( GameWindow *parent, const char *layoutName,
 		return nullptr;
 
 	// a copy of the "limit superweapons" check box, one row lower
-	WinInstanceData inst = *like->winGetInstanceData();
+	WinInstanceData inst;
+	copyLook( &inst, like );
 	inst.m_id = id;
 	Int x, y, w, h;
 	like->winGetPosition( &x, &y );
