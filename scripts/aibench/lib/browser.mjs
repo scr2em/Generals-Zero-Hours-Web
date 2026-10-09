@@ -118,9 +118,10 @@ export class Browser {
 		return { ok: !error, error, log: lines.filter((l) => !/^\s*$/.test(l)) };
 	}
 
-	// Plays one match. `args` are the engine's command line arguments. Resolves to
-	// { ok, result (parsed AIMATCH_RESULT), error, log (engine output lines), wallMs }.
-	async runMatch(build, args, timeoutMs) {
+	// Plays one match. `args` are the engine's command line arguments; `tag` names the result lines ("AIMATCH" for
+	// -aiMatch, "ASSISTMATCH" for -assistMatch). Resolves to
+	// { ok, result (parsed <tag>_RESULT), error, log (engine output lines), wallMs }.
+	async runMatch(build, args, timeoutMs, tag = 'AIMATCH') {
 		const t0 = Date.now();
 		const lines = [];
 		const page = await this.context.newPage();
@@ -140,8 +141,8 @@ export class Browser {
 			for (;;) {
 				for (; seen < lines.length; ++seen) {
 					const l = lines[seen];
-					if (l.startsWith('AIMATCH_RESULT ')) { try { result = JSON.parse(l.slice(15)); } catch (e) { error = 'unreadable result: ' + e.message; } }
-					else if (l.startsWith('AIMATCH_ERROR ')) error = l.slice(14);
+					if (l.startsWith(tag + '_RESULT ')) { try { result = JSON.parse(l.slice(tag.length + 8)); } catch (e) { error = 'unreadable result: ' + e.message; } }
+					else if (l.startsWith(tag + '_ERROR ')) error = l.slice(tag.length + 7);
 				}
 				if (result || error) break;
 				const fatal = lines.find((l) => /RuntimeError|Aborted\(|abort\(|PAGECRASH|PAGEERROR|memory access out of bounds|unreachable|Fatal error|Assertion failed/.test(l));
