@@ -450,6 +450,7 @@ public:
 		MSG_META_ASSIST_FORM_CYCLE,									///< formation: next one
 		MSG_META_ASSIST_PROTECT,										///< protect: choose what the selected units protect
 		MSG_META_ASSIST_UNPROTECT,									///< protect: the selected units stop protecting
+		MSG_META_ASSIST_COVERAGE,										///< defence coverage view on / off
 
 		MSG_END_META_MESSAGES,											///< Marker to delineate "meta" messages
 

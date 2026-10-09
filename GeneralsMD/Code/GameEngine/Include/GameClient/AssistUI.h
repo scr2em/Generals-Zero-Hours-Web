@@ -115,6 +115,8 @@ public:
 	// ---- shared helpers ----------------------------------------------------------------------
 	/// True when the assists can be used in this game (the match allows them and the local player takes part).
 	static Bool active();
+	/// True while the local player plays a match (not a replay, not as observer): what needs no rule of the match (display, selection) works.
+	static Bool playing();
 	/// Scale of the assist graphics: from the screen height, times the player's setting.
 	static Real scale();
 	static Int  px( Int designPixels );								///< designPixels * scale()
@@ -129,6 +131,18 @@ public:
 	static void line( Int x0, Int y0, Int x1, Int y1, Int width, Color color );
 	static void beginFrame();
 	static void usePool( AssistTextPool *pool );		///< the strings of the next text() calls come from this pool (null: the world overlay's)
+
+	// ---- the toolbar: switches of the display assists, at the top right -------------------------
+	struct ToolbarEntry
+	{
+		Int					m_id;
+		const wchar_t	*m_label;
+		const wchar_t	*m_tip;
+		Bool				*m_option;				///< the entry shows when this option is on
+		Bool				(*m_isOn)();
+		void				(*m_toggle)();
+	};
+	static void addToolbarEntry( const ToolbarEntry &entry );
 
 	// ---- the local selection ------------------------------------------------------------------
 	struct Selection
@@ -180,5 +194,19 @@ public:
 	static void stop();												///< the selected units stop protecting
 	static void useSelection();								///< the selected units are what to protect
 	static Bool translate( const GameMessage *msg );	///< true when the message is used up
+	static void drawOverlays( View *view );
+};
+
+
+//-------------------------------------------------------------------------------------------------
+/// The defence coverage view (AssistUICoverage.cpp).
+class AssistCoverageUI
+{
+public:
+	static void init();
+	static void reset();
+	static Bool on();
+	static void toggle();
+	static Bool translate( const GameMessage *msg );
 	static void drawOverlays( View *view );
 };

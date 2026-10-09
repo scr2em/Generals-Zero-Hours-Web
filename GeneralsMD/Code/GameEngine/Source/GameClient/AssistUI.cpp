@@ -250,16 +250,21 @@ const AssistUI::Selection &AssistUI::selection()
 }
 
 //-------------------------------------------------------------------------------------------------
-Bool AssistUI::active()
+Bool AssistUI::playing()
 {
-	if (ThePlayerAssist == nullptr || !ThePlayerAssist->allowed())
-		return FALSE;
 	if (TheGameLogic == nullptr || !TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
 		return FALSE;
 	if (TheRecorder && TheRecorder->isPlaybackMode())
 		return FALSE;
 	Player *local = ThePlayerList ? ThePlayerList->getLocalPlayer() : nullptr;
 	return local != nullptr && local->isPlayerActive();
+}
+
+//-------------------------------------------------------------------------------------------------
+/// The assists that give orders work when the match allows them.
+Bool AssistUI::active()
+{
+	return ThePlayerAssist != nullptr && ThePlayerAssist->allowed() && playing();
 }
 
 //=================================================================================================
@@ -709,6 +714,79 @@ public:
 static FormationPanel *s_formationPanel = nullptr;
 
 //=================================================================================================
+// the toolbar: switches of the display assists
+//=================================================================================================
+
+namespace
+{
+	std::vector<AssistUI::ToolbarEntry> s_toolbarEntries;
+}
+
+//-------------------------------------------------------------------------------------------------
+void AssistUI::addToolbarEntry( const ToolbarEntry &entry )
+{
+	for (size_t i = 0; i < s_toolbarEntries.size(); ++i)
+	{
+		if (s_toolbarEntries[i].m_id == entry.m_id)
+			return;
+	}
+	s_toolbarEntries.push_back( entry );
+}
+
+//-------------------------------------------------------------------------------------------------
+class ToolbarPanel : public AssistPanel
+{
+public:
+	ToolbarPanel() : AssistPanel( "Toolbar" )
+	{
+		m_title = L"Assists";
+	}
+
+	virtual Bool refresh() override
+	{
+		if (!AssistUI::playing())
+			return FALSE;
+		// one button per entry whose option is switched on
+		if (m_buttons.size() != s_toolbarEntries.size())
+		{
+			m_buttons.clear();
+			for (size_t i = 0; i < s_toolbarEntries.size(); ++i)
+				addButton( s_toolbarEntries[i].m_id, 0, s_toolbarEntries[i].m_label, s_toolbarEntries[i].m_tip );
+		}
+		Bool any = FALSE;
+		for (size_t i = 0; i < s_toolbarEntries.size(); ++i)
+		{
+			const AssistUI::ToolbarEntry &e = s_toolbarEntries[i];
+			m_buttons[i].m_visible = *e.m_option;
+			m_buttons[i].m_on = e.m_isOn();
+			any = any || *e.m_option;
+		}
+		return any;
+	}
+
+	virtual void place( Int *x, Int *y, Int *w, Int *h ) override
+	{
+		Int visible = 0;
+		for (size_t i = 0; i < m_buttons.size(); ++i)
+			visible += m_buttons[i].m_visible ? 1 : 0;
+		flow( visible > 0 ? visible : 1, AssistUI::px( 74 ), AssistUI::px( 22 ), AssistUI::px( 3 ), w, h );
+		*x = (Int)TheDisplay->getWidth() - *w - AssistUI::px( 6 );
+		*y = AssistUI::px( 26 );
+	}
+
+	virtual void clicked( Int id ) override
+	{
+		for (size_t i = 0; i < s_toolbarEntries.size(); ++i)
+		{
+			if (s_toolbarEntries[i].m_id == id)
+				s_toolbarEntries[i].m_toggle();
+		}
+	}
+};
+
+static ToolbarPanel *s_toolbar = nullptr;
+
+//=================================================================================================
 // the panels and overlays, once per frame
 //=================================================================================================
 
@@ -725,6 +803,7 @@ void AssistUI::init()
 void AssistUI::reset()
 {
 	AssistProtectUI::reset();
+	AssistCoverageUI::reset();
 	for (size_t i = 0; i < s_panels.size(); ++i)
 		s_panels[i]->destroy();
 	s_selection.m_valid = FALSE;
@@ -739,7 +818,7 @@ void AssistUI::update()
 	init();
 	invalidateSelection();
 
-	if (!AssistUI::active())
+	if (!AssistUI::playing())
 	{
 		for (size_t i = 0; i < s_panels.size(); ++i)
 		{
@@ -752,6 +831,9 @@ void AssistUI::update()
 	if (s_formationPanel == nullptr)
 		s_formationPanel = new FormationPanel;
 	AssistProtectUI::init();
+	AssistCoverageUI::init();
+	if (s_toolbar == nullptr)
+		s_toolbar = new ToolbarPanel;
 
 	for (size_t i = 0; i < s_panels.size(); ++i)
 	{
@@ -772,10 +854,11 @@ void AssistUI::update()
 void AssistUI::drawOverlays( View *view )
 {
 	beginFrame();
-	if (!AssistUI::active())
+	if (!AssistUI::playing())
 		return;
 	drawAim();
 	AssistProtectUI::drawOverlays( view );
+	AssistCoverageUI::drawOverlays( view );
 }
 
 //=================================================================================================
@@ -877,7 +960,7 @@ void AssistUI::drawAim()
 
 namespace
 {
-	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_CLOSE = 100 };
+	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_CLOSE = 100 };
 
 	struct ToggleRow { Int id; const wchar_t *label; Bool *value; };
 }
@@ -892,6 +975,7 @@ public:
 		m_title = L"Player assists";
 		addButton( OPT_FORMATIONS, 0, L"Formations: picker, hotkeys, drag to aim", nullptr );
 		addButton( OPT_PROTECT, 0, L"Protect: units guard other units, buildings and groups", nullptr );
+		addButton( OPT_COVERAGE, 0, L"Defence coverage view: range rings and gaps in the base edge", nullptr );
 		addButton( 200, 0, L"All assists are off until switched on here.", nullptr );
 		addButton( 201, 0, L"Those that give orders also need \"Player assists allowed\" in the match setup.", nullptr );
 		addButton( OPT_CLOSE, 0, L"Close", nullptr );
@@ -925,6 +1009,7 @@ public:
 	{
 		find( OPT_FORMATIONS )->m_on = TheAssistOptions.m_formations;
 		find( OPT_PROTECT )->m_on = TheAssistOptions.m_protect;
+		find( OPT_COVERAGE )->m_on = TheAssistOptions.m_coverage;
 	}
 
 	virtual Bool refresh() override { return TRUE; }
@@ -966,6 +1051,7 @@ public:
 		{
 			case OPT_FORMATIONS: TheAssistOptions.m_formations = !TheAssistOptions.m_formations; break;
 			case OPT_PROTECT: TheAssistOptions.m_protect = !TheAssistOptions.m_protect; break;
+			case OPT_COVERAGE: TheAssistOptions.m_coverage = !TheAssistOptions.m_coverage; break;
 			case OPT_CLOSE: closeDialog(); return;
 			default: return;
 		}
@@ -1106,7 +1192,7 @@ GameMessageDisposition AssistUI::translate( const GameMessage *msg )
 	if (t != GameMessage::MSG_RAW_MOUSE_POSITION)
 		invalidateSelection();	// the selection may have changed since the last frame
 
-	if (AssistProtectUI::translate( msg ))
+	if (AssistProtectUI::translate( msg ) || AssistCoverageUI::translate( msg ))
 		return DESTROY_MESSAGE;
 
 	// ---- hotkeys -----------------------------------------------------------------------------

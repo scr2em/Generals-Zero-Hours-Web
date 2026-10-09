@@ -23,6 +23,8 @@ STRINGS = [
     ("OBJECT:IronwoodHQ", "Headquarters"),
     ("OBJECT:IronwoodPowerPlant", "Power Plant"),
     ("OBJECT:IronwoodBarracks", "Barracks"),
+    ("OBJECT:IronwoodGuardTower", "Guard tower"),
+    ("OBJECT:IronwoodFlakTower", "Flak tower"),
     ("OBJECT:IronwoodFactory", "Vehicle Factory"),
     ("OBJECT:IronwoodWorker", "Worker"),
     ("OBJECT:IronwoodRifleman", "Rifleman"),
