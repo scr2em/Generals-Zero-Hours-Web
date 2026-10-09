@@ -66,4 +66,5 @@ build.ninja
 
 ## Python
 __pycache__/
-*.pyc/aibench-out/
+*.pyc
+/aibench-out/
