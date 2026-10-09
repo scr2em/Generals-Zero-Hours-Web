@@ -113,7 +113,7 @@ class Env:
         return self._played_tails
 
 
-def _load_env(base_paths, mod_archives=None, mod_paths=None, world=None):
+def _load_env(base_paths, mod_archives=None, mod_paths=None, world=None, loose=None):
     """Build the Env. ``world`` is an (already built) convert.World, as convert-all has it."""
     if world is not None:
         # a convert.Context (or World): the file systems and definitions are already loaded
@@ -136,13 +136,14 @@ def _load_env(base_paths, mod_archives=None, mod_paths=None, world=None):
         return Env(vfs, None, notes)
     from .convert import ConvertError, build_world
     try:
-        w = build_world(mod_paths or base_paths, base_paths, mod_archives)
+        w = build_world(mod_paths or base_paths, base_paths, mod_archives, loose)
     except ConvertError as exc:
         raise PackageError(str(exc))
     return Env(w.base_vfs, w.mod_vfs, w.notes)
 
 
-def validate(path, base_paths=None, zhc_names=True, others=(), mod_archives=None, mod_paths=None, world=None):
+def validate(path, base_paths=None, zhc_names=True, others=(), mod_archives=None, mod_paths=None, world=None,
+             loose=None):
     """Check a package. ``base_paths``: the ruleset. ``mod_archives`` / ``mod_paths`` say where the mod as played is
     (installed in the ruleset folder, or separate folders): references that the ruleset lacks and the mod as played
     lacks too are warnings (pre-existing dangling references); without them every such reference is an error."""
@@ -166,7 +167,7 @@ def validate(path, base_paths=None, zhc_names=True, others=(), mod_archives=None
             _check_manifest(pkg, manifest, res)
             if res.manifest and TAG_RE.match(str(manifest.get("tag", ""))):
                 try:
-                    env = _load_env(base_paths, mod_archives, mod_paths, world)
+                    env = _load_env(base_paths, mod_archives, mod_paths, world, loose)
                 except PackageError as exc:
                     res.error("environment", str(exc))
                     return res
@@ -430,6 +431,26 @@ def _check_content(pkg, m, res, base_vfs, base_data, zhc, others):
         if side and side.lower() not in sides:
             res.error("rule 3", "Object %s is on side %s, which is not a side of this package"
                       % (obj.args.split()[0], side))
+    # an ObjectReskin copies its parent while the engine reads the line: it must be defined before it
+    seen_objects = set()
+    for kind, name, block in top_nodes:
+        if kind != "Object":
+            continue
+        if block.name == "ObjectReskin":
+            toks = block.args.split()
+            if len(toks) < 2:
+                res.error("definitions", "ObjectReskin %s names no object to copy" % name)
+            else:
+                parent = toks[1]
+                if parent.lower() not in seen_objects:
+                    if rel and base_data is not None and base_data.has("Object", parent):
+                        pass
+                    elif base_data is None and rel and not parent.lower().startswith(prefix):
+                        res.warn("ObjectReskin %s copies %s: not checked, give --base <ruleset data>" % (name, parent))
+                    else:
+                        res.error("definitions", "ObjectReskin %s copies %s, which is not defined before it (neither "
+                                  "in the game data nor earlier in the package)" % (name, parent))
+        seen_objects.add(name.lower())
     # references
     unchecked_ruleset = [False]
     for kind, name, block in top_nodes:
@@ -556,8 +577,7 @@ def _check_def_ref(res, kind, token, where, pkg_defs, base_data, rel, prefix, st
 
 def _check_refs(res, kind, name, block, pkg, pkg_defs, base_vfs, base_data, rel, prefix, tag, labels, unchecked, zhc):
     where = "%s %s" % (kind, name)
-    for hk, tok in refsmod.header_refs(block):
-        _check_def_ref(res, hk, tok, where, pkg_defs, base_data, rel, prefix, True, unchecked)
+    # (the parent of an ObjectReskin is checked in order, see _check_content)
     for r in refsmod.field_refs(block):
         tok = r.token
         low = tok.lower()

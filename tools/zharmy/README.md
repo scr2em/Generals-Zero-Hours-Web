@@ -86,6 +86,19 @@ engine rule above. A definition counts as the mod's when it is new, or differs f
 (directly or through other definitions) to something that does, or uses a model, texture or sound file the mod
 changed. Everything else stays a reference to the ruleset.
 
+**Loose files are part of the mod.** Mods often install loose files (`Data/INI/...`, `Data/<Language>/Generals.csf`,
+`Art/...`, `Data/Audio/...`) into the game folder; the engine reads a loose file before any archive. With a mod
+installed in the game folder every loose file below `Data/` and `Art/` therefore counts as the mod's, not as retail
+data, except a file that is byte-identical to its copy in a retail archive. `archives` and `inspect` print how many
+loose files were taken that way and the directories they are in. `--loose ruleset` treats them as retail instead,
+`--loose mod` forces the other way. A folder with no archives at all (a ruleset on its own) keeps its loose files as
+the ruleset.
+
+**ObjectReskin.** The engine copies the parent of `ObjectReskin <Name> <Parent>` when it reads the line, so the parent
+must exist before it. The converter puts the parent (and the parents of reskin chains) into the closure, renames
+it, rewrites the reference and writes it before the reskin; `validate` checks that order. A reskin whose parent
+exists nowhere is "cannot be converted".
+
 **String table language.** The tool uses the language of the string table the mod brings: English if the mod ships an
 English table, else the language of its own table (a Chinese mod without an English table: `Data/Chinese/Generals.csf`),
 else the game's English one. The choice is printed (`String tables: chinese (the mod provides only a chinese string
@@ -129,7 +142,7 @@ their directories are held in memory, file data is read when a package needs it)
 
 | command | does |
 | --- | --- |
-| `archives` | lists `.big` files in load order (both installs of a combined folder), marks the mod's (default `auto`) and the retail names |
+| `archives` | lists `.big` files in load order (both installs of a combined folder), marks the mod's (default `auto`) and the retail names, and counts the loose files treated as the mod's (`--loose mod|ruleset`) |
 | `find` | `find <folder...> <glob>`: which archive or loose file provides matching paths, `->` marks the one the engine uses |
 | `inspect` | lists playable factions: template, side, display name, build list, scripts, whether the ruleset has it, unplayable ones; layout, language, INI problem summary (`--ini-problems`: all) |
 | `convert` | one faction to one package; `--requires zerohour|starter|none`, `--id`, `--name`, `--version`, `--author`, `--license`, `--mod-name`, `--mod-version`, `--mod-url`, `--language`, `--report file.json`, `--validate` |

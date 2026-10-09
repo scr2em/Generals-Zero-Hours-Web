@@ -912,5 +912,220 @@ class DefinitionNames(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+# ---- loose mod files and ObjectReskin parents ----------------------------------------------------------------------
+LS_OBJECTS = """
+Object LsCamera
+  Side = LsSide
+  DisplayName = OBJECT:LsCamera
+  Draw = W3DModelDraw ModuleTag_Draw
+    DefaultConditionState
+      Model = ls_ok
+    End
+  End
+  KindOf = STRUCTURE SELECTABLE COMMANDCENTER
+  Body = StructureBody ModuleTag_Body
+    MaxHealth = 10.0
+  End
+End
+
+Object LsTank
+  Side = LsSide
+  DisplayName = OBJECT:LsTank
+  Draw = W3DModelDraw ModuleTag_Draw
+    DefaultConditionState
+      Model = ls_ok
+    End
+  End
+  Body = ActiveBody ModuleTag_Body
+    MaxHealth = 20.0
+  End
+  Prerequisites
+    Object = LsCamera
+  End
+End
+
+ObjectReskin LsTankK LsTank
+  DisplayName = OBJECT:LsTank
+End
+
+ObjectReskin LsTankKK LsTankK
+  DisplayName = OBJECT:LsTank
+End
+
+ObjectReskin LsRetailSkin TstBaseTank
+  DisplayName = OBJECT:LsTank
+End
+"""
+LS_TEMPLATE = """
+PlayerTemplate FactionLs
+  Side = LsSide
+  BaseSide = LsSide
+  PlayableSide = Yes
+  DisplayName = INI:LsSide
+  StartingBuilding = LsCamera
+  StartingUnit0 = LsTankKK
+End
+"""
+
+
+def build_loose_game(folder, loose_language=None):
+    """Retail archives + one mod archive + a mod that is mostly loose INI files in the game folder."""
+    fixtures.build_base(folder)
+    write_big(os.path.join(folder, "!LsArt.big"), {"Art\\W3D\\LS_OK.W3D": w3d_model("LS_OK", "tst_main.tga")})
+    data = os.path.join(folder, "Data")
+    for rel, text in (("INI/Object/Ls.ini", LS_OBJECTS), ("INI/PlayerTemplate/Ls.ini", LS_TEMPLATE),
+                      ("INI/Armor.ini", fixtures.base_ini()["Data\\INI\\Armor.ini"])):
+        path = os.path.join(data, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        fixtures.wr(path, text.encode("latin-1"))
+    strings = dict(fixtures.base_strings())
+    strings.update({"INI:LsSide": "Ls", "OBJECT:LsCamera": "Cam", "OBJECT:LsTank": "Tank"})
+    lang = loose_language or "English"
+    path = os.path.join(data, lang, "generals.csf")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fixtures.wr(path, stringsmod.build_csf(strings))
+
+
+class LooseModFiles(Tmp):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.game = os.path.join(cls.tmp, "game")
+        build_loose_game(cls.game)
+
+    def test_loose_files_are_the_mods_unless_identical_to_retail(self):
+        ctx = Context([self.game], [self.game])
+        rels = sorted(rel for _f, rel in ctx.selection.loose_files)
+        self.assertEqual(rels, ["Data/English/generals.csf", "Data/INI/Object/Ls.ini",
+                                "Data/INI/PlayerTemplate/Ls.ini"])
+        self.assertEqual(ctx.selection.loose_identical, 1)                   # Armor.ini equals the archive copy
+        self.assertTrue(any(n.startswith("Loose files treated as the mod's") and "3" in n for n in ctx.notes))
+        self.assertIsNone(ctx.base.get("Object", "LsCamera"))               # the clean ruleset lacks it
+        self.assertIsNotNone(ctx.mod.get("Object", "LsCamera"))
+        self.assertTrue(ctx.base_vfs.exists("Data/INI/Armor.ini"))
+        self.assertIn("!LsArt.big", [rel for _f, rel in ctx.selection.picked])
+
+    def test_loose_ruleset_overrides(self):
+        ctx = Context([self.game], [self.game], loose="ruleset")
+        self.assertIsNotNone(ctx.base.get("Object", "LsCamera"))
+        self.assertEqual(ctx.selection.loose_files, [])
+
+    def test_archives_and_inspect_list_the_loose_files(self):
+        code, out, err = run_cli("archives", self.game)
+        self.assertEqual(code, 0, err)
+        self.assertIn("Loose files treated as the mod's", out)
+        self.assertIn("data/ini/object", out)
+        code, out, err = run_cli("inspect", self.game, "--base", self.game, "-q")
+        self.assertIn("Loose files treated as the mod's", out)
+        self.assertIn("FactionLs", out)
+        code, out, err = run_cli("inspect", self.game, "--base", self.game, "--loose", "ruleset", "-q")
+        self.assertNotIn("Loose files treated", out)
+
+    def test_object_defined_in_a_loose_ini_is_copied_not_assumed_to_be_retail(self):
+        out = os.path.join(self.tmp, "ls.zharmy")
+        c, rep = convert([self.game], [self.game], Options(tag="LSX", faction="FactionLs"), out)
+        self.assertIn("LsCamera", rep["definitionsCopied"]["Object"])
+        res = validatemod.validate(out, [self.game], world=c.ctx)
+        self.assertTrue(res.ok, res.errors)
+        res2 = validatemod.validate(out, [self.game], mod_archives=["auto"])
+        self.assertTrue(res2.ok, res2.errors)
+
+    def test_reskin_parents_and_chains_are_copied_and_come_first(self):
+        out = os.path.join(self.tmp, "ls3.zharmy")
+        c, rep = convert([self.game], [self.game], Options(tag="LSZ", faction="FactionLs"), out)
+        copied = rep["definitionsCopied"]["Object"]
+        for name in ("LsTank", "LsTankK", "LsTankKK"):
+            self.assertIn(name, copied)
+        text = package.Package(out).read("army/ini/object.ini").decode("latin-1")
+        i_tank, i_k, i_kk = (text.index(x) for x in ("Object LSZ_LsTank\n", "ObjectReskin LSZ_LsTankK LSZ_LsTank",
+                                                     "ObjectReskin LSZ_LsTankKK LSZ_LsTankK"))
+        self.assertLess(i_tank, i_k)
+        self.assertLess(i_k, i_kk)
+
+    def test_reskin_parent_order_is_fixed_when_a_later_redefinition_moves_the_parent(self):
+        game = os.path.join(self.tmp, "game2")
+        build_loose_game(game)
+        # the first file reskins a retail object, a later file changes that object: the package holds both and
+        # the parent must still come first
+        extra1 = "ObjectReskin LsEarly TstBaseTank\nEnd\n".replace("\nEnd\n", "\n  DisplayName = OBJECT:LsTank\nEnd\n")
+        fixtures.wr(os.path.join(game, "Data", "INI", "Object", "Aa.ini"), extra1.encode())
+        extra2 = ("Object TstBaseTank\n  Side = TstBase\n  Draw = W3DModelDraw ModuleTag_Draw\n"
+                  "    DefaultConditionState\n      Model = tst_tank\n    End\n  End\n"
+                  "  Body = ActiveBody ModuleTag_Body\n    MaxHealth = 999.0\n  End\nEnd\n")
+        fixtures.wr(os.path.join(game, "Data", "INI", "Object", "Zz.ini"), extra2.encode())
+        tmpl = LS_TEMPLATE.replace("StartingUnit0 = LsTankKK", "StartingUnit0 = LsEarly")
+        fixtures.wr(os.path.join(game, "Data", "INI", "PlayerTemplate", "Ls.ini"), tmpl.encode())
+        out = os.path.join(self.tmp, "ls4.zharmy")
+        c, rep = convert([game], [game], Options(tag="LSW", faction="FactionLs"), out)
+        text = package.Package(out).read("army/ini/object.ini").decode("latin-1")
+        self.assertLess(text.index("Object LSW_TstBaseTank"), text.index("ObjectReskin LSW_LsEarly LSW_TstBaseTank"))
+        res = validatemod.validate(out, [game], world=c.ctx)
+        self.assertTrue(res.ok, res.errors)
+
+    def test_reskin_of_a_missing_object_cannot_be_converted(self):
+        game = os.path.join(self.tmp, "game3")
+        build_loose_game(game)
+        fixtures.wr(os.path.join(game, "Data", "INI", "Object", "Bad.ini"),
+                    b"ObjectReskin LsBad NoSuchParent\n  DisplayName = OBJECT:LsTank\nEnd\n")
+        tmpl = LS_TEMPLATE.replace("StartingUnit0 = LsTankKK", "StartingUnit0 = LsBad")
+        fixtures.wr(os.path.join(game, "Data", "INI", "PlayerTemplate", "Ls.ini"), tmpl.encode())
+        with self.assertRaises(ConvertError) as cm:
+            convert([game], [game], Options(tag="LSV", faction="FactionLs"), os.path.join(self.tmp, "ls5.zharmy"))
+        self.assertIn("ObjectReskin copies", str(cm.exception))
+        self.assertIn("NoSuchParent", str(cm.exception))
+
+    def test_loose_string_table_sets_the_language(self):
+        game = os.path.join(self.tmp, "game4")
+        build_loose_game(game, loose_language="Chinese")
+        ctx = Context([game], [game])
+        self.assertEqual(ctx.language_name, "chinese")
+        self.assertIn("Data/Chinese/generals.csf", [rel for _f, rel in ctx.selection.loose_files])
+
+    def test_a_folder_with_only_loose_files_and_no_archives_is_still_one_ruleset(self):
+        folder = os.path.join(self.tmp, "looseonly")
+        os.makedirs(os.path.join(folder, "Data", "INI"))
+        fixtures.wr(os.path.join(folder, "Data", "INI", "Object.ini"), b"Object A\nEnd\n")
+        ctx = Context([folder], [folder])
+        self.assertFalse(ctx.selection.loose_mod)
+        self.assertIsNotNone(ctx.base.get("Object", "A"))
+
+
+class ReskinValidation(Tmp):
+    def _pkg(self, object_ini, requires=("zerohour",)):
+        files = {"army/ini/object.ini": object_ini.encode()}
+        manifest = {"format": 1, "id": "rk.test", "tag": "RK", "name": "T", "version": "1.0.0",
+                    "requires": list(requires), "authors": [],
+                    "factions": [{"playerTemplate": "RK_F", "side": "RK_S", "displayName": "F", "ai": False}]}
+        out = self.path("rk.zharmy")
+        package.write_package(out, manifest, files)
+        return out
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.retail = os.path.join(cls.tmp, "retail")
+        fixtures.build_base(cls.retail)
+
+    def errors(self, text, **kw):
+        res = validatemod.validate(self._pkg(text, **kw), [self.retail], **kw if False else {})
+        return " | ".join(m for _r, m in res.errors)
+
+    OBJ = "Object RK_A\n  Side = RK_S\nEnd\n"
+
+    def test_parent_defined_earlier_or_in_the_ruleset_is_fine(self):
+        text = self.OBJ + "ObjectReskin RK_B RK_A\nEnd\nObjectReskin RK_C RK_B\nEnd\nObjectReskin RK_D TstBaseTank\nEnd\n"
+        self.assertNotIn("copies", self.errors(text))
+
+    def test_parent_defined_later_missing_or_chain_out_of_order_is_an_error(self):
+        err = self.errors("ObjectReskin RK_B RK_A\nEnd\n" + self.OBJ)
+        self.assertIn("RK_B copies RK_A, which is not defined before it", err)
+        err = self.errors(self.OBJ + "ObjectReskin RK_C RK_B\nEnd\nObjectReskin RK_B RK_A\nEnd\n")
+        self.assertIn("RK_C copies RK_B", err)
+        err = self.errors(self.OBJ + "ObjectReskin RK_B NoSuchObject\nEnd\n")
+        self.assertIn("NoSuchObject", err)
+        err = self.errors(self.OBJ + "ObjectReskin RK_B TstBaseTank\nEnd\n", requires=())
+        self.assertIn("RK_B copies TstBaseTank", err)             # no ruleset to find it in
+
+
 if __name__ == "__main__":
     unittest.main()

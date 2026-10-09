@@ -23,7 +23,7 @@ def cmd_inspect(a):
     from .convert import ConvertError
     from .inspect_mod import format_factions, inspect_factions
     try:
-        res = inspect_factions(a.mod, a.base, a.language, a.mod_archives, _progress(a.quiet))
+        res = inspect_factions(a.mod, a.base, a.language, a.mod_archives, _progress(a.quiet), a.loose)
     except ConvertError as exc:
         sys.stderr.write("zharmy: error: %s\n" % exc)
         return 2
@@ -43,7 +43,7 @@ def cmd_convert(a):
     if a.license:
         opts.license = a.license
     try:
-        _c, report = convert(a.mod, a.base, opts, a.output, _progress(a.quiet), a.mod_archives)
+        _c, report = convert(a.mod, a.base, opts, a.output, _progress(a.quiet), a.mod_archives, a.loose)
     except ConvertError as exc:
         sys.stderr.write("zharmy: error: %s\n" % exc)
         return 2
@@ -75,7 +75,7 @@ def cmd_convert_all(a):
             template[dst] = getattr(a, src)
     try:
         rows, _ctx = convert_all(a.mod, a.base, a.out_dir, a.tag_prefix, a.requires, a.language, a.mod_archives,
-                                 template, _progress(a.quiet), a.faction)
+                                 template, _progress(a.quiet), a.faction, a.loose)
     except ConvertError as exc:
         sys.stderr.write("zharmy: error: %s\n" % exc)
         return 2
@@ -113,7 +113,7 @@ def cmd_archives(a):
     error = None
     sel = None
     try:
-        sel = layout.resolve_mod_archives([folder], patterns, True)
+        sel = layout.resolve_mod_archives([folder], patterns, True, a.loose)
     except layout.SelectionError as exc:
         error = str(exc)
     pred = sel.predicate() if sel is not None else None
@@ -130,6 +130,11 @@ def cmd_archives(a):
             role))
     if sel is not None and sel.active:
         sys.stdout.write("%d archive(s) would be taken as the mod's.\n" % len(sel.picked))
+        for line in layout.loose_lines(sel):
+            sys.stdout.write(line + "\n")
+        if sel.loose_files:
+            sys.stdout.write("Loose files treated as the mod's, first ones: %s\n"
+                             % ", ".join(rel for _f, rel in sel.loose_files[:5]))
     if error:
         sys.stderr.write("zharmy: %s\n" % ("error: " + error))
         return 2
@@ -195,7 +200,7 @@ def cmd_validate(a):
     from .validate import format_result, validate
     ok = True
     for pkg in a.package:
-        res = validate(pkg, a.base or None, a.zhc_names, a.with_, a.mod_archives, a.mod or None)
+        res = validate(pkg, a.base or None, a.zhc_names, a.with_, a.mod_archives, a.mod or None, loose=a.loose)
         if a.json:
             print(json.dumps(res.as_dict(), indent=2))
         else:
@@ -221,6 +226,10 @@ def build_parser():
     i.add_argument("--ini-problems", action="store_true",
                    help="list every INI problem (file:line), not only the summary by kind")
     i.add_argument("-q", "--quiet", action="store_true")
+    i.add_argument("--loose", choices=["mod", "ruleset"], default=None,
+                    help="loose files in the game folder (Data/, Art/): 'mod' = part of the mod unless identical to "
+                         "the retail archive copy (default for a mod installed in the game folder), 'ruleset' = "
+                         "retail data")
     i.set_defaults(fn=cmd_inspect)
 
     c = sub.add_parser("convert", help="convert one faction of a mod into a .zharmy package")
@@ -251,6 +260,10 @@ def build_parser():
     c.add_argument("--report", help="also write the report as JSON")
     c.add_argument("--validate", action="store_true", help="validate the result against --base afterwards")
     c.add_argument("-q", "--quiet", action="store_true")
+    c.add_argument("--loose", choices=["mod", "ruleset"], default=None,
+                    help="loose files in the game folder (Data/, Art/): 'mod' = part of the mod unless identical to "
+                         "the retail archive copy (default for a mod installed in the game folder), 'ruleset' = "
+                         "retail data")
     c.set_defaults(fn=cmd_convert)
 
     ca = sub.add_parser("convert-all", help="convert every playable faction of a mod, one package each")
@@ -275,6 +288,10 @@ def build_parser():
     ca.add_argument("--report-dir", help="write one JSON report per package here")
     ca.add_argument("--validate", action="store_true")
     ca.add_argument("-q", "--quiet", action="store_true")
+    ca.add_argument("--loose", choices=["mod", "ruleset"], default=None,
+                    help="loose files in the game folder (Data/, Art/): 'mod' = part of the mod unless identical to "
+                         "the retail archive copy (default for a mod installed in the game folder), 'ruleset' = "
+                         "retail data")
     ca.set_defaults(fn=cmd_convert_all)
 
     ar = sub.add_parser("archives", help="list the .big files of a game folder in the order the engine loads them")
@@ -282,6 +299,10 @@ def build_parser():
     ar.add_argument("--mod-archives", nargs="*", default=None, metavar="GLOB",
                     help="mark the archives these patterns match as the mod's (default: auto, the archives "
                          "without a retail file name)")
+    ar.add_argument("--loose", choices=["mod", "ruleset"], default=None,
+                    help="loose files in the game folder (Data/, Art/): 'mod' = part of the mod unless identical to "
+                         "the retail archive copy (default for a mod installed in the game folder), 'ruleset' = "
+                         "retail data")
     ar.set_defaults(fn=cmd_archives)
 
     fi = sub.add_parser("find", help="list which archive or loose file provides the paths matching a glob")
@@ -304,6 +325,10 @@ def build_parser():
                    "played), for the same purpose")
     v.add_argument("--zhc-names", action="store_true", help=argparse.SUPPRESS)   # accepted, always on
     v.add_argument("--json", action="store_true")
+    v.add_argument("--loose", choices=["mod", "ruleset"], default=None,
+                    help="loose files in the game folder (Data/, Art/): 'mod' = part of the mod unless identical to "
+                         "the retail archive copy (default for a mod installed in the game folder), 'ruleset' = "
+                         "retail data")
     v.set_defaults(fn=cmd_validate)
     return p
 

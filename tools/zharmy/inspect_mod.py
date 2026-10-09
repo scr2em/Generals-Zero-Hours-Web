@@ -5,10 +5,10 @@ from .convert import ConvertError, build_world, unplayable_reason
 from .gamedata import GameData, format_ini_problems
 
 
-def inspect_factions(mod_paths, base_paths=None, language=None, mod_archives=None, progress=None):
+def inspect_factions(mod_paths, base_paths=None, language=None, mod_archives=None, progress=None, loose=None):
     progress = progress or (lambda m: None)
     progress("reading archive directories")
-    world = build_world(mod_paths, base_paths, mod_archives)
+    world = build_world(mod_paths, base_paths, mod_archives, loose)
     mod_vfs, base_vfs = world.mod_vfs, world.base_vfs
     notes = list(world.notes)
     for line in notes:

@@ -124,21 +124,22 @@ def detect_layout(folder):
     return Layout(folder, found, True)
 
 
-def add_game_tree(vfs, folder, overwrite=False, exclude=None):
+def add_game_tree(vfs, folder, overwrite=False, exclude=None, loose=True):
     """Add ``folder`` to ``vfs`` the way the engine layers a game folder. Returns the Layout.
 
-    ``exclude`` is a predicate on the path relative to ``folder`` (for archives and loose files).
+    ``exclude`` is a predicate on the path relative to ``folder`` (for archives and loose files);
+    ``loose=False`` adds the archives only.
     """
     lay = detect_layout(folder)
     if not lay.multi or overwrite:
-        vfs.add_tree(folder, overwrite=overwrite, exclude=exclude)
+        vfs.add_tree(folder, overwrite=overwrite, exclude=exclude, loose=loose)
         return lay
     # later layers win: add the last-loaded install first. Only the Zero Hour (working directory) install has
     # loose files that the engine sees.
     for inst in reversed(lay.installs):
         prefix = norm(inst.rel) + "/" if inst.rel else ""
         sub = None if exclude is None else (lambda rel, p=prefix: exclude(p + rel))
-        vfs.add_tree(inst.path, overwrite=False, exclude=sub, loose=(inst is lay.installs[0]))
+        vfs.add_tree(inst.path, overwrite=False, exclude=sub, loose=loose and (inst is lay.installs[0]))
     return lay
 
 
@@ -211,27 +212,48 @@ class ModSelection:
         self.layouts = []
         self.explicit = False
         self._glob = None
+        self.loose_mod = False         # loose files of the game folder belong to the mod (unless identical to retail)
+        self.loose_files = []          # [(folder, rel)] loose files that count as the mod's
+        self.loose_identical = 0       # loose files left in the ruleset because they equal the retail archive copy
+        self.identical = lambda rel: False
+        self.install_prefixes = []
 
     @property
     def active(self):
         return bool(self.auto or self.globs)
+
+    def archive_match(self, rel):
+        """True for an archive (path relative to the folder) that is the mod's."""
+        if self._glob is None:
+            self._glob = glob_matcher(self.globs) if self.globs else (lambda r: False)
+        if self._glob(rel):
+            return True
+        return bool(self.auto and not is_retail_archive(rel))
 
     def predicate(self):
         """exclude(rel) for ``Vfs.add_tree``: true for the files that are the mod's."""
         if not self.active:
             return None
         if self._glob is None:
-            self._glob = glob_matcher(self.globs) if self.globs else (lambda rel: False)
+            self._glob = glob_matcher(self.globs) if self.globs else (lambda r: False)
         glob = self._glob
-        auto = self.auto
 
         def match(rel):
+            if rel.lower().endswith(".big"):
+                return self.archive_match(rel)
             if glob(rel):
                 return True
-            if auto and rel.lower().endswith(".big"):
-                return not is_retail_archive(rel)
-            return False
+            return self.loose_mod and self.relevant(rel) and not self.identical(rel)
         return match
+
+    def relevant(self, rel):
+        """Only loose files below Data/ and Art/ can be game data; executables, movies and the like do not matter."""
+        key = norm(rel)
+        for pre in self.install_prefixes:
+            if pre and key.startswith(pre):
+                key = key[len(pre):]
+                break
+        return key.startswith("data/") or key.startswith("art/")
 
 
 def _archive_table(folder):
@@ -245,14 +267,16 @@ def _archive_table(folder):
     return "\n".join(rows) if rows else "  (no .big files)"
 
 
-def resolve_mod_archives(base_paths, patterns, same_folder):
+def resolve_mod_archives(base_paths, patterns, same_folder, loose=None):
     """Turn ``--mod-archives`` into a ModSelection and check it.
 
     * ``patterns`` None: ``auto`` when the mod is installed in the game folder (``same_folder``), else nothing;
       an empty list means "none" on purpose;
     * ``auto`` picks archives whose file name is not a retail archive name;
     * a glob that matches no file is an error that lists the archives;
-    * installed mod (``same_folder``) with nothing selected: error (everything would look like the ruleset).
+    * installed mod (``same_folder``) with nothing selected: error (everything would look like the ruleset);
+    * ``loose``: ``"mod"`` (the default for an installed mod) counts the loose files of the game folder as the mod's,
+      except those identical to the copy in a retail archive; ``"ruleset"`` leaves them in the ruleset.
     """
     sel = ModSelection()
     sel.patterns = None if patterns is None else list(patterns)
@@ -292,24 +316,31 @@ def resolve_mod_archives(base_paths, patterns, same_folder):
                                  "Patterns are matched case-insensitively against the file name or the path "
                                  "relative to the folder (* ? [] allowed). Use 'auto' to take every archive whose "
                                  "name is not a retail archive name." % (pat, ", ".join(folders), where))
+    if loose not in (None, "mod", "ruleset"):
+        raise SelectionError("--loose must be 'mod' or 'ruleset'")
+    total_archives = sum(len(list_archives(f)) for f in folders)
+    sel.loose_mod = (loose == "mod") or (loose is None and same_folder and total_archives > 0)
+    if sel.loose_mod and loose == "mod" and not same_folder:
+        sel.loose_mod = True
+    prepare_loose(sel, folders)
     pred = sel.predicate()
     for folder in folders:
         for a in list_archives(folder):
-            if pred(a.rel):
+            if sel.archive_match(a.rel):
                 sel.picked.append((folder, a.rel))
         for r in list_loose(folder):
             if sel.globs and glob_matcher(sel.globs)(r):
                 sel.matched_loose.append((folder, r))
     if sel.auto and not sel.globs:
         total = sum(len(list_archives(f)) for f in folders)
-        if not sel.picked and total:
+        if not sel.picked and not sel.loose_files and total:
             raise SelectionError(
                 "--mod-archives auto found no archive that is not a retail one in %s: every one of the %d archives "
                 "has a retail name, so the folder looks like the unmodified game and everything would look like "
                 "retail data. Name the mod's archives with --mod-archives '<glob>' ...; the archives are:\n%s\n"
                 "(loose mod files can be named too: --mod-archives 'Data/INI/*')"
                 % (", ".join(folders), total, "\n".join(_archive_table(f) for f in folders)))
-    if same_folder and not sel.picked and not sel.matched_loose:
+    if same_folder and not sel.picked and not sel.matched_loose and not sel.loose_files:
         total = sum(len(list_archives(f)) for f in folders)
         if total:
             raise SelectionError("the mod folder and --base are the same folder but --mod-archives selects nothing: "
@@ -326,4 +357,73 @@ def resolve_mod_archives(base_paths, patterns, same_folder):
             sel.notes.append("  and %d loose file(s) matching the patterns" % len(sel.matched_loose))
     elif sel.auto:
         sel.notes.append("--mod-archives auto: the folder has no archives; it is used as the ruleset as it is")
+    sel.notes.extend(loose_lines(sel))
     return sel
+
+
+def _first_install_rel(folder):
+    lay = detect_layout(folder)
+    if lay.multi and lay.installs:
+        return norm(lay.installs[0].rel) + "/"
+    return ""
+
+
+def prepare_loose(sel, folders):
+    """Work out which loose files of the game folders are the mod's: all of them, except those that are byte-identical
+    to the copy in a retail archive (a clean install may carry loose files too). Fills ``sel.loose_files``,
+    ``sel.loose_identical`` and ``sel.identical``."""
+    sel.loose_files, sel.loose_identical = [], 0
+    sel.install_prefixes = [_first_install_rel(f) for f in folders]
+    if not sel.loose_mod:
+        return
+    from .vfs import Vfs
+    retail = Vfs()
+    for f in folders:
+        add_game_tree(retail, f, overwrite=False, exclude=sel.archive_match, loose=False)
+
+    def identical(rel):
+        key = norm(rel)
+        for f in folders:
+            pre = _first_install_rel(f)
+            if pre and key.startswith(pre):
+                key = key[len(pre):]
+            if retail.exists(key):
+                full = os.path.join(f, rel)
+                try:
+                    with open(full, "rb") as handle:
+                        return handle.read() == retail.read(key)
+                except OSError:
+                    return False
+        return False
+    sel.identical = identical
+    for f in folders:
+        pre = _first_install_rel(f)
+        lay = detect_layout(f)
+        for rel in list_loose(f):
+            if lay.multi and pre and not norm(rel).startswith(pre):
+                continue                  # loose files of the Generals install: the engine does not see them
+            if not sel.relevant(rel):
+                continue
+            if identical(rel):
+                sel.loose_identical += 1
+            else:
+                sel.loose_files.append((f, rel))
+
+
+def loose_lines(sel):
+    if not sel.loose_mod:
+        return []
+    if not sel.loose_files and not sel.loose_identical:
+        return []
+    tops = {}
+    for _f, rel in sel.loose_files:
+        parts = rel.lower().split("/")
+        key = "/".join(parts[:3] if parts[0] == "data" and len(parts) > 3 else parts[:2] if len(parts) > 2 else parts[:1])
+        tops[key] = tops.get(key, 0) + 1
+    top = ", ".join("%s (%d)" % kv for kv in sorted(tops.items(), key=lambda kv: -kv[1])[:6])
+    out = ["Loose files treated as the mod's (not part of the ruleset): %d%s%s" % (
+        len(sel.loose_files), "; mostly " + top if top else "",
+        "; %d more are identical to the retail archive copy and stay ruleset" % sel.loose_identical
+        if sel.loose_identical else "")]
+    out.append("  (--loose ruleset treats loose files as retail data instead)")
+    return out

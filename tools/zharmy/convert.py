@@ -90,7 +90,7 @@ class World:
         self.notes = []
 
 
-def build_world(mod_paths, base_paths, mod_archives=None):
+def build_world(mod_paths, base_paths, mod_archives=None, loose=None):
     """Build the file systems.
 
     The mod file system is what the game sees with the mod installed: the base layers with the mod on top.
@@ -107,7 +107,7 @@ def build_world(mod_paths, base_paths, mod_archives=None):
     base_real = {real(p) for p in (base_paths or [])}
     same = bool(base_paths) and any(real(p) in base_real for p in mod_paths)
     try:
-        sel = layoutmod.resolve_mod_archives(list(base_paths or []), mod_archives, same)
+        sel = layoutmod.resolve_mod_archives(list(base_paths or []), mod_archives, same, loose)
     except layoutmod.SelectionError as exc:
         raise ConvertError(str(exc))
     exclude = sel.predicate()
@@ -138,9 +138,9 @@ def build_world(mod_paths, base_paths, mod_archives=None):
     return w
 
 
-def build_vfs(mod_paths, base_paths, mod_archives=None):
+def build_vfs(mod_paths, base_paths, mod_archives=None, loose=None):
     """Returns (mod_vfs, base_vfs or None); see ``build_world``."""
-    w = build_world(mod_paths, base_paths, mod_archives)
+    w = build_world(mod_paths, base_paths, mod_archives, loose)
     return w.mod_vfs, w.base_vfs
 
 
@@ -210,7 +210,7 @@ class Context:
     the string tables and the comparison with the ruleset. Built once; ``convert-all`` reuses it."""
 
     def __init__(self, mod_paths, base_paths, requires="zerohour", language=None, mod_archives=None,
-                 progress=None):
+                 progress=None, loose=None):
         self.progress = progress or (lambda m: None)
         self.mod_paths = list(mod_paths)
         self.base_paths = list(base_paths or [])
@@ -223,7 +223,7 @@ class Context:
             raise ConvertError("--requires %s needs the ruleset data (--base); use --requires none for a fully "
                                "self-contained package" % requires)
         self.progress("reading archive directories")
-        world = build_world(self.mod_paths, self.base_paths, mod_archives)
+        world = build_world(self.mod_paths, self.base_paths, mod_archives, loose)
         self.mod_vfs, self.base_vfs, self.selection = world.mod_vfs, world.base_vfs, world.selection
         self.notes.extend(world.notes)
         for line in world.notes:
@@ -534,6 +534,9 @@ class Converter:
                 t = self.mod.get(kind, tok)
                 if t is not None:
                     queue.append(t)
+                else:
+                    # the engine copies the parent of an ObjectReskin while it reads the line: it must exist
+                    self.fatal.append((d.kind, d.name, "ObjectReskin copies", tok, kind))
             for r in fields:
                 found = False
                 for kind in r.kinds:
@@ -574,8 +577,8 @@ class Converter:
     def _fatal_text(self):
         ex = "; ".join("%s %s: %s = %s (%s)" % f for f in self.fatal[:3])
         return ("cannot be converted: %d reference(s) to names the engine resolves while it reads the INI files and "
-                "rejects when they are missing (Science, CommandButton, Locomotor) found nothing in the mod as "
-                "played, e.g. %s%s. The mod itself could not start with this; if it does, an INI file of it was not "
+                "rejects when they are missing (a Science, a CommandButton, a Locomotor, the object an ObjectReskin "
+                "copies) found nothing in the mod as played, e.g. %s%s. The mod itself could not start with this; if it does, an INI file of it was not "
                 "read correctly (check zharmy inspect --ini-problems)"
                 % (len(self.fatal), ex, " and %d more" % (len(self.fatal) - 3) if len(self.fatal) > 3 else ""))
 
@@ -726,7 +729,7 @@ class Converter:
         self.progress("writing definitions")
         files = {}
         groups = {}
-        for (kind, key), d in sorted(self.copy.items(), key=lambda kv: kv[1].seq):
+        for (kind, key), d in self._load_order():
             node = self._transform(d)
             fname = BLOCK_FILE.get(d.node.name)
             if fname is None:
@@ -747,6 +750,32 @@ class Converter:
             files["army/scripts/skirmish.scb"] = scb_bytes
         files.update(self.assets.files)
         return files
+
+    def _load_order(self):
+        """The copied definitions in the order the mod loads them, except that the object an ObjectReskin copies
+        comes first when it is part of the package (the engine copies it while it reads the reskin line, so it must
+        be defined before it; chains of reskins work the same way)."""
+        items = sorted(self.copy.items(), key=lambda kv: kv[1].seq)
+        by_key = dict(items)
+        out, placed, visiting = [], set(), set()
+
+        def place(k):
+            if k in placed or k in visiting:
+                return
+            visiting.add(k)
+            d = by_key[k]
+            if d.node.name == "ObjectReskin":
+                toks = d.node.args.split()
+                if len(toks) >= 2:
+                    pk = ("Object", toks[1].lower())
+                    if pk in by_key:
+                        place(pk)
+            visiting.discard(k)
+            placed.add(k)
+            out.append((k, d))
+        for k, _d in items:
+            place(k)
+        return out
 
     def _ai_node(self):
         children = []
@@ -1006,8 +1035,8 @@ def _short(names, limit=6):
     return ", ".join(names[:limit]) + ", ... (+%d)" % (len(names) - limit)
 
 
-def convert(mod_paths, base_paths, options, output, progress=None, mod_archives=None):
-    ctx = Context(mod_paths, base_paths, options.requires, options.language, mod_archives, progress)
+def convert(mod_paths, base_paths, options, output, progress=None, mod_archives=None, loose=None):
+    ctx = Context(mod_paths, base_paths, options.requires, options.language, mod_archives, progress, loose)
     c = Converter(ctx, options, progress)
     report = c.run(output)
     return c, report
@@ -1054,7 +1083,7 @@ def derive_tags(names, prefix=None):
 
 
 def convert_all(mod_paths, base_paths, out_dir, tag_prefix=None, requires="zerohour", language=None,
-                mod_archives=None, template=None, progress=None, only=None):
+                mod_archives=None, template=None, progress=None, only=None, loose=None):
     """Convert every playable faction. Returns (rows, contexts) where each row is a dict for the summary table.
 
     A faction that cannot be played in the mod itself (its starting building or units do not exist) is skipped
@@ -1062,7 +1091,7 @@ def convert_all(mod_paths, base_paths, out_dir, tag_prefix=None, requires="zeroh
     """
     import time
     progress = progress or (lambda m: None)
-    ctx = Context(mod_paths, base_paths, requires, language, mod_archives, progress)
+    ctx = Context(mod_paths, base_paths, requires, language, mod_archives, progress, loose)
     templates = playable_templates(ctx)
     if only:
         wanted = {o.lower() for o in only}
