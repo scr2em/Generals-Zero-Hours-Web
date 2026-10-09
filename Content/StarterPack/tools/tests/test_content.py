@@ -50,6 +50,39 @@ class LayoutTest(unittest.TestCase):
                 self.assertEqual(len(names), len(set(names)), "duplicate window names in " + path)
                 self.assertIn("LAYOUTINIT", layout)
 
+    def test_combo_boxes_are_drawn_last_lowest_first(self):
+        """The list of a combo box opens downward over what is below it: windows drawn later sit on top, so every
+        combo box must come after the other windows of its parent, from the bottom of the screen to the top."""
+        from gen import wnd_extra, wnd_lan, wnd_menus
+        checked = 0
+        for module in (wnd_extra, wnd_lan, wnd_menus):
+            for path, data in capture(module).items():
+                if not path.endswith(".wnd"):
+                    continue
+                _layout, windows = parse_wnd(data)
+                for top in windows:
+                    for w in top.walk():
+                        kinds = [c.kind for c in w.children]
+                        if "COMBOBOX" not in kinds:
+                            continue
+                        first = kinds.index("COMBOBOX")
+                        self.assertTrue(all(k == "COMBOBOX" for k in kinds[first:]), path + " " + w.name)
+                        ys = [c.rect[1] for c in w.children[first:]]
+                        self.assertEqual(ys, sorted(ys, reverse=True), path + " " + w.name)
+                        checked += 1
+        self.assertGreater(checked, 3)
+
+    def test_check_box_clears_its_label(self):
+        """W3DCheckBox.cpp: the box starts a sixteenth of the width in and is a third of the height wide, the label
+        starts one height from the left edge; a window wider than 16 * (2/3 height - 4) would draw the box over it."""
+        from gen.wnd_widgets import checkbox
+        for width in (100, 224, 340, 1000):
+            w = checkbox("C", (10, 100, 10 + width, 124), "GUI:X")
+            x0, y0, x1, y1 = w.rect
+            h = y1 - y0
+            box_right = (x1 - x0) // 16 + h // 3
+            self.assertLess(box_right, h, "box overlaps the label for width %d" % width)
+
     def test_main_menu_has_the_windows_the_engine_looks_up(self):
         from gen import wnd_menus
         files = capture(wnd_menus)

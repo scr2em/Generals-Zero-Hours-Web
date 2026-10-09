@@ -116,8 +116,8 @@ def _game_options():
     children.append(label("StaticTextReady", (466, 96, 526, 118), text("LAN:Ready", "Ready"), size=11, style=MUTED_STYLE))
     for i in range(MAX_SLOTS):
         y = ROW_Y0 + i * ROW_H
-        children.append(combo("ComboBoxPlayer%d" % i, (24, y, 170, y + 26), display=5))
-        children.append(combo("ComboBoxPlayerTemplate%d" % i, (178, y, 298, y + 26), display=5))
+        children.append(combo("ComboBoxPlayer%d" % i, (24, y, 170, y + 26), display=8))
+        children.append(combo("ComboBoxPlayerTemplate%d" % i, (178, y, 298, y + 26), display=10))
         children.append(combo("ComboBoxColor%d" % i, (304, y, 384, y + 26), display=8))
         children.append(combo("ComboBoxTeam%d" % i, (390, y, 460, y + 26), display=5))
         # shows green when the player pressed Accept; the code colours it

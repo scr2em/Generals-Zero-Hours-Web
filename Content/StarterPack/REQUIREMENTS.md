@@ -58,15 +58,17 @@ What the content of the files must contain:
 | File | Status | Must define |
 | --- | --- | --- |
 | `GameData.ini` | R | A `GameData` block. Numbers the code divides by or loops over (build speed, lighting for all four times of day, `NumberGlobalLights`), `MoveHintName` (the model of the move marker; `W3DInGameUI` asserts when it cannot create it), the auto fire/smoke particle names. Unknown fields assert in debug builds, so the parser table in `GlobalData.cpp` is the reference. |
-| `PlayerTemplate.ini` | R | `FactionObserver` (the engine looks it up by name when a game starts), `FactionCivilian` (the neutral civilian side that the human player's scripts come from), and at least one playable faction: `Side`, `StartMoney`, `StartingBuilding`, `StartingUnit0..n`, the command sets for the science purchase windows, images, `LoadScreenMusic`/`ScoreScreenMusic`, `Features`, `ArmyTooltip`. The skirmish setup lists every template with `PlayableSide = Yes`. |
+| `PlayerTemplate.ini` | R | `FactionObserver` (the engine looks it up by name when a game starts), `FactionCivilian` (the neutral civilian side that the human player's scripts come from), and at least one playable faction: `Side`, `StartMoney`, `StartMoney` (0, so that the starting cash option of the setup screen decides: `Player.cpp` only uses the setup value when the template's is 0), `StartingBuilding`, `StartingUnit0..n`, the command sets for the science purchase windows, images, `LoadScreenMusic`/`ScoreScreenMusic`, `Features`, `ArmyTooltip`. The skirmish setup lists every template with `PlayableSide = Yes`. |
 | `Object.ini` | R | Every template the other files name: starting building and units, what they build, scenery used by the map. See section 6. |
 | `AIData.ini` | R (F for play) | `AIData` tuning values plus `SideInfo <Side>` and `SkirmishBuildList <Side>` for each playable side. The list starts with the command center, rotated 135 degrees by the engine (see the comment in the file); without it the computer opponent builds no base. |
-| `Weapon.ini`, `Armor.ini`, `Locomotor.ini`, `DamageFX.ini`, `FXList.ini` | R/F | The blocks the objects name. A missing weapon makes the unit unarmed (debug assertion), a missing locomotor makes it immobile. |
+| `Weapon.ini`, `Armor.ini`, `Locomotor.ini`, `DamageFX.ini`, `FXList.ini` | R/F | The blocks the objects name. A missing weapon makes the unit unarmed (debug assertion), a missing locomotor makes it immobile. `Locomotor.ini` must also define `BasicHumanLocomotor`: the rally point check of every production building looks it up by that name (`GameLogicDispatch.cpp`), and with none every rally point is refused ("Units cannot reach that place"). |
 | `ParticleSystem.ini` | F | Systems the effect lists and `GameData` name; textures are in `Art\Textures`. |
 | `CommandButton.ini`, `CommandSet.ini` | F | Buttons and sets for every command bar the starter units and buildings show; `ControlBar::init` loads them before anything else needs them. |
 | `ControlBarScheme.ini` | R | At least one scheme (`Side`, `ScreenCreationRes`, the positions of the parts, `ImagePart` entries). The control bar picks the scheme of the local player's side by its `Side` and the screen resolution. |
 | `ShellMenuScheme.ini` | R | One scheme whose images/lines the shell draws behind the menus. |
 | `WindowTransitions.ini` | R | Every group a script, a layout or the code names with `reverse()`/`setGroup()`: an unknown group dereferences null (`GameWindowTransitions.cpp`). Empty groups are no-ops, so the pack defines every name that the shipped menu code mentions and leaves most of them empty. The quit menu relies on `QuitFull`/`QuitFullBack` fades. |
+| `GameLOD.ini` | R | The four `StaticGameLOD` levels. `MaxTankTrackEdges` must not be 0: the level's value overwrites the global one and sizes the terrain-track vertex buffer (`W3DTerrainTracks.cpp`); a buffer with no vertices asserts at start up. Same for `MaxTerrainTracks` (`GameData.ini`), which has no usable default. |
+| `Animation2D.ini` | F | The small animations the game draws over objects, by the fixed names of `TheDrawableIconNames` (`Drawable.cpp`: `DefaultHeal`, `StructureHeal`, `VehicleHeal`, `Demoralized`, `BombTimed`, `BombRemote`, `Disabled`, `BattlePlanIcon_*`, `Enthusiastic`, `Subliminal`, `CarBomb`). A missing one is a null template: an assertion for every such object on every frame (the first healed or damaged building did it). |
 | `Mouse.ini` | R | The `Mouse` block with tooltip settings and one `MouseCursor` entry per cursor kind. Textures may be missing: the web build stubs cursors (`LoadCursorFromFile` returns a stock handle). |
 | `DrawGroupInfo.ini`, `Rank.ini`, `Terrain.ini`, `Water.ini`, `Roads.ini` | R | `DrawGroupInfo`: font and offsets for the health bars. `Rank`: the pack defines ranks 1 to 5 (`RankInfoStore` is indexed by the rank number). `Terrain`: one entry per terrain texture class a map uses, plus `DefaultTerrain` (not enforced). `Water`: the four `WaterSet` blocks (time of day), `WaterTransparency`. |
 | `AudioSettings.ini` | R | `AudioSettings` with the folders (`AudioRoot`, `SoundsFolder`, `MusicFolder`, `StreamingFolder`), `SoundsExtension`, volumes, ranges. `AudioManager::init` reads `m_audioSettings->m_preferred*Volume`. |
@@ -85,6 +87,10 @@ does not exist, `Data\<language>\Generals.csf`. The pack ships the text form.
   `MISSING: 'label'` and asserts in debug builds. `tools/validate_pack.py` checks every label the pack's own INI and WND
   files use; labels that code looks up by itself must be added by hand (the starter list in `gen/strings_data.py`).
 * Format arguments in strings must use `%ls` for wide strings (the engine formats with `swprintf`).
+* Labels the code builds by itself (not found by grepping for a literal): `NUMBER:<n>` (control-group digits, skirmish slot numbers),
+  `SIDE:<Side of the player template>` (the faction combo box of the setup screens, `GUIUtil.cpp`: a faction added by another
+  package needs its own), `Version:Format2/3/4`, `Version:BuildTime/BuildMachine/BuildUser` (replay list "Version" column),
+  `GUI:Key_<NAME>` and `GUI:Key_<NAME>_Desc` for every `CommandMap` entry (`gen/keys.py`), `GUI:<CATEGORY>` for the key categories.
 * A map names itself with the `mapName` entry of its world dictionary (`MAP:Name`); the label comes from
   `Maps\<map>\map.str`.
 * Fonts: windows ask GDI for families by name (`CreateFont`). The pack names only `DejaVu Sans` (bundled, free licence,
@@ -107,7 +113,24 @@ them with the layouts. The starter pack ships:
 | `ControlBar.wnd`, `ControlBarPopupDescription.wnd`, `GeneralsExpPoints.wnd`, `ReplayControl.wnd` | R for a match | The in-game bar. 18 command buttons `ButtonCommand01..18` (must be push buttons with the IMAGE status, because `setControlCommand` rejects anything else), the queue slots, `LeftHUD`, `RightHUD`, `PowerWindow`, `MoneyDisplay`, observer panels. The scheme file moves some of them (positions in `ControlBarScheme.ini` override the layout). |
 | `Menus\ScoreScreen.wnd` | F | End of match. |
 | `Menus\MessageBox.wnd`, `Menus\QuitMenu.wnd`, `Menus\QuitMessageBox.wnd`, `Menus\QuitNoSave.wnd`, `Menus\BlankWindow.wnd` | F | Dialogs the shell and the in-game menu open. |
-| Everything else the code can open (options, lobbies, campaign, replays, GameSpy ...) | O | The starter menu does not offer these screens. |
+| `Menus\OptionsMenu.wnd`, `KeyboardOptionsMenu.wnd`, `CreditsMenu.wnd`, `SaveLoad.wnd`, `PopupSaveLoad.wnd`, `ReplayMenu.wnd`, `PopupReplay.wnd`, `Victorious.wnd`, `Defeat.wnd`, `LocalDefeat.wnd`, `ObserverQuit.wnd`, `InGameChat.wnd`, `Diplomacy.wnd`, `InGamePopupMessage.wnd`, `Lan*.wnd` | F | The remaining screens of the menu flow (`gen/wnd_extra.py`, `gen/wnd_lan.py`). The banners are created by the victory / defeat script actions (`ScriptActions.cpp`). |
+| Everything else the code can open (campaign, GameSpy, challenge ...) | O | The starter menu does not offer these screens. |
+
+Facts about layouts that cost time (all enforced by `gen/wnd_widgets.py` / `tools/spk/wnd.py`, with tests):
+
+* A window listed later in a layout draws on top of the earlier ones and is hit-tested first. The drop-down list of a combo box
+  opens below it and extends over other windows, so `tools/spk/wnd.py` writes the combo boxes of a parent last, the lowest one
+  first. Without this only the first rows of a list are visible and clickable.
+* A check box (`W3DCheckBox.cpp`) draws its box a sixteenth of the width from the left, one third of the height wide, and its label
+  one height from the left edge: a window wider than `16 * (2/3 height - 4)` draws the box over the label. `checkbox()` fixes the
+  height and clamps the width; the label may run past the right edge (the background is transparent).
+* A static text whose label contains `&` before a hot key letter needs the status `HOTKEY_TEXT` (the tooltip title of a command
+  button does), or the `&` is printed.
+* The production queue strip (`ProductionQueueWindow`) is shown by the engine next to the command buttons while a building is
+  producing; it must not overlap `CommandWindow`, or the buttons cannot be clicked again and nothing more can be queued.
+* `populateSkirmishBattleHonors` fills the wins / losses numbers of the skirmish setup only if the layout has a `ListboxInfo`
+  list (hidden in the pack).
+* The `MultiplayerScripts.scb` victory / defeat scripts exist for the banners (see section 9).
 
 Each layout names callbacks (`SYSTEMCALLBACK = "MainMenuSystem"`); they are resolved through `FunctionLexicon` tables that
 are compiled into the engine, so only those names are valid. Gadget windows use `STYLE = PUSHBUTTON+MOUSETRACK` and the
@@ -141,6 +164,8 @@ starter pack's templates are the practical reference (`data/Data/INI/Object.ini`
 * `Body = ActiveBody` (health), `ArmorSet`, `WeaponSet`, `Behavior = AIUpdateInterface` (units) or `DozerAIUpdate` (workers),
   `ProductionUpdate` with `CommandSet` for factories, `AutoDepositUpdate` for the income of the starter economy,
   `Locomotor = SET_NORMAL <Name>`, `Geometry*` for selection and collision, `Shadow`, `VisionRange`, `ShroudClearingRange`.
+* Combat units: `Behavior = AIUpdateInterface` with `AutoAcquireEnemiesWhenIdle = Yes Attack_Buildings` (`AIUpdate.cpp`
+  `getNextMoodTarget`): without the second word idle units and units on attack move ignore enemy structures.
 * `Prerequisites` (what must stand first), `BuildCost`, `BuildTime`, `ButtonImage`/`SelectPortrait`, `DisplayName` (a string label).
 * Production buildings need `UnitCreatePoint`/`NaturalRallyPoint` and `MaxQueueEntries`.
 
@@ -193,7 +218,14 @@ What a skirmish map needs:
   The AI also needs a factory that can train each unit and the money for it.
 * Objects: every name must be a template (unknown names are skipped); owners are `originalOwner = "team"` for neutral
   scenery. Waypoint objects use the template name `*Waypoints/Waypoint`.
-* `MultiplayerScripts.scb` is optional: the victory and defeat rules are built into `VictoryConditions`.
+* `Data\Scripts\MultiplayerScripts.scb` is **needed to end a game**: `VictoryConditions` only tracks who is still alive, the
+  scripts `MultiplayerVictory` (`MULTIPLAYER_ALLIED_VICTORY` -> `VICTORY`), `MultiplayerDefeat` (`MULTIPLAYER_ALLIED_DEFEAT` ->
+  `DEFEAT`) and `MultiplayerPlayerDefeat` (`MULTIPLAYER_PLAYER_DEFEAT` -> `LOCALDEFEAT`) show the banner and send the game to the
+  score screen (`GameLogic.cpp` appends them to the neutral side of every game with two or more teams; `gen/mp_scripts.py`).
+* A computer opponent also needs build orders in its skirmish scripts: the `SkirmishBuildList` of `AIData.ini` is only followed
+  for the first building and for rebuilding; the barracks and the factory come from `SKIRMISH_BUILD_BUILDING` actions
+  (`gen/ai_scripts.py`), and `TeamResourcesToStart` in `AIData.ini` must be small (1.0): it is the money a team needs before
+  the AI starts to build it, and with 100 no team was ever started.
 * Preview: `Maps\<name>\<name>.tga` shown in the setup screen (optional).
 
 ## 10. Behaviour of the web build that the content has to live with
@@ -205,3 +237,8 @@ What a skirmish map needs:
   (fonts, cursors, D3D device creation) which no data can work around.
 * Memory pools and the INI parser are strict: an unknown field aborts loading in debug builds, so the pack is developed
   against a debug engine (`RTS_WEB_DEBUG`), where every typo shows up in the first boot log.
+* The assertions of the engine (`ASSERTION FAILURE` in the console log) are compiled in with
+  `cmake --preset emscripten -B build/em-p -DRTS_DEBUG_LOGGING=ON -DRTS_DEBUG_CRASHING=ON`. A clean pack gives none in the menus or
+  in a whole match (`GeneralsMD/Code/Main/web/test/starter_match.mjs` fails on any). Known exception that is not content: with a
+  browser window smaller than the game's resolution (1024 x 768) and the launcher's "As set in the game's Options", the renderer
+  reports `No valid texture format found` at start up (platform code).

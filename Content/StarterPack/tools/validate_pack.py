@@ -63,7 +63,7 @@ class Block:
                 yield b
 
 
-SINGLE_LINE = {"LODPreset"}       # statements that are one line and have no End
+SINGLE_LINE = {"LODPreset", "Blank"}       # statements that are one line and have no End (Blank: a gap in Credits.ini)
 MODULE_TAG = re.compile(r"ModuleTag_\w+")
 
 

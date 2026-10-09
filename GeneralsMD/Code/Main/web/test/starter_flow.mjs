@@ -2,6 +2,8 @@
 // engine's console log after every step. This is how the starter pack's menus, setup screens and map are exercised
 // without a person at the mouse.
 //
+//   --steps-file FILE  read the steps from a file ('#' starts a comment); --repl FILE  keep the session open after the steps and run the
+//                      lines appended to FILE ('quit' ends it), for steering a match by hand
 //   node starter_flow.mjs --site <build/GeneralsMD> [--pack <built starterpack dir>] [--steps "<steps>"] [--out <dir>]
 //                         [--port 8941] [--arg -noshellmap] [--wait 60] [--log boot.log] [--profile <dir>] [--size 1100x800]
 //                         [--dpr 2] [--resolution auto|fit|fitsharp|1280x720 ...] [--expect-trap]
@@ -25,6 +27,7 @@
 //              v:EXPR  evaluate a JavaScript expression in the page and print the result (~ stands for a space)
 //              e:EXPR  like v:, but the step fails (exit code 1) unless the result is truthy
 //              u:EXPR  wait (30 s) until the expression is truthy, else the step fails
+//              F:N     wait for N more logic frames (the log shows a frame every 100)   f:N     wait (up to 40 min) until the game has reached logic frame N     W:RE   wait (up to 40 min) until a log line matches
 //              t:ID=REGEX   wait (30 s) until the text of element #ID matches, else the step fails
 //              reload  reload the page (same browser profile: OPFS, localStorage stay) and press Play again
 //              size:W,H   resize the browser window (viewport)
@@ -51,6 +54,9 @@ const opt = { port: 8941, wait: 60, out: '.', steps: 'm:300,300 w:1 s:menu', arg
 			case '--site': opt.site = a[++i]; break;
 			case '--pack': opt.pack = a[++i]; break;
 			case '--steps': opt.steps = a[++i]; break;
+			case '--steps-file': opt.steps = fs.readFileSync(a[++i], 'utf8').replace(/#[^\n]*/g, ' '); break;
+			case '--repl': opt.repl = a[++i]; break;
+			case '--watchdog': opt.watchdog = Number(a[++i]); break;
 			case '--out': opt.out = a[++i]; break;
 			case '--port': opt.port = Number(a[++i]); break;
 			case '--wait': opt.wait = Number(a[++i]); break;
@@ -93,6 +99,9 @@ if (opt.profile) {
 }
 const page = context.pages()[0] || await context.newPage();
 const logs = [];
+// with --log the lines are appended to the file as they arrive, so a run that is cut short still leaves its log
+const logPush = logs.push.bind(logs);
+logs.push = (...lines) => { if (opt.log) fs.appendFileSync(opt.log, lines.join('\n') + '\n'); return logPush(...lines); };
 // --stack-on RE: print a JavaScript stack (with the wasm function names of a debug build) when a console line matches
 if (opt.stackOn) await context.addInitScript((re) => {
 	const rx = new RegExp(re);
@@ -102,6 +111,7 @@ if (opt.stackOn) await context.addInitScript((re) => {
 	}
 }, opt.stackOn);
 const t0 = Date.now();
+if (opt.log) fs.writeFileSync(opt.log, '');
 const stamp = () => ((Date.now() - t0) / 1000).toFixed(2).padStart(7);
 page.on('console', (m) => logs.push(stamp() + ' ' + m.type() + ': ' + m.text()));
 page.on('dialog', (d) => d.accept().catch(() => {}));	// "leave this page?" while a game runs
@@ -141,12 +151,38 @@ flush('engine start');
 let failures = 0;
 function fail(what) { failures++; console.log('FAIL: ' + what); }
 
+// a match that has ended (the score screen is up) never reaches later frames: the waits for frames stop then
+function matchEnded() { return logs.some((l) => /Shell:push\(Menus\/ScoreScreen/.test(l)); }
+
+function lastFrame() {
+	for (let i = logs.length - 1; i >= 0 && i > logs.length - 4000; --i) {
+		const m = /Appended CRC on frame (\d+)/.exec(logs[i]);
+		if (m) return Number(m[1]);
+	}
+	return 0;
+}
+
+// --watchdog SEC: when the game has not logged a new logic frame for SEC seconds (it logs one every 100 frames), print
+// the call stacks of the engine's threads once (the P step): that is a hang.
+if (opt.watchdog) {
+	let seen = -1, since = Date.now(), reported = false;
+	setInterval(() => {
+		const f = lastFrame();
+		if (f !== seen) { seen = f; since = Date.now(); return; }
+		if (!reported && f > 0 && Date.now() - since > opt.watchdog * 1000 && !matchEnded()) {
+			reported = true;
+			console.log('WATCHDOG: no new frame after ' + f + ' for ' + opt.watchdog + ' s');
+			runStep('P').catch((e) => console.log('watchdog: ' + e));
+		}
+	}, 5000);
+}
+
 async function point(x, y) {
 	const box = await page.locator('#canvas').boundingBox();
 	return { x: box.x + (x / 800) * box.width, y: box.y + (y / 600) * box.height };
 }
 
-for (const step of opt.steps.split(/\s+/).filter(Boolean)) {
+async function runStep(step) {
 	let [kind, arg = ''] = [step.split(':')[0], step.slice(step.indexOf(':') + 1)];
 	const xy = () => arg.split(',').map(Number);
 	switch (kind) {
@@ -167,6 +203,49 @@ for (const step of opt.steps.split(/\s+/).filter(Boolean)) {
 			const until = Date.now() + 30000;
 			while (Date.now() < until && !logs.some((l) => re.test(l))) await page.waitForTimeout(250);
 			if (!logs.some((l) => re.test(l))) console.log('(no log line matched /' + arg + '/ in 30 s)');
+			break;
+		}
+		case 'f': {	// wait (up to 40 min) until the game has reached logic frame N ("Appended CRC on frame N" in the log)
+			const target = Number(arg);
+			const until = Date.now() + 40 * 60000;
+			while (Date.now() < until && lastFrame() < target && !matchEnded()) await page.waitForTimeout(500);
+			if (lastFrame() < target && !matchEnded()) fail('frame ' + target + ' not reached, at ' + lastFrame());
+			break;
+		}
+		case 'F': {	// wait for N more logic frames (F:N), counted from the last "Appended CRC" line
+			const target = lastFrame() + Number(arg);
+			const until = Date.now() + 40 * 60000;
+			while (Date.now() < until && lastFrame() < target && !matchEnded()) await page.waitForTimeout(500);
+			if (lastFrame() < target && !matchEnded()) fail('frame ' + target + ' not reached, at ' + lastFrame());
+			break;
+		}
+		case 'W': {	// wait (up to 40 min) until a log line matches the regex; fails when none does
+			const re = new RegExp(arg.replace(/~/g, ' '));
+			const until = Date.now() + 40 * 60000;
+			while (Date.now() < until && !logs.some((l) => re.test(l))) await page.waitForTimeout(500);
+			if (!logs.some((l) => re.test(l))) fail('no log line matched /' + arg + '/ in 40 min');
+			break;
+		}
+		case 'P': {	// break into the engine's thread(s) and print the call stack (finds a hang; needs the browser's DevTools protocol)
+			try {
+				const bcdp = await browser.newBrowserCDPSession();
+				const { targetInfos } = await bcdp.send('Target.getTargets');
+				const sessions = new Map();
+				bcdp.on('Target.receivedMessageFromTarget', ({ sessionId, message }) => {
+					const m = JSON.parse(message);
+					if (m.method === 'Debugger.paused') {
+						console.log('PAUSED worker ' + sessions.get(sessionId) + ', call stack:');
+						for (const f of m.params.callFrames.slice(0, 30)) console.log('  ' + (f.functionName || '?') + ' ' + (f.url || '').split('/').pop() + ':' + f.location.lineNumber + ':' + f.location.columnNumber);
+					}
+				});
+				for (const t of targetInfos.filter((x) => x.type === 'worker')) {
+					const { sessionId } = await bcdp.send('Target.attachToTarget', { targetId: t.targetId, flatten: false });
+					sessions.set(sessionId, t.title || t.url);
+					for (const [id, method] of [[1, 'Debugger.enable'], [2, 'Debugger.pause']])
+						await bcdp.send('Target.sendMessageToTarget', { sessionId, message: JSON.stringify({ id, method }) });
+				}
+				await page.waitForTimeout(3000);
+			} catch (err) { console.log('P: failed: ' + err); }
 			break;
 		}
 		case 'n': break;
@@ -226,9 +305,30 @@ for (const step of opt.steps.split(/\s+/).filter(Boolean)) {
 	flush(step);
 }
 
+for (const step of opt.steps.split(/\s+/).filter(Boolean)) await runStep(step);
+
+// --repl FILE: keep the game running and execute the lines that are appended to FILE (one list of steps per line, '#'
+// starts a comment); prints 'DONE n' after each line. The line 'quit' ends the session.
+if (opt.repl) {
+	fs.writeFileSync(opt.repl, '');
+	let offset = 0, done = false, n = 0;
+	console.log('REPL ready: ' + opt.repl);
+	while (!done) {
+		const text = fs.readFileSync(opt.repl, 'utf8');
+		const fresh = text.slice(offset);
+		const end = fresh.lastIndexOf('\n');
+		if (end < 0) { await new Promise((r) => setTimeout(r, 300)); continue; }
+		offset += end + 1;
+		for (const line of fresh.slice(0, end).split('\n')) {
+			if (line.trim() === 'quit') { done = true; break; }
+			for (const step of line.replace(/#.*/, ' ').split(/\s+/).filter(Boolean)) await runStep(step);
+			console.log('DONE ' + (++n));
+		}
+	}
+}
+
 const errors = await page.evaluate(() => ({ shown: !document.getElementById('errors').hidden, text: document.getElementById('errors-log').textContent })).catch(() => null);
 if (errors && errors.shown) console.log('launcher error panel: ' + errors.text.slice(0, 600));
-if (opt.log) fs.writeFileSync(opt.log, logs.join('\n') + '\n');
 const trapped = logs.some((l) => /RuntimeError|unreachable|memory access out of bounds|Aborted\(|abort\(/.test(l));
 console.log('workers created: ' + workerCount);
 console.log(trapped ? 'RESULT: wasm trap or abort' : 'RESULT: no trap');

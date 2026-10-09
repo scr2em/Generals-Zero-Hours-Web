@@ -51,9 +51,10 @@ def label(name, rect, text, size=12, bold=False, centered=False, style=TEXT_STYL
 
 
 def static(name, rect, text=None, size=12, bold=False, centered=False, style=TEXT_STYLE, fill=TRANSPARENT,
-           border=TRANSPARENT, hidden=False):
-    """A static text that code writes into (GadgetStaticTextSetText); optional boxed background."""
-    return Window("STATICTEXT", name, rect, status=("ENABLED",), text=text, font=font(size, bold), text_style=style,
+           border=TRANSPARENT, hidden=False, hotkey=False):
+    """A static text that code writes into (GadgetStaticTextSetText); optional boxed background. ``hotkey``: the text
+    may carry a '&' in front of the hot key letter, which is then drawn underlined instead of as a character."""
+    return Window("STATICTEXT", name, rect, status=("ENABLED", "HOTKEY_TEXT") if hotkey else ("ENABLED",), text=text, font=font(size, bold), text_style=style,
                   hidden=hidden, data={"centered": 1 if centered else 0}, look=Look.flat(fill, border))
 
 
@@ -66,8 +67,29 @@ def button(name, rect, text=None, size=13, bold=True, hidden=False, enabled=True
                   look=look, hidden=hidden, tooltip_text=tooltip, system=system, draw=draw, image=image_status)
 
 
+# A colour the engine reads as "undefined": W3DGadgetCheckBoxDraw draws the cross of a check box unless the box colour
+# is this one (GAME_COLOR_UNDEFINED = alpha 0, RGB white).
+UNDEFINED = (255, 255, 255, 0)
+
+
+CHECKBOX_HEIGHT = 28
+
+
 def checkbox(name, rect, text=None, size=11):
-    look = Look.flat(BUTTON, STEEL, hilite=(BUTTON_HI, AMBER), selected=(BUTTON_DOWN, AMBER))
+    """Draw data of a check box (GadgetCheckBox.h): 0 = background, 1 = the box when unchecked, 2 = the box when checked.
+    The engine (W3DCheckBox.cpp) puts the box a sixteenth of the width from the left edge, makes it a third of the height
+    wide and draws the label one height from the left edge. For the box to clear the label the window has to be at
+    most 16 * (2/3 height - 4) wide, so the rectangle given here only fixes the left edge and the middle line; the
+    label may run past the right edge of the window (the background is transparent, nothing shows where it ends)."""
+    x0, y0, x1, y1 = rect
+    h = CHECKBOX_HEIGHT
+    cy = (y0 + y1) // 2
+    w = min(x1 - x0, 16 * (2 * h // 3 - 4))
+    rect = (x0, cy - h // 2, x0 + w, cy - h // 2 + h)
+    off = (None, TRANSPARENT, TRANSPARENT)
+    look = Look([off, (None, UNDEFINED, STEEL), (None, AMBER, AMBER)],
+                [off, (None, UNDEFINED, (60, 66, 78, 255)), (None, AMBER_DIM, AMBER_DIM)],
+                [(None, (64, 92, 132, 60), TRANSPARENT), (None, UNDEFINED, AMBER), (None, AMBER, AMBER)])
     return Window("CHECKBOX", name, rect, status=("ENABLED",), text=text, font=font(size, False), text_style=TEXT_STYLE,
                   look=look)
 

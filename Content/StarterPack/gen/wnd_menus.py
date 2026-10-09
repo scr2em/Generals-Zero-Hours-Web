@@ -47,18 +47,23 @@ def main_menu():
     # campaigns by name; the ones the starter content does not use stay hidden and empty.
     hidden_buttons = [button("Button%s" % n, (0, 0, 2, 2), None, hidden=True) for n in
                       ("USARecentSave", "USALoadGame", "GLARecentSave", "GLALoadGame", "ChinaRecentSave", "ChinaLoadGame")]
-    main_panel = panel("MapBorder2", (56, 196, 316, 456), fill=PANEL, border=AMBER, hidden=True, children=[
-        button("ButtonSkirmish", (76, 218, 296, 262), text("GUI:MenuSkirmish", "Skirmish"), size=16),
-        # the network lobby: players who joined the same room on the launcher page are on one virtual LAN
-        button("ButtonNetwork", (76, 274, 296, 318), text("GUI:MenuNetwork", "Play with friends"), size=16),
-        button("ButtonExit", (76, 330, 296, 374), text("GUI:MenuExit", "Exit"), size=16),
-        label("LabelMenuHint", (76, 388, 296, 440), text("GUI:MenuHint", "One original faction, one map,\nplayed against the computer\nor, in a room, against friends."),
-              size=10, style=MUTED_STYLE, centered=True),
-    ])
+    items = [("ButtonSkirmish", "GUI:MenuSkirmish", "Skirmish"),
+             # the network lobby: players who joined the same room on the launcher page are on one virtual LAN
+             ("ButtonNetwork", "GUI:MenuNetwork", "Play with friends"),
+             ("ButtonLoadGame", "GUI:MenuLoad", "Load game"),
+             ("ButtonReplay", "GUI:MenuReplay", "Replays"),
+             ("ButtonOptions", "GUI:MenuOptions", "Options"),
+             ("ButtonCredits", "GUI:MenuCredits", "Credits"),
+             ("ButtonExit", "GUI:MenuExit", "Exit")]
+    main_panel = panel("MapBorder2", (56, 190, 316, 190 + 20 + 48 * len(items)), fill=PANEL, border=AMBER, hidden=True, children=[
+        button(name, (76, 202 + i * 48, 296, 242 + i * 48), text(key, eng), size=16) for i, (name, key, eng) in enumerate(items)])
+    # The backdrop is part of the window (not of ShellMenuScheme.ini, whose images are never scaled to the
+    # resolution the game runs at), so it always fills the screen.
     parent = Window("USER", "MainMenuParent", (0, 0, 800, 600), status=("ENABLED",),
-                    system="MainMenuSystem", input="MainMenuInput", draw="W3DShellMenuSchemeDraw",
-                    look=Look.flat((0, 0, 0, 255)))
+                    system="MainMenuSystem", input="MainMenuInput",
+                    look=Look.flat((0, 0, 0, 255), image="SP_MenuBackdrop"), image=True)
     parent.add(
+        panel("HorizonLine", (0, 559, 800, 561), fill=AMBER, border=TRANSPARENT, status=("ENABLED", "NOINPUT")),
         label("LabelTitle", (56, 70, 560, 130), text("GUI:GameTitle", "IRONWOOD"), size=40, bold=True, style=AMBER_STYLE),
         label("LabelSubtitle", (58, 130, 560, 160), text("GUI:GameSubtitle", "Free starter content for the web port"),
               size=14, style=TEXT_STYLE),
@@ -102,17 +107,18 @@ def message_box(layout, quit_logo=False):
 # --------------------------------------------------------------------------------------------------
 
 def quit_menu(layout, parent_name):
-    buttons = [
-        button("ButtonReturn", (300, 232, 500, 272), text("GUI:ReturnToGame", "Return to game"), size=14),
-        button("ButtonRestart", (300, 284, 500, 324), text("GUI:RestartMission", "Restart"), size=14),
-        button("ButtonExit", (300, 336, 500, 376), text("GUI:ExitMission", "Exit to menu"), size=14),
-        # The code looks these up and (de)activates them; the starter content has no save games or options page.
-        button("ButtonOptions", (0, 0, 2, 2), None, hidden=True),
-    ]
-    if layout == "QuitMenu.wnd":
-        buttons.append(button("ButtonSaveLoad", (0, 0, 2, 2), None, hidden=True))
-    root = panel(parent_name, (270, 190, 530, 400), fill=PANEL_LIGHT, border=AMBER, system="QuitMenuSystem", hidden=False,
-                 children=[label("LabelQuitTitle", (280, 198, 520, 226), text("GUI:QuitMenuTitle", "Paused"), size=18, bold=True,
+    full = layout == "QuitMenu.wnd"
+    # (name, label key, english) top to bottom; the save / load page exists in the full variant only
+    items = [("ButtonReturn", "GUI:ReturnToGame", "Return to game"), ("ButtonOptions", "GUI:MenuOptions", "Options")]
+    if full:
+        items.append(("ButtonSaveLoad", "GUI:SaveLoadButton", "Save / Load"))
+    items += [("ButtonRestart", "GUI:RestartMission", "Restart"), ("ButtonExit", "GUI:ExitMission", "Exit to menu")]
+    top = 300 - (56 + 48 * len(items)) // 2
+    buttons = [button(name, (300, top + 48 + i * 48, 500, top + 88 + i * 48), text(key, eng), size=14)
+               for i, (name, key, eng) in enumerate(items)]
+    root = panel(parent_name, (270, top, 530, top + 56 + 48 * len(items)), fill=PANEL_LIGHT, border=AMBER,
+                 system="QuitMenuSystem", hidden=False,
+                 children=[label("LabelQuitTitle", (280, top + 8, 520, top + 36), text("GUI:QuitMenuTitle", "Paused"), size=18, bold=True,
                                  style=AMBER_STYLE, centered=True)] + buttons)
     return write_wnd(layout, [root], RES)
 
@@ -141,8 +147,8 @@ def skirmish_options():
         if i == 0:
             children.append(entry("TextEntryPlayerName", (24, y, 190, y + 26), maxlen=20))
         else:
-            children.append(combo("ComboBoxPlayer%d" % i, (24, y, 190, y + 26), display=5))
-        children.append(combo("ComboBoxPlayerTemplate%d" % i, (200, y, 330, y + 26), display=5))
+            children.append(combo("ComboBoxPlayer%d" % i, (24, y, 190, y + 26), display=8))
+        children.append(combo("ComboBoxPlayerTemplate%d" % i, (200, y, 330, y + 26), display=10))
         children.append(combo("ComboBoxColor%d" % i, (340, y, 430, y + 26), display=8))
         children.append(combo("ComboBoxTeam%d" % i, (440, y, 520, y + 26), display=5))
     # the map
@@ -175,6 +181,11 @@ def skirmish_options():
     children.append(label("StaticTextBestStreak", (200, 462, 300, 484), text("GUI:BestStreak", "Best streak"), size=11, style=MUTED_STYLE))
     children.append(static("StaticTextBestStreakValue", (300, 460, 360, 484), None, size=12, bold=True))
     children.append(button("ButtonReset", (380, 440, 520, 478), text("GUI:ResetStats", "Reset stats"), size=11))
+    # populateSkirmishBattleHonors fills the numbers above only when it finds the list of battle honors; the starter
+    # content has no honors to show, so the list is there but hidden
+    info = listbox("ListboxInfo", (0, 0, 8, 8), rows=1, scrollbar=False)
+    info.status.append("HIDDEN")
+    children.append(info)
     # buttons
     children.append(button("ButtonBack", (24, 548, 184, 584), text("GUI:Back", "Back"), size=14))
     children.append(button("ButtonStart", (616, 548, 784, 584), text("GUI:Start", "Start"), size=16))
@@ -263,13 +274,14 @@ def score_screen():
     kids = []
     kids.append(label("StaticTextTitle", (40, 24, 760, 66), text("GUI:ScoreTitle", "Battle report"), size=28, bold=True,
                       style=AMBER_STYLE))
+    # the backdrop goes first: a window drawn later covers the earlier ones (the headings were hidden under it)
+    kids.append(panel("RowsBackdrop", (22, 78, 780, 108 + 8 * 34 + 6), fill=PANEL, border=AMBER_DIM))
     x = 30
     xs = []
     for token, lbl, eng, width in SCORE_COLUMNS:
         xs.append((token, x, width))
-        kids.append(label("Heading" + token[10:], (x, 84, x + width, 106), text(lbl, eng), size=9, style=MUTED_STYLE, centered=token != "StaticTextPlayer"))
+        kids.append(label("Heading" + token[10:], (x, 84, x + width, 106), text(lbl, eng), size=9, style=TEXT_STYLE, centered=token != "StaticTextPlayer"))
         x += width + 4
-    kids.append(panel("RowsBackdrop", (22, 78, 780, 108 + 8 * 34 + 6), fill=PANEL, border=AMBER_DIM))
     for i in range(MAX_SLOTS):
         y = 112 + i * 34
         for token, x0, width in xs:
@@ -277,8 +289,9 @@ def score_screen():
                                centered=token != "StaticTextPlayer", hidden=True))
         kids.append(static("StaticTextObserver%d" % i, (xs[0][1], y, xs[0][1] + 130, y + 26), None, size=12, hidden=True))
         kids.append(static("StaticTextScore%d" % i, (700, y, 780, y + 26), None, size=12, hidden=True))
-        kids.append(static("GameWindowWinner%d" % i, (740, y, 776, y + 26), text("GUI:ScoreWinner", "Winner"),
-                           size=9, style=AMBER_STYLE, hidden=True))
+        # the engine puts the emblem of the player's faction into this window (ScoreScreen.cpp)
+        kids.append(Window("USER", "GameWindowWinner%d" % i, (742, y - 2, 774, y + 30), status=("ENABLED", "NOINPUT"),
+                           look=Look.flat(TRANSPARENT), image=True, hidden=True))
     # parts of the full score screen the skirmish does not use (the code looks them up and hides them)
     kids.append(listbox("ListboxWarschoolAdvice", (30, 410, 560, 500), rows=5, size=11))
     kids.append(label("StaticTextWarSchool", (30, 386, 560, 408), text("GUI:ScoreAdvice", "Tips"), size=11, style=MUTED_STYLE))

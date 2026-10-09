@@ -152,6 +152,14 @@ def construction_done():
                     _blip(1047, 260, "tri", tau=0.16))
 
 
+def construction_loop():
+    """Two hammer taps and a pause; loops while a structure goes up."""
+    def tap(freq):
+        return S.mix(S.exp_decay(S.highpass(S.noise(0.08, 51), 1500), 0.012), S.exp_decay(S.osc(freq, 0.09, "tri"), 0.02),
+                     gains=[0.7, 0.6])
+    return S.fade_edges(S.normalize(S.concat(tap(520), S.silence(0.16), tap(430), S.silence(0.46)), 0.6), 2)
+
+
 def engine_loop():
     base = S.osc(55, 1.0, "saw")
     wob = [s * (0.8 + 0.2 * math.sin(2 * math.pi * 11 * i / RATE)) for i, s in enumerate(base)]
@@ -168,6 +176,7 @@ def effects():
         "explosion_big": explosion_big, "building_collapse": building_collapse, "select_unit": select_unit,
         "move_unit": move_unit, "attack_unit": attack_unit, "select_building": select_building,
         "unit_created": unit_created, "construction_done": construction_done, "engine_loop": engine_loop,
+        "construction_loop": construction_loop,
     }
 
 
@@ -187,6 +196,7 @@ EVENTS = [
     ("StarterMoney", ["money"], UI),
     ("StarterNoCanDo", ["no_can_do"], UI),
     ("StarterRadarPing", ["radar_ping"], UI + ("Priority = HIGH",)),
+    ("RadarEvent", ["radar_ping"], UI + ("Priority = HIGH",)),
     ("StarterRifleFire", ["rifle_fire"], WORLD + ("Volume = 60", "PitchShift = -10 10", "Limit = 6")),
     ("StarterRocketFire", ["rocket_fire"], WORLD + ("Volume = 75", "Limit = 4")),
     ("StarterCannonFire", ["cannon_fire"], WORLD + ("Volume = 90", "Limit = 4")),
@@ -199,11 +209,13 @@ EVENTS = [
     ("StarterSelectBuilding", ["select_building"], VOICE),
     ("StarterUnitCreated", ["unit_created"], VOICE),
     ("StarterConstructionDone", ["construction_done"], UI + ("Priority = HIGH",)),
+    ("StarterUnderConstruction", ["construction_loop"], WORLD + ("Volume = 45", "Control = LOOP", "LoopCount = 0", "Limit = 3")),
     # events the engine looks up by a fixed name (found by grepping the sources for AudioEventRTS literals); each reuses
     # one of the effects above so that no lookup ends in "No info for requested audio event"
     ("PlaceBuilding", ["select_building"], UI),
     ("RallyPointSet", ["gui_command_click"], UI),
     ("UnableToSetRallyPoint", ["no_can_do"], UI),
+    ("NoCanDoSound", ["no_can_do"], UI),
     ("BeaconPlaced", ["gui_command_click"], UI),
     ("BeaconPlacementFailed", ["no_can_do"], UI),
     ("GUIBoarderFadeIn", ["gui_blip"], UI),
@@ -315,6 +327,8 @@ MUSIC_EVENTS = [
     ("StarterBattleMusic", "starter_battle.wav", True),
     ("StarterLoadMusic", "starter_load.wav", False),
     ("StarterScoreMusic", "starter_score.wav", False),
+    # played while the credits scroll (CreditsMenuInit asks for the track "Credits")
+    ("Credits", "starter_menu.wav", True),
 ]
 
 

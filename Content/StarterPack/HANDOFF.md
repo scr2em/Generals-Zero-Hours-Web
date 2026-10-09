@@ -5,6 +5,43 @@ For an AI coding agent or developer who has never seen the session that produced
 
 ## Status and changelog (newest first; keep this section current)
 
+* **Session 2: the starter game is complete and plays to the score screen (this entry replaces "known gaps" where they conflict).**
+  A whole skirmish against the computer runs to **defeat** and to **victory** and ends on the score screen, with the computer
+  building a base (power plant, barracks, factory by script) and attacking; no `ASSERTION FAILURE`, no `MISSING:` string and no
+  audio error in the log of a match (`GeneralsMD/Code/Main/web/test/starter_match.mjs`, section 13). What changed:
+  * *AI.* `TeamResourcesToStart = 1.0` (100 meant that no team was ever affordable: the AI built a power plant and two workers
+    and stopped) and two build-order scripts in `gen/ai_scripts.py` (`IronwoodBuildBarracks` at once, `IronwoodBuildFactory`
+    after 40 s) using `SKIRMISH_BUILD_BUILDING` (action 244, added to `tools/spk/scripts.py`); `GUI:ExpertAI` string for the
+    difficulty the AI work adds. The same hunks are on the AI branch.
+  * *End of game.* New `gen/mp_scripts.py` writes `Data/Scripts/MultiplayerScripts.scb` (victory, defeat and "you are out"
+    scripts); without it the engine tracked who was alive but never showed a banner or left the game. Banner layouts in
+    `gen/wnd_extra.py`. `tools/spk/scripts.py` got the three multiplayer conditions and `LOCALDEFEAT`.
+  * *Screens.* `gen/wnd_extra.py` (new): options (with the custom detail pop-up), keyboard shortcuts, credits, save / load
+    (full screen and pop-up), replays and the replay-save pop-up, in-game chat, player list, the helper pop-ups, end banners.
+    `gen/keys.py` (new): names and descriptions of every key binding. The main menu has Skirmish, Play with friends, Load game,
+    Replays, Options, Credits, Exit; the pause menu has Return, Options, Save / Load, Restart, Exit. `CommandMap.ini`:
+    `OPTIONS` is bound to Escape (as in the original game; it opens the pause menu in a match) and the chat, player list,
+    beacon and fast-forward keys exist.
+  * *Fixes found by playing.* Combo-box lists were covered by the widgets below them (the writer now puts combo boxes last);
+    check boxes drew their box over the label; the faction combo shows `SIDE:Ironwood`; tooltip titles showed a literal `&`
+    (`HOTKEY_TEXT`); the production queue strip covered the command buttons, so only one unit could be queued; the starting cash
+    option was ignored (`StartMoney` of the player template must be 0); every rally point was refused ("Units cannot reach that
+    place": the engine asks for a locomotor named `BasicHumanLocomotor`); the score screen's column headings were hidden under
+    its backdrop and "Winner" was cut off (the window holds the faction emblem); `GameLOD.ini` had `MaxTankTrackEdges = 0` (vertex buffer
+    with no vertices, assertion at start up); `Animation2D.ini` was empty (a null animation template, thousands of assertions
+    as soon as a building was damaged); audio event `NoCanDoSound` was missing; wins / losses on the setup screen stayed blank
+    (hidden `ListboxInfo`); strings `Version:*` (replay list "Version" column), `NUMBER:<n>` (control-group message),
+    `DOZER:*`, `RADAR:*`, `UPGRADE:*`, `SIDE:*`, `Chat:*`; objects got the unit voices and the construction loop; the HQ grants
+    itself the radar upgrade (minimap); workers carry a mine-sweeper weapon so that an idle dozer does not assert; the HQ income
+    is 50 every 5 s; the combat units say `AutoAcquireEnemiesWhenIdle = Yes Attack_Buildings` (without `Attack_Buildings` an
+    idle unit or one on attack move never shoots at a structure, so an army that arrived at the enemy base stood there).
+  * *One engine change* (`MainMenu.cpp`, `DoResolutionDialog`): the "keep this resolution?" box was created at a fixed corner
+    (`CORNER` = 10, 10) and opened at the top left of the screen; it now passes -1, -1 and keeps the position of its layout
+    (the middle of the screen). Nothing else in the engine was changed.
+  * *Not done / known.* No second map (the pack has one, "Ironwood Crossing"); the art is still the generated placeholder art;
+    a browser window smaller than 1024 x 768 with the launcher's "As set in the game's Options" makes the renderer print
+    `No valid texture format found` at start up (platform code, release builds do not assert). A software rendered headless
+    browser runs a match at 3 to 15 logic frames per second (30 are real time): a match test takes about half an hour.
 * **Network (LAN) menus, for playing with friends over the virtual LAN of the web port's rooms**
   (`GeneralsMD/Code/Main/webnet/README.md`). New `gen/wnd_lan.py`: `LanLobbyMenu.wnd`, `LanGameOptionsMenu.wnd`,
   `LanMapSelectMenu.wnd`, `GameInfoWindow.wnd` (the box next to the lobby's game list) and `DisconnectScreen.wnd` (the
@@ -92,11 +129,14 @@ Rules:
   `Player_1_Start` (280, 280) and `Player_2_Start` (1000, 1000)), preview picture and `map.str`.
 * Computer opponent: `SkirmishBuildList` in `data/Data/INI/AIData.ini` (what it builds and where) and
   `Data/Scripts/SkirmishScripts.scb` from `gen/ai_scripts.py` (three team types with production conditions; a finished
-  team runs `IronwoodAttackWave` = `TEAM_HUNT`). The human side gets a script that starts battle music.
+  team runs `IronwoodAttackWave` = `TEAM_HUNT`; two build-order scripts raise the barracks and the factory). The human side
+  gets a script that starts battle music. `Data/Scripts/MultiplayerScripts.scb` (`gen/mp_scripts.py`) ends the match.
 * Menus: main menu, skirmish options, skirmish map select, load screens, score screen, message box, quit menus, the
-  control bar and its helper layouts (`gen/wnd_menus.py`, `gen/wnd_game.py`, DSL in `gen/wnd_widgets.py`), the interface
-  art atlas and backdrops (`gen/ui_art.py`), about 190 strings (`gen/strings_data.py`).
-* Audio: 23 effects and 4 music tracks synthesised in `gen/audio.py`, plus the audio INI files generated from the same
+  control bar and its helper layouts (`gen/wnd_menus.py`, `gen/wnd_game.py`, DSL in `gen/wnd_widgets.py`), options, keyboard,
+  credits, save / load, replays, chat, player list and the end banners (`gen/wnd_extra.py`), the network lobby
+  (`gen/wnd_lan.py`), the interface art atlas and backdrops (`gen/ui_art.py`), about 400 strings (`gen/strings_data.py`,
+  `gen/keys.py`).
+* Audio: 24 effects and 4 music tracks synthesised in `gen/audio.py`, plus the audio INI files generated from the same
   tables. Effects are 16 bit PCM; music is IMA ADPCM (the encoder is in `tools/spk/wavfile.py`; the engine decoder
   reads it: `tests/test_engine_decoder.py` compiles `WebAudioDecoder.cpp` and compares).
 * Models (13 placeholders plus the engine's fixed name models), terrain tile sheets, particles, shadow, sky, water
@@ -115,7 +155,8 @@ Content/StarterPack/
                                     (.ini .str .wnd .txt are converted to CRLF by the build; see "conventions")
   gen/                              generators; each module has generate(emit); emit(path, bytes|str)
     textures.py ui_art.py models.py audio.py maps.py ai_scripts.py
-    wnd_widgets.py wnd_menus.py wnd_game.py strings_data.py textdb.py zz_strings.py misc.py
+    wnd_widgets.py wnd_menus.py wnd_game.py wnd_extra.py wnd_lan.py strings_data.py keys.py textdb.py zz_strings.py misc.py
+    mp_scripts.py (victory / defeat scripts)
   third_party/dejavu/               font files + licence
   tools/spk/                        format writers (and readers used by the tests)
     bigfile.py tga.py image.py (Canvas) wavfile.py (PCM + IMA ADPCM) synth.py strfile.py (STR/CSF)
@@ -300,9 +341,10 @@ Facts learned the hard way:
 
 ## 9. Known gaps and TODO, ranked
 
-*Written before the engine ran the pack. Items A1 (display), A2 (text, now done by the font agent), B and most of C/D are resolved or
-verified by `starter_flow.mjs`; see the status block. Still open: cursors (A3), the load screen's hard coded faction names, balance
-(D12), animations (D13), AI behaviour over a full match, the score screen, and every debug-only assert listed in the status block.*
+*Written before the engine ran the pack; most items below are done (the status block says which). What is still open: the art
+(placeholder), animations (D13: rigid models), balance (D12: one match won and one lost in the tests, nothing tuned), a second
+map, cursors (A3: the web layer maps them), the load screen's hard coded faction names (it takes them from `ChallengeMode.ini`
+now) and eva / speech lines (not provided).*
 
 **A. Blocks reaching the main menu (engine side, not content)**
 
@@ -489,14 +531,52 @@ Textures can be painted in any tool and saved as PNG in `art_src/`; the build co
   `Failed to create Render Object` / `Missing asset` in the log; in game select the object and check size, team colour, shadow
   and, for armed units, that shots leave from the muzzle bone.
 
-## 12. Next 5 steps
+## 12. Next steps
 
-1. Get the engine to draw frames (display bring-up, text rendering through the bundled font); then screenshot the main menu
-   from the pack and fix whatever the layouts get wrong (section 9 B).
-2. Add `add_subdirectory(Content)` to `cmake/emscripten.cmake` (section 6) so the pack is built next to the page, and run the
-   launcher end to end with the real `z_generals` build and the starter download.
-3. Drive the skirmish flow with Playwright (menu click, options, start) in a debug build, read the log, and fix content
-   assertions (map loading, `SkirmishScripts.scb`, players, load screen, control bar).
-4. Play a full match against the AI: check it builds, attacks and that victory/defeat reaches the score screen; tune costs,
-   times, team sizes in `Object.ini`, `AIData.ini`, `gen/ai_scripts.py`.
-5. Art: write `tools/gltf_to_w3d.py`, then replace models and textures one by one (section 11) and add unit animations.
+1. Art (the work that goes on): write `tools/gltf_to_w3d.py` (section 11.4), then replace models and textures one by one,
+   keeping the file names, bone names and `Geometry*` footprints (11.5), and add unit animations. After every batch run the
+   tests, `validate_pack.py` and a match (section 13): the AI branch and the platform tests use this pack as their fixture.
+2. Balance with the computer opponent: Hard attacks at about 2 minutes of game time and wins against a passive player in
+   about 5 minutes; costs, build times and team sizes are in `Object.ini`, `AIData.ini`, `gen/ai_scripts.py`.
+3. A second map (`gen/maps.py` writes one; the writer takes any size) and a second faction if wanted.
+4. Eva / speech, unit voices that differ per unit, a real menu video.
+
+## 13. Rebuilding, validating and playing a match
+
+```sh
+source ~/emsdk/emsdk_env.sh
+# configure once; the two debug options put the engine's assertions and its log into the console of the browser
+cmake --preset emscripten -B build/em-p -DRTS_DEBUG_LOGGING=ON -DRTS_DEBUG_CRASHING=ON
+ninja -C build/em-p z_generals starter_pack          # the pack goes to build/em-p/GeneralsMD/starterpack (about 20 s)
+cd Content/StarterPack
+python3 -m unittest discover -s tools/tests          # 31 tests, about 2 minutes
+python3 build_pack.py /tmp/sp && python3 tools/validate_pack.py /tmp/sp      # 200 files, 0 errors, 0 warnings
+```
+
+Content only (no engine rebuild): change a generator or a file under `data/`, run `ninja -C build/em-p starter_pack`, reload
+the page (the launcher's "Play with free starter content" downloads the new files).
+
+Drive the real game (headless Chromium, software WebGL; `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers NODE_PATH=...` on the Linux
+sandbox, see section 5 for a Mac):
+
+```sh
+T=GeneralsMD/Code/Main/web/test
+node $T/starter_flow.mjs --site build/em-p/GeneralsMD --steps "w:3 m:300,300 w:1 c:185,221 w:5 s:skirmish"   # menus, screenshots
+node $T/starter_match.mjs --site build/em-p/GeneralsMD --outcome defeat  --out /tmp/m1    # AI wins, score screen
+node $T/starter_match.mjs --site build/em-p/GeneralsMD --outcome victory --out /tmp/m2    # player wins, score screen
+sh   $T/shell_flows.sh   build/em-p/GeneralsMD /tmp/flows                                 # 15 platform / shell flows
+```
+
+* `starter_flow.mjs` clicks at the 800 x 600 design coordinates of the menus (`tools/wnd_pos.py <pack> <layout.wnd>` prints the
+  centre of every button), prints the engine log after each step and takes screenshots (`s:NAME`). `--repl FILE` keeps the
+  game open and runs the lines appended to FILE: that is how a match is explored by hand (look at a screenshot, append the next
+  steps). `f:N` / `F:N` wait for logic frame N / N more frames, `W:REGEX` for a log line, `P` pauses the engine's threads
+  and prints their call stacks (for a hang; the game thread is the one with `GameEngine` frames).
+* `starter_match.mjs` writes its steps to `<out>/<outcome>.steps` (read them: they are the best description of what is played),
+  runs them and fails on any assertion, missing string, wasm trap or audio error. `defeat`: the player does nothing against the
+  Hard computer. `victory`: power plant, two barracks, twelve rocketeers (and twelve more that stay home) attack-move into the Easy computer's base. The picture
+  of the 3D view (and so every click on the map) depends on the game's resolution and on the camera: the match starts at the
+  default 1024 x 768 in the default 1100 x 800 window, picks start position 1 on the map preview, and presses Home (camera on the
+  headquarters) and waits some frames before each order. The "next idle worker" key moves the camera to the worker.
+* Under load a match takes 3 to 15 logic frames per second (30 is real time): wait on frames and log lines, never on seconds.
+  Several browsers on one machine slow each other down; leftover servers keep their port (use another `--port`).

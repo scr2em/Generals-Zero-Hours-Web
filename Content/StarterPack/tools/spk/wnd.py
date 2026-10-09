@@ -129,6 +129,15 @@ class Window:
                 yield w
 
 
+def _draw_order(children):
+    """The order the children are written in: a window drawn later sits on top of the ones before it (the engine also
+    hit-tests back to front). The list of a combo box opens below it and must cover the controls under the box, so the
+    combo boxes go last, the lowest one first and the highest one last (its list is the longest to cover the others)."""
+    others = [c for c in children if c.kind != "COMBOBOX"]
+    combos = sorted((c for c in children if c.kind == "COMBOBOX"), key=lambda c: (-c.rect[1], c.rect[0]))
+    return others + combos
+
+
 def _color(c):
     return "%d %d %d %d" % tuple(c)
 
@@ -206,7 +215,7 @@ def _window_lines(win, resolution, layout_name, indent=0):
         lines.append(_draw_block(token, entries))
     if win.children:
         lines.append("  CHILD\n")
-        for child in win.children:
+        for child in _draw_order(win.children):
             lines.extend(_window_lines(child, resolution, layout_name))
         lines.append("  ENDALLCHILDREN\n")
     lines.append("END\n")

@@ -42,17 +42,21 @@ THIS_PLAYER = "<This Player>"
 ACTIONS = {
     "VICTORY": (3, []),
     "DEFEAT": (4, []),
+    "LOCALDEFEAT": (295, []),
     "NO_OP": (5, []),
     "TEAM_SET_ATTITUDE": (46, ["TEAM", "AI_MOOD"]),
     "TEAM_GUARD": (58, ["TEAM"]),
     "TEAM_HUNT": (60, ["TEAM"]),
     "PLAYER_HUNT": (96, ["SIDE"]),
-    "MUSIC_SET_TRACK": (99, ["MUSIC", "BOOLEAN", "BOOLEAN"]),
     "SKIRMISH_BUILD_BUILDING": (244, ["OBJECT_TYPE"]),
+    "MUSIC_SET_TRACK": (99, ["MUSIC", "BOOLEAN", "BOOLEAN"]),
 }
 CONDITIONS = {
     "CONDITION_FALSE": (0, []),
     "CONDITION_TRUE": (3, []),
+    "MULTIPLAYER_ALLIED_VICTORY": (43, []),
+    "MULTIPLAYER_ALLIED_DEFEAT": (44, []),
+    "MULTIPLAYER_PLAYER_DEFEAT": (45, []),
     "PLAYER_HAS_CREDITS": (26, ["INT", "COMPARISON", "SIDE"]),
 }
 

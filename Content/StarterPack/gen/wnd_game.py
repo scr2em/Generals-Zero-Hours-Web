@@ -42,12 +42,12 @@ def control_bar():
         x0, y0 = 176 + col * 56, 466 + row * 44
         cmd.add(image_button("ButtonCommand%02d" % (i + 1), (x0, y0, x0 + 52, y0 + 40), hidden=i >= 14))
 
-    queue = user("ProductionQueueWindow", (172, 462, 560, 598), hidden=True)
+    # The queue strip sits under the two rows of command buttons (the engine shows it next to the command buttons while
+    # something is in production, ControlBar.cpp), so more units can be queued with the buttons above it.
+    queue = user("ProductionQueueWindow", (172, 552, 560, 598), hidden=True)
     for i in range(9):
         x0 = 176 + i * 42
-        queue.add(image_button("ButtonQueue%02d" % (i + 1), (x0, 470, x0 + 38, 506), enabled=False))
-    queue.add(label("LabelQueue", (176, 514, 556, 534), text("CONTROLBAR:Queue", "Production queue (click an entry to cancel it)"),
-                    size=10, style=MUTED_STYLE))
+        queue.add(image_button("ButtonQueue%02d" % (i + 1), (x0, 556, x0 + 38, 594), enabled=False))
 
     under = user("UnderConstructionWindow", (172, 462, 560, 598), hidden=True)
     under.add(static("UnderConstructionDesc", (180, 470, 552, 540), None, size=12, centered=True))
@@ -56,7 +56,7 @@ def control_bar():
     ocl = user("OCLTimerWindow", (172, 462, 560, 598), hidden=True)
     ocl.add(static("OCLTimerStaticText", (180, 470, 552, 500), None, size=12, centered=True))
     ocl.add(progress("OCLTimerProgressBar", (200, 510, 532, 530)))
-    ocl.add(button("OCLTimerSellButton", (330, 552, 402, 590), text("CONTROLBAR:Sell", "Sell"), size=12))
+    ocl.add(button("OCLTimerSellButton", (330, 552, 402, 590), text("CONTROLBAR:SellShort", "Sell"), size=12))
 
     beacon = user("BeaconWindow", (172, 462, 560, 598), hidden=True, input="BeaconWindowInput")
     beacon.add(label("StaticTextBeaconLabel", (180, 470, 552, 494), text("CONTROLBAR:BeaconLabel", "Beacon text"), size=11))
@@ -102,9 +102,11 @@ def control_bar():
                     input="ControlBarInput", draw="W3DCommandBarBackgroundDraw", look=Look.flat(TRANSPARENT))
     parent.add(
         user("BackgroundMarker", (0, BAR_TOP, 4, BAR_TOP + 4), status=("ENABLED", "NOINPUT")),
+        # the attack glow frame is listed first: the engine hit-tests the children in reverse file order, and a
+        # window that takes no input above the radar would swallow every radar click
+        user("WinUAttack", (4, 446, 158, 596), status=("ENABLED", "NOINPUT"), image=True),
         user("LeftHUD", (6, 452, 156, 596), draw="W3DLeftHUDDraw", input="LeftHUDInput", system=None, fill=(0, 0, 0, 255),
              border=AMBER_DIM),
-        user("WinUAttack", (4, 446, 158, 596), status=("ENABLED", "NOINPUT"), image=True),
         *top_strip,
         cmd, queue, under, ocl, beacon, observer_list, observer_info, right,
     )
@@ -134,7 +136,7 @@ def gen_exp_points():
 def popup_description():
     parent = user("ControlBarPopupDescriptionParent", (172, 340, 560, 442), fill=(12, 18, 30, 240), border=AMBER, system=None)
     parent.add(
-        static("StaticTextName", (180, 344, 460, 364), None, size=13, bold=True, style=AMBER_STYLE),
+        static("StaticTextName", (180, 344, 460, 364), None, size=13, bold=True, style=AMBER_STYLE, hotkey=True),
         static("StaticTextCost", (464, 344, 556, 364), None, size=12, bold=True),
         static("StaticTextDescription", (180, 368, 552, 438), None, size=11),
     )

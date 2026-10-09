@@ -80,8 +80,9 @@ run loadmenu "w:3 $LOADGAME w:5 $FIRST_SAVE_ROW w:1 $LOAD_BUTTON w:3 w:45 s:load
 run replay "$IN_GAME $MENU w:4 $PAUSE_EXIT w:4 $YES w:8 $OK_REPORT w:6 $BACK w:4 $REPLAYS w:4 s:replays $REPLAY_ROW w:1 $REPLAY_PLAY w:10 s:playback \
 	e:__zh.importer.listUserData().then(l=>l.some(f=>/\/replays\/.+\.rep$/.test(f.path))) N:Fatal"
 
-# 5. Options: 800x600, brightness, music and scroll speed -> Accept -> Options.ini; the next start uses them.
-run options "w:3 $OPTIONS w:4 c:640,278 w:2 c:580,300 w:2 c:748,244 w:1 c:748,113 w:1 c:47,401 w:2 c:702,566 w:5 c:89,189 w:4 \
+# 5. Options: 800x600, brightness, music and scroll speed -> Accept -> the "keep this resolution" box (OK at 320,369, in the middle
+#    of the screen) -> Options.ini; the next start uses them.
+run options "w:3 $OPTIONS w:4 c:640,278 w:2 c:580,300 w:2 c:748,244 w:1 c:748,113 w:1 c:47,414 w:2 c:702,566 w:5 c:320,369 w:4 \
 	e:document.getElementById('canvas').width===800 \
 	e:(async()=>{const~f=await~__zh.importer.readUserFile('command~and~conquer~generals~zero~hour~data/options.ini');const~t=await~f.text();return~/Resolution~=~800~600/.test(t)&&/Gamma~=~70/.test(t)&&/MusicVolume~=~80/.test(t)&&/ScrollFactor~=~79/.test(t)})() \
 	reload u:document.getElementById('canvas').width===800&&__zh.state().launchSize[0]===800 s:after-reload"

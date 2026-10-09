@@ -240,6 +240,14 @@ def ic_cancel():
     return c
 
 
+def ic_queue_empty():
+    """The picture of an unused slot of the production queue: a dark, quiet box (the control bar scheme names it)."""
+    c = Canvas(48, 48)
+    c.gradient_v(0, 0, 48, 48, (18, 26, 40), (10, 16, 26))
+    c.frame(0, 0, 48, 48, (52, 60, 76))
+    return c
+
+
 def ic_comm():
     c = icon_base()
     outline(c, [(8, 10), (40, 10), (40, 30), (24, 30), (14, 40), (16, 30), (8, 30)], WHITE, STEEL)
@@ -291,6 +299,13 @@ def small_icon(kind):
         col = {"g": (80, 200, 90), "r": (214, 70, 60), "y": (232, 200, 60)}[kind[-1]]
         c.circle(8, 8, 5, col)
         c.circle(8, 8, 5, shade(col, 0.5), filled=False)
+    elif kind == "icon_heal":
+        c.rect(6, 2, 10, 14, (80, 200, 90))
+        c.rect(2, 6, 14, 10, (80, 200, 90))
+        c.frame(6, 2, 10, 14, (30, 90, 40))
+    elif kind == "icon_disabled":
+        c.circle(8, 8, 6, (214, 70, 60), filled=False)
+        c.line(4, 12, 12, 4, (214, 70, 60), 2)
     elif kind.startswith("medal_"):
         col = {"bronze": (190, 120, 60), "silver": (190, 196, 206), "gold": (236, 190, 60), "red": (220, 70, 60)}[kind[6:]]
         pts = [(8, 1), (10, 6), (15, 6), (11, 9), (13, 15), (8, 11), (3, 15), (5, 9), (1, 6), (6, 6)]
@@ -392,7 +407,7 @@ CAMEOS = [
 ]
 ICONS = [
     ("SP_Stop", ic_stop), ("SP_AttackMove", ic_attack_move), ("SP_Guard", ic_guard), ("SP_Sell", ic_sell),
-    ("SP_Rally", ic_rally), ("SP_Cancel", ic_cancel), ("SP_Communicator", ic_comm),
+    ("SP_Rally", ic_rally), ("SP_Cancel", ic_cancel), ("SP_QueueEmpty", ic_queue_empty), ("SP_Communicator", ic_comm),
 ]
 SMALL = [
     ("BarButtonGenStarON", "star_on"), ("BarButtonGenStarOFF", "star_off"),
@@ -407,6 +422,8 @@ SMALL = [
     ("PowerPointG", "dot_g"), ("PowerPointR", "dot_r"), ("PowerPointY", "dot_y"),
     ("Star-Bronze", "medal_bronze"), ("Star-Silver", "medal_silver"), ("Star-Gold", "medal_gold"),
     ("RedYell_Star", "medal_red"),
+    # the pictures of the small 2D animations that the game draws over objects (Animation2D.ini)
+    ("SP_IconHeal", "icon_heal"), ("SP_IconDisabled", "icon_disabled"), ("SP_IconEnthusiastic", "medal_gold"),
 ]
 
 
