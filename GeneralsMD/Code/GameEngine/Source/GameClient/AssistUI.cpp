@@ -1126,19 +1126,40 @@ void AssistUI::setupOptionsButton( const char *layoutName, const char *likeButto
 	if (TheWindowManager->winGetWindowFromId( nullptr, id ))
 		return;
 
-	AsciiString likeName;
-	likeName.format( "%s:%s", layoutName, likeButton );
-	GameWindow *like = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( likeName ) );
-	if (like == nullptr)
+	auto find = [layoutName]( const char *name ) -> GameWindow *
+	{
+		AsciiString full;
+		full.format( "%s:%s", layoutName, name );
+		return TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( full ) );
+	};
+
+	// Where it goes: under the given button; layouts without it (some community patches drop the keyboard shortcuts
+	// button) get it under the firewall "Refresh" button, or else just above "Defaults". It looks like "Defaults" where
+	// that exists (the anchor may be a disabled button).
+	GameWindow *defaults = find( "ButtonDefaults" );
+	GameWindow *anchor = find( likeButton );
+	Bool above = FALSE;
+	if (anchor == nullptr)
+		anchor = find( "ButtonFirewallRefresh" );
+	if (anchor == nullptr && defaults)
+	{
+		anchor = defaults;
+		above = TRUE;
+	}
+	if (anchor == nullptr)
 		return;
+	GameWindow *like = defaults ? defaults : anchor;
 
 	WinInstanceData inst = *like->winGetInstanceData();
 	inst.m_id = id;
 	Int x, y, w, h;
-	like->winGetPosition( &x, &y );
-	like->winGetSize( &w, &h );
-	GameWindow *button = TheWindowManager->gogoGadgetPushButton( like->winGetParent(), like->winGetStatus(),
-		x, y + h + 4, w, h, &inst, like->winGetFont(), FALSE );
+	anchor->winGetPosition( &x, &y );
+	anchor->winGetSize( &w, &h );
+	if (anchor != like && like->winGetParent() == anchor->winGetParent())
+		like->winGetSize( &w, &h );
+	y = above ? y - h - 6 : y + h + 4;
+	GameWindow *button = TheWindowManager->gogoGadgetPushButton( anchor->winGetParent(), like->winGetStatus(),
+		x, y, w, h, &inst, like->winGetFont(), FALSE );
 	if (button)
 	{
 		button->winSetWindowId( id );
