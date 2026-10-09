@@ -25,6 +25,10 @@
 #include <sched.h>
 #include <string>
 #include <time.h>
+#ifdef ZH_NATIVE_HEADLESS
+#include <signal.h>
+#include <unistd.h>
+#endif
 
 using namespace WebCompat;
 
@@ -730,7 +734,21 @@ BOOL WINAPI TerminateThread(HANDLE hThread, DWORD dwExitCode)
 	}
 	if (!thread->finished)
 	{
+#ifdef ZH_NATIVE_HEADLESS
+		// Windows stops the thread where it is, without unwinding its stack. pthread_cancel unwinds it, and the C
+		// library of the native build ends the process when the thread's code catches that (catch (...)) without
+		// rethrowing. Freeze the thread instead: it never runs again, which is what the caller expects.
+		static pthread_once_t s_freezeHandler = PTHREAD_ONCE_INIT;
+		pthread_once(&s_freezeHandler, []() {
+			struct sigaction action = {};
+			action.sa_handler = [](int) { for (;;) pause(); };
+			sigemptyset(&action.sa_mask);
+			sigaction(SIGUSR2, &action, nullptr);
+		});
+		pthread_kill(thread->thread, SIGUSR2);
+#else
 		pthread_cancel(thread->thread);
+#endif
 		FinishThread(thread, dwExitCode);
 	}
 	return TRUE;
