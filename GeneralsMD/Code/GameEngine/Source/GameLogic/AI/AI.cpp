@@ -275,6 +275,9 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "PullbackAdvantage",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_pullbackAdvantage ) },
 			{ "LaunchBlockSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchBlockSeconds ) },
 			{ "MergeReinforcements",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useMerge ) },
+			{ "SpreadVsSplash",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpread ) },
+			{ "SplashRadiusThreshold",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splashRadiusThreshold ) },
+			{ "MaxSpacing",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_maxSpacing ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1223,6 +1226,9 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_pullbackAdvantage = 0.5f;
 	ex.m_launchBlockSeconds = 120.0f;
 	ex.m_useMerge = true;
+	ex.m_useSpread = true;
+	ex.m_splashRadiusThreshold = 20.0f;
+	ex.m_maxSpacing = 70.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1283,6 +1289,9 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_pullbackAdvantage );
 		xfer->xferReal( &sk.m_launchBlockSeconds );
 		xfer->xferBool( &sk.m_useMerge );
+		xfer->xferBool( &sk.m_useSpread );
+		xfer->xferReal( &sk.m_splashRadiusThreshold );
+		xfer->xferReal( &sk.m_maxSpacing );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

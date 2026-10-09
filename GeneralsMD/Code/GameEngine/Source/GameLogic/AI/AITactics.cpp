@@ -264,21 +264,33 @@ void AIStrategy::unitTactics( Object *unit, AITeamRecord *rec )
 {
 	if (unit->isEffectivelyDead() || unit->isContained() || unit->isDisabled() || unit->getAI() == nullptr)
 		return;
-	if (!skill().m_useKiting || m_ai->isFeatureOff(AIPlayer::AIF_KITE))
-		return;
+	const Bool kiting = skill().m_useKiting && !m_ai->isFeatureOff(AIPlayer::AIF_KITE);
+	const Bool spreading = m_spacing > 0.0f;
 	if (rec->m_mode == AITEAM_RETREATING || findStep(unit->getID()) != nullptr || m_numSteps >= MAX_STEPS)
 		return;
 
 	AIUpdateInterface *ai = unit->getAI();
-	if (!ai->isAttacking())
-		return;
-	Object *victim = ai->getCurrentVictim();
-	if (victim == nullptr)
-		return;
+	Object *victim = ai->isAttacking() ? ai->getCurrentVictim() : nullptr;
 	Coord3D to;
 	UnsignedInt until;
-	if (!planKite(unit, victim, rec, &to, &until))
+	if (victim == nullptr)
+	{
+		// Standing around: do not stand in a clump while the enemy has area weapons.
+		if (spreading && ai->isIdle() && planSpread(unit, nullptr, &to, &until))
+		{
+			ai->aiMoveToPosition(&to, CMD_FROM_AI);
+			++m_spreadMoves;
+		}
 		return;
+	}
+	Bool kite = kiting && planKite(unit, victim, rec, &to, &until);
+	if (!kite)
+	{
+		// Between two shots: step aside from the others.
+		if (!spreading || !planSpread(unit, victim, &to, &until))
+			return;
+		++m_spreadSteps;
+	}
 
 	AIStepRecord &s = m_steps[m_numSteps++];
 	s.m_unit = unit->getID();
@@ -288,8 +300,9 @@ void AIStrategy::unitTactics( Object *unit, AITeamRecord *rec )
 	s.m_hasResume = (rec->m_mode == AITEAM_ATTACKING || rec->m_mode == AITEAM_DEFENDING);
 	s.m_resume = rec->m_target;
 	ai->aiMoveToPosition(&to, CMD_FROM_AI);
-	++m_kiteStarts;
-	if (m_kiteStarts <= 12)
+	if (kite)
+		++m_kiteStarts;
+	if (kite && m_kiteStarts <= 12)
 		AI_TRACE("unit %u (%s) steps back from %u (%s) to (%.0f,%.0f)", unit->getID(), unit->getTemplate()->getName().str(), victim->getID(),
 			victim->getTemplate()->getName().str(), to.x, to.y);
 }
@@ -346,12 +359,19 @@ void AIStrategy::updateSteps()
 				dropStep(&s);
 				continue;
 			}
-			else if (planKite(unit, victim, nullptr, &to, &until))
+			else if (skill().m_useKiting && !m_ai->isFeatureOff(AIPlayer::AIF_KITE) && planKite(unit, victim, nullptr, &to, &until))
 			{
 				s.m_phase = 0;
 				s.m_until = until;
 				ai->aiMoveToPosition(&to, CMD_FROM_AI);
 				++m_kiteStarts;
+			}
+			else if (m_spacing > 0.0f && planSpread(unit, victim, &to, &until))
+			{
+				s.m_phase = 0;
+				s.m_until = until;
+				ai->aiMoveToPosition(&to, CMD_FROM_AI);
+				++m_spreadSteps;
 			}
 		}
 
@@ -369,7 +389,8 @@ void AIStrategy::updateSteps()
 /// Per frame: the units on a step, and a few more units of the field teams.
 void AIStrategy::updateTactics()
 {
-	if (!skill().m_useKiting || m_ai->isFeatureOff(AIPlayer::AIF_KITE))
+	const Bool kiting = skill().m_useKiting && !m_ai->isFeatureOff(AIPlayer::AIF_KITE);
+	if (!kiting && m_spacing <= 0.0f && m_numSteps == 0)
 		return;
 	const UnsignedInt now = TheGameLogic->getFrame();
 	if ((now & 1) == 0 && m_numSteps > 0)
@@ -407,4 +428,174 @@ void AIStrategy::updateTactics()
 		++m_tacticUnit;
 		unitTactics(unit, rec);
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+// spreading out
+//
+// Area weapons (artillery shells, toxin, nukes: any enemy weapon with a blast of SplashRadiusThreshold or more)
+// punish a clump.  While the enemy model shows such weapons, units keep their distance from each other:
+// an idle unit that stands too close to others moves apart, and a unit that waits for its weapon to reload
+// steps aside (and turns back to its target, like a kite).  Only the army's own units that stand still are
+// moved; units on the march keep to the group's path.
+//-------------------------------------------------------------------------------------------------
+void AIStrategy::refreshSplashThreat()
+{
+	const AISkillSettings &sk = skill();
+	const UnsignedInt now = TheGameLogic->getFrame();
+	if (!sk.m_useSpread || m_ai->isFeatureOff(AIPlayer::AIF_SPREAD))
+	{
+		m_spacing = 0.0f;
+		return;
+	}
+
+	// The biggest blast among the enemy kinds that matter (a share of the armed force, or huge).
+	const Real armed = m_enemy.armedValue();
+	Real blast = 0.0f;
+	for (Int e = 0; e < m_enemy.numComposition(); ++e)
+	{
+		const AIComposition &c = m_enemy.composition()[e];
+		const AICombatFigures *f = AICombatModel::figures(TheThingFactory->findByTemplateID(c.m_templateID));
+		if (f == nullptr || !f->m_armed || f->m_maxSplash < sk.m_splashRadiusThreshold)
+			continue;
+		if ((c.m_value >= 0.04f * armed || f->m_maxSplash >= 2.5f * sk.m_splashRadiusThreshold) && f->m_maxSplash > blast)
+			blast = f->m_maxSplash;
+	}
+
+	if (blast > 0.0f)
+	{
+		Real spacing = blast < 25.0f ? 25.0f : blast;
+		if (spacing > sk.m_maxSpacing)
+			spacing = sk.m_maxSpacing;
+		if (m_spacing <= 0.0f)
+			AI_TRACE("enemy area weapons seen (blast %.0f): keeping %.0f apart", blast, spacing);
+		m_spacing = spacing;
+		m_spacingUntil = now + 45 * LOGICFRAMES_PER_SECOND;
+	}
+	else if (m_spacing > 0.0f && now >= m_spacingUntil)
+	{
+		AI_TRACE("no area weapons seen for a while: no need to spread out");
+		m_spacing = 0.0f;
+	}
+}
+
+/**
+ * A spot to move to because 'unit' stands too close to its friends, or false.  With a victim, the unit is between
+ * two shots: the spot must stay in range of the victim.
+ */
+Bool AIStrategy::planSpread( Object *unit, Object *victim, Coord3D *to, UnsignedInt *until )
+{
+	const UnsignedInt now = TheGameLogic->getFrame();
+	AIUpdateInterface *ai = unit->getAI();
+	const AICombatFigures *mf = AICombatModel::figures(unit->getTemplate());
+	if (ai == nullptr || mf == nullptr || mf->m_structure || mf->m_airborne || mf->m_speed <= 0.0f)
+		return FALSE;
+
+	const Real spacing = m_spacing;
+	const Coord3D &up = *unit->getPosition();
+	Real range = 0.0f, reloadSeconds = 0.0f;
+	if (victim)
+	{
+		Weapon *weapon = unit->getCurrentWeapon();
+		if (weapon == nullptr)
+			return FALSE;
+		const WeaponStatus status = weapon->getStatus();
+		if (status != BETWEEN_FIRING_SHOTS && status != RELOADING_CLIP)
+			return FALSE;
+		const UnsignedInt next = weapon->getPossibleNextShotFrame();
+		if (next <= now + secondsToFrames(skill().m_kiteMinReloadSeconds))
+			return FALSE;
+		reloadSeconds = (Real)(next - now) / LOGICFRAMES_PER_SECOND;
+		range = weapon->getAttackRange(unit) - 5.0f;
+	}
+
+	// Our units around: push away from the ones that are closer than the spacing.
+	enum { MAX_NEIGHBOURS = 12 };
+	Coord3D neighbours[MAX_NEIGHBOURS];
+	Int numNear = 0;
+	Real pushX = 0.0f, pushY = 0.0f, closest = spacing;
+	{
+		PartitionFilterAlive alive;
+		PartitionFilterRelationship friends(unit, PartitionFilterRelationship::ALLOW_ALLIES);
+		PartitionFilter *filters[] = { &friends, &alive, nullptr };
+		SimpleObjectIterator *iter = ThePartitionManager->iterateObjectsInRange(&up, spacing, FROM_CENTER_2D, filters);
+		MemoryPoolObjectHolder hold(iter);
+		for (Object *o = iter->first(); o && numNear < MAX_NEIGHBOURS; o = iter->next())
+		{
+			if (o == unit)
+				continue;
+			const AICombatFigures *of = AICombatModel::figures(o->getTemplate());
+			if (of == nullptr || of->m_structure || of->m_airborne || !of->m_armed || o->isContained())
+				continue;
+			const Real dx = up.x - o->getPosition()->x, dy = up.y - o->getPosition()->y;
+			const Real d = sqrtf(dx * dx + dy * dy);
+			neighbours[numNear++] = *o->getPosition();
+			if (d < 0.75f * spacing)
+			{
+				const Real w = (0.75f * spacing - d) / (d > 1.0f ? d : 1.0f);
+				pushX += dx * w;
+				pushY += dy * w;
+				if (d < closest)
+					closest = d;
+			}
+		}
+	}
+	if (closest >= 0.75f * spacing)
+		return FALSE;
+	Real len = sqrtf(pushX * pushX + pushY * pushY);
+	if (len < 0.001f)
+	{
+		// Exactly on top of each other: away from the team's centre, else along x.
+		pushX = 1.0f;
+		pushY = 0.0f;
+		len = 1.0f;
+	}
+	pushX /= len;
+	pushY /= len;
+
+	Real step = spacing - closest + 8.0f;
+	if (step < 10.0f)
+		step = 10.0f;
+	if (step > spacing)
+		step = spacing;
+	if (victim)
+	{
+		const Real maxStep = mf->m_speed * reloadSeconds * 0.45f;
+		if (step > maxStep)
+			step = maxStep;
+		if (step < 8.0f)
+			return FALSE;
+	}
+
+	// Try the direction away from the others, then turned aside by fixed angles (no library calls).
+	static const Real cosines[5] = { 1.0f, 0.6428f, 0.6428f, -0.1736f, -0.1736f };
+	static const Real sines[5] = { 0.0f, 0.7660f, -0.7660f, 0.9848f, -0.9848f };
+	Region3D extent;
+	TheTerrainLogic->getExtent(&extent);
+	const Coord3D *home = unit->getTeam() ? unit->getTeam()->getEstimateTeamPosition() : nullptr;
+	for (Int a = 0; a < 5; ++a)
+	{
+		const Real dx = pushX * cosines[a] - pushY * sines[a];
+		const Real dy = pushX * sines[a] + pushY * cosines[a];
+		Coord3D c;
+		c.x = up.x + dx * step;
+		c.y = up.y + dy * step;
+		c.z = TheTerrainLogic->getGroundHeight(c.x, c.y);
+		if (c.x < extent.lo.x + 40.0f || c.x > extent.hi.x - 40.0f || c.y < extent.lo.y + 40.0f || c.y > extent.hi.y - 40.0f)
+			continue;
+		if (home && dist2D(*home, c) > skill().m_kiteGroupRadius)
+			continue;
+		if (victim && dist2D(c, *victim->getPosition()) > range)
+			continue;
+		Bool crowded = FALSE;
+		for (Int n = 0; n < numNear && !crowded; ++n)
+			crowded = dist2D(neighbours[n], c) < 0.6f * spacing;
+		if (crowded || !ai->isValidLocomotorPosition(&c))
+			continue;
+		*to = c;
+		const UnsignedInt frames = (UnsignedInt)(step / mf->m_speed * LOGICFRAMES_PER_SECOND) + 15;
+		*until = now + frames;
+		return TRUE;
+	}
+	return FALSE;
 }

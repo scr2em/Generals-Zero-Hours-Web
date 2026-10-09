@@ -137,6 +137,14 @@ const AICombatFigures *AICombatModel::figures(const ThingTemplate *tt)
 				fw.m_damage = damage;
 				fw.m_shotsPerSecond = shotsPerCycle * LOGICFRAMES_PER_SECOND / cycleFrames;
 				fw.m_splashRadius = w->getPrimaryDamageRadius(noBonus);
+				// How far its blast reaches (the outer ring counts), or the cloud it leaves.
+				Real blast = fw.m_splashRadius;
+				if (w->getSecondaryDamageRadius(noBonus) > blast)
+					blast = w->getSecondaryDamageRadius(noBonus);
+				if ((w->getDamageType() == DAMAGE_POISON || w->getDamageType() == DAMAGE_RADIATION) && blast < 40.0f)
+					blast = 40.0f;
+				if (blast > f->m_maxSplash)
+					f->m_maxSplash = blast;
 				fw.m_damageType = (Int)w->getDamageType();
 				fw.m_antiMask = w->getAntiMask();
 				if (fw.m_antiMask & WEAPON_ANTI_AIRBORNE_VEHICLE)

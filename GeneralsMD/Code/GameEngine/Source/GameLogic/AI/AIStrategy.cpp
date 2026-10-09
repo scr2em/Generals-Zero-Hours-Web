@@ -128,6 +128,10 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_kiteResumes(0),
 	m_kiteRejectFast(0),
 	m_kiteRejectCorner(0),
+	m_spacing(0.0f),
+	m_spacingUntil(0),
+	m_spreadMoves(0),
+	m_spreadSteps(0),
 	m_mergedTeams(0),
 	m_mergedUnits(0),
 	m_launchBlockedSince(0),
@@ -171,7 +175,7 @@ void AIStrategy::newMap()
 		{ "focus", AIPlayer::AIF_FOCUS }, { "wave", AIPlayer::AIF_WAVE }, { "retreat", AIPlayer::AIF_RETREAT },
 		{ "scout", AIPlayer::AIF_SCOUT }, { "counter", AIPlayer::AIF_COUNTER }, { "save", AIPlayer::AIF_SAVE },
 		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
-		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE }, { "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE } };
+		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE }, { "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE }, { "spread", AIPlayer::AIF_SPREAD } };
 	const char *offList = strstr(variant.str(), "off-");
 	if (offList)
 	{
@@ -241,6 +245,7 @@ void AIStrategy::update()
 		if (m_enemy.scan(m_player, 150))
 		{
 			m_enemy.refresh(m_player, now);
+			refreshSplashThreat();
 			m_nextScan = now + secondsToFrames(skill().m_scoutSeconds);
 			if (m_trace && now >= m_nextStatus)
 			{
@@ -259,6 +264,7 @@ void AIStrategy::update()
 				AI_TRACE("target picks %d: changed by split fire %d, by the threat rules %d; support units %d; out-ranging units %d",
 					m_splitPicks, m_splitSwitches, m_threatSwitches, m_supportPicks, m_longRangePicks);
 				AI_TRACE("kiting: %d steps back, %d resumed; refused: %d enemy faster, %d no room", m_kiteStarts, m_kiteResumes, m_kiteRejectFast, m_kiteRejectCorner);
+				AI_TRACE("spread out: spacing %.0f, %d idle units moved apart, %d steps between shots", m_spacing, m_spreadMoves, m_spreadSteps);
 				AI_TRACE("merge: %d new teams kept for the next wave, %d reinforcements sent to the rally point", m_mergedTeams, m_mergedUnits);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
@@ -1980,6 +1986,8 @@ void AIStrategy::xfer( Xfer *xfer )
 	xfer->xferUser(m_steps, sizeof(m_steps));
 	xfer->xferInt(&m_tacticTeam);
 	xfer->xferInt(&m_tacticUnit);
+	xfer->xferReal(&m_spacing);
+	xfer->xferUnsignedInt(&m_spacingUntil);
 	xfer->xferUnsignedInt(&m_launchBlockedSince);
 	xfer->xferUnsignedInt(&m_nextLaunchCheck);
 	xfer->xferUnsignedInt(&m_waveBadSince);

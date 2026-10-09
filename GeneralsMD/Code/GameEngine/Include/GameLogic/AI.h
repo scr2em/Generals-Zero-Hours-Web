@@ -159,6 +159,9 @@ struct AISkillSettings
 	Real m_pullbackAdvantage;	///< A wave on its way to a fight it is this much weaker than (ours/theirs) pulls back.
 	Real m_launchBlockSeconds;///< A wave held back by the fight check for this long goes anyway.
 	Bool m_useMerge;					///< New teams and reinforcements gather at the rally point and join the next wave, instead of going out one by one.
+	Bool m_useSpread;					///< Keep units apart against enemies with area weapons.
+	Real m_splashRadiusThreshold;	///< Enemy weapons with a blast at least this big make the army spread out.
+	Real m_maxSpacing;				///< Largest distance kept between units to avoid splash damage.
 };
 
 class AISideBuildList : public MemoryPoolObject

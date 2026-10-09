@@ -76,6 +76,7 @@ struct AICombatFigures
 	Real		m_cost;							///< build cost, or a stand-in when the thing cannot be built
 	Real		m_range;						///< longest weapon range
 	Real		m_minRange;					///< shortest range of the longest-range weapon
+	Real		m_maxSplash;				///< largest blast radius of the weapons (poison and radiation count as a cloud of 40)
 	Real		m_speed;						///< ground speed in world units per second (0: immobile)
 	Int			m_reloadFrames;			///< frames between two volleys of the longest range weapon
 	Int			m_supportLevel;			///< 2: heals or repairs others, 1: builds and repairs structures (workers), 0: neither
@@ -295,7 +296,9 @@ public:
 	/// Note that a unit has picked 'target' and will deal about 'damage' to it in the next seconds.
 	/// 'flags' (AIPlayer::PICK_...) says what the target selection did, for the statistics of the trace.
 	void assignDamage( ObjectID target, Real damage, Int flags );
-	/// Unit level tactics, spread over the frames: kiting.
+	/// Distance the army keeps between units because the enemy has area weapons (0: none seen).
+	Real splashSpacing() const { return m_spacing; }
+	/// Unit level tactics, spread over the frames: kiting, spreading out.
 	void updateTactics();
 
 protected:
@@ -337,6 +340,8 @@ private:
 	AIStepRecord *findStep( ObjectID unit );
 	void dropStep( AIStepRecord *rec );
 	void updateSteps();
+	void refreshSplashThreat();
+	Bool planSpread( Object *unit, Object *victim, Coord3D *to, UnsignedInt *until );
 	void unitTactics( Object *unit, AITeamRecord *team );
 	Bool planKite( Object *unit, Object *victim, const AITeamRecord *team, Coord3D *to, UnsignedInt *until );
 	Bool enemyCanSee( const Object *victim ) const;
@@ -393,6 +398,10 @@ private:
 	Int						m_kiteResumes;
 	Int						m_kiteRejectFast;
 	Int						m_kiteRejectCorner;
+	Real					m_spacing;								///< spread out: distance kept between units against area weapons (0: not needed)
+	UnsignedInt		m_spacingUntil;
+	Int						m_spreadMoves;						///< statistics for the trace
+	Int						m_spreadSteps;
 	Int						m_mergedTeams;						///< statistics for the trace: new teams kept at the rally point during a wave, reinforcements sent there
 	Int						m_mergedUnits;
 	UnsignedInt		m_launchBlockedSince;			///< fight check: frame since which the launch of the wave is held back (0 = not)
