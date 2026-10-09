@@ -22,6 +22,9 @@
 #   --quick           fewer games (about a third of the time)
 #   --workers N       games at the same time (default 2; each needs about 1 GB of memory and a core)
 #   --build-dir DIR   web build to test (default build/web, built first by scripts/web/run.sh --build-only)
+#   --native-dir DIR  native headless build (default build/native-headless, from `cmake --preset native-headless`).
+#                     When it exists, the matches are played with it (faster, no browser); boot still uses the web build
+#   --web             play the matches in the browser even when the native build exists
 #   --no-build        test the build as it is
 #   -h, --help        this text
 #
@@ -32,11 +35,13 @@
 #   git add test-reports && git commit -m "Gameplay test report" && git push
 set -euo pipefail
 
-usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; }
 
 QUICK=0
 WORKERS=2
 BUILD_DIR=build/web
+NATIVE_DIR=build/native-headless
+USE_WEB=0
 BUILD=1
 SUITES=()
 while [ $# -gt 0 ]; do
@@ -44,6 +49,8 @@ while [ $# -gt 0 ]; do
 		--quick) QUICK=1; shift ;;
 		--workers) WORKERS="$2"; shift 2 ;;
 		--build-dir) BUILD_DIR="$2"; shift 2 ;;
+		--native-dir) NATIVE_DIR="$2"; shift 2 ;;
+		--web) USE_WEB=1; shift ;;
 		--no-build) BUILD=0; shift ;;
 		-h|--help) usage; exit 0 ;;
 		boot|1v1|team|bunker|assists) SUITES+=("$1"); shift ;;
@@ -70,23 +77,39 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 # 1. Build ------------------------------------------------------------------------------------------------------------
-if [ "$BUILD" = 1 ]; then
-	scripts/web/run.sh --build-only --build-dir "$BUILD_DIR"
+# The matches use the native headless build when it has been configured (cmake --preset native-headless), else the web
+# build in the browser. Starting the game like a player (boot) and the scripted assists always need the web build.
+NATIVE=0
+if [ "$USE_WEB" = 0 ] && [ -f "$NATIVE_DIR/CMakeCache.txt" ]; then
+	NATIVE=1
+	if [ "$BUILD" = 1 ]; then
+		cmake --build "$NATIVE_DIR" --target zh_headless
+	fi
+	[ -x "$NATIVE_DIR/GeneralsMD/zh_headless" ] || { echo "No native build in $NATIVE_DIR (run without --no-build, or use --web)" >&2; exit 1; }
 fi
+NEED_WEB=$((1 - NATIVE))
+for suite in "${SUITES[@]}"; do case "$suite" in boot|assists) NEED_WEB=1 ;; esac; done
 SITE="$BUILD_DIR/GeneralsMD"
-[ -f "$SITE/z_generals.html" ] || { echo "No build in $SITE (run without --no-build)" >&2; exit 1; }
+if [ "$NEED_WEB" = 1 ]; then
+	if [ "$BUILD" = 1 ]; then
+		scripts/web/run.sh --build-only --build-dir "$BUILD_DIR"
+	fi
+	[ -f "$SITE/z_generals.html" ] || { echo "No build in $SITE (run without --no-build)" >&2; exit 1; }
+fi
 
 # 2. Playwright (drives Chrome; the installed Google Chrome is used when there is one) --------------------------------
 command -v node >/dev/null 2>&1 || { echo "Node.js 20 or newer is needed (brew install node)" >&2; exit 1; }
-NODE_DIR="$HOME/.cache/zh-gameplay-node"
-export NODE_PATH="$NODE_DIR/node_modules${NODE_PATH:+:$NODE_PATH}"
-if ! node -e "require('playwright')" >/dev/null 2>&1; then
-	echo "Installing Playwright into $NODE_DIR (once) ..."
-	mkdir -p "$NODE_DIR"
-	npm install --silent --prefix "$NODE_DIR" playwright >/dev/null
-fi
-if [ ! -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ] && [ -z "${CHROMIUM_PATH:-}" ]; then
-	(cd "$NODE_DIR" && npx --yes playwright install chromium >/dev/null)
+if [ "$NEED_WEB" = 1 ]; then
+	NODE_DIR="$HOME/.cache/zh-gameplay-node"
+	export NODE_PATH="$NODE_DIR/node_modules${NODE_PATH:+:$NODE_PATH}"
+	if ! node -e "require('playwright')" >/dev/null 2>&1; then
+		echo "Installing Playwright into $NODE_DIR (once) ..."
+		mkdir -p "$NODE_DIR"
+		npm install --silent --prefix "$NODE_DIR" playwright >/dev/null
+	fi
+	if [ ! -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ] && [ -z "${CHROMIUM_PATH:-}" ]; then
+		(cd "$NODE_DIR" && npx --yes playwright install chromium >/dev/null)
+	fi
 fi
 
 # 3. Run the suites ---------------------------------------------------------------------------------------------------
@@ -97,7 +120,12 @@ PROFILE="$HOME/.cache/zh-gameplay-profile"   # keeps the copied game data betwee
 PORT=8950
 DATA=(--zh "$ZH_PATH")
 [ -n "${GENERALS_PATH:-}" ] && DATA+=(--generals "$GENERALS_PATH")
-BENCH=(node scripts/aibench/aibench.mjs --site "$SITE" "${DATA[@]}" --profile "$PROFILE" --port "$PORT" --workers "$WORKERS")
+BENCH_WEB=(node scripts/aibench/aibench.mjs --site "$SITE" "${DATA[@]}" --profile "$PROFILE" --port "$PORT" --workers "$WORKERS")
+if [ "$NATIVE" = 1 ]; then
+	BENCH=(node scripts/aibench/aibench.mjs --native "$NATIVE_DIR/GeneralsMD/zh_headless" "${DATA[@]}" --workers "$WORKERS")
+else
+	BENCH=("${BENCH_WEB[@]}")
+fi
 if [ "$QUICK" = 1 ]; then SEEDS1=2; SEEDST=1; else SEEDS1=4; SEEDST=2; fi
 
 {
@@ -105,15 +133,18 @@ if [ "$QUICK" = 1 ]; then SEEDS1=2; SEEDST=1; else SEEDS1=4; SEEDST=2; fi
 	echo
 	echo "Commit $COMMIT ($(git log -1 --format=%s 2>/dev/null || true)), $(date '+%Y-%m-%d %H:%M'), $(uname -sm)."
 	echo "Suites: ${SUITES[*]}; quick: $QUICK; maps: 1v1 \"$MAP_1V1\", team \"$MAP_TEAM\" (starts $TEAM_STARTS)."
+	echo "Matches played with the $([ "$NATIVE" = 1 ] && echo "native headless build ($NATIVE_DIR)" || echo "web build in the browser ($SITE)")."
 	echo
 } > "$OUT/summary.md"
 
 status=0
 run_suite() {   # name, then bench arguments
 	local name="$1"; shift
+	local bench=("${BENCH[@]}")
+	[ "$name" = boot ] && bench=("${BENCH_WEB[@]}")
 	echo
 	echo "==> $name"
-	"${BENCH[@]}" --out "$OUT/$name" "$@" 2>&1 | tee "$OUT/$name.txt" || status=1
+	"${bench[@]}" --out "$OUT/$name" "$@" 2>&1 | tee "$OUT/$name.txt" || status=1
 }
 
 for suite in "${SUITES[@]}"; do
