@@ -98,8 +98,9 @@ if(APPLE)
 endif()
 target_link_libraries(deps_config INTERFACE webcompat_headers)
 
-# DirectX 8 headers, with the same patch as the web build. Headless mode never creates a device; the
-# few functions the renderer links against come from Dependencies/NativeD3D8.
+# DirectX 8 headers, patched like for the web build (patches/dx8-native.patch: the Windows declarations without
+# _WIN32). Headless mode never creates a device; the few functions the renderer links against come from
+# Dependencies/NativeD3D8.
 find_package(Git REQUIRED)
 FetchContent_Declare(
     dx8
