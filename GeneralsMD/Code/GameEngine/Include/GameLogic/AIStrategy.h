@@ -232,8 +232,6 @@ struct AIStepRecord
 	ObjectID			m_victim;
 	UnsignedInt		m_until;						///< end of the current phase
 	Int						m_phase;						///< 0: stepping away, 1: attacking again
-	Bool					m_hasResume;				///< the team was on its way somewhere: go on there once the target is dead
-	Coord3D				m_resume;
 };
 
 enum AIArmyState CPP_11(: Int)
@@ -324,6 +322,7 @@ private:
 	Real forecastAdvantage( const Coord3D *where, Real radius, Real *ourPower, Real *theirPower ) const;
 	Bool checkWaveLaunch( const Coord3D *objective );
 	void checkWaveOnTheWay( const Coord3D *waveCenter );
+	void reinforceWave();
 	Bool mergeOn() const;
 	void orderTeamMove( Team *team, const Coord3D *pos );
 	void orderTeamAttackMove( Team *team, const Coord3D *pos );
@@ -345,6 +344,7 @@ private:
 	void unitTactics( Object *unit, AITeamRecord *team );
 	Bool planKite( Object *unit, Object *victim, const AITeamRecord *team, Coord3D *to, UnsignedInt *until );
 	Bool enemyCanSee( const Object *victim ) const;
+	Bool kitingOn() const;
 
 	// economy
 	void tryExpand();
@@ -404,6 +404,7 @@ private:
 	Int						m_spreadSteps;
 	Int						m_mergedTeams;						///< statistics for the trace: new teams kept at the rally point during a wave, reinforcements sent there
 	Int						m_mergedUnits;
+	Int						m_followUps;
 	UnsignedInt		m_launchBlockedSince;			///< fight check: frame since which the launch of the wave is held back (0 = not)
 	UnsignedInt		m_nextLaunchCheck;
 	UnsignedInt		m_waveBadSince;						///< frame since which the wave on its way looks too weak for the fight ahead

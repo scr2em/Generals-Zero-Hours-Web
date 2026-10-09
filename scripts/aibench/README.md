@@ -53,6 +53,8 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
 | `--workers N` | matches at the same time. Each is a full engine instance: 1 per core is a good start; real game data needs about 1 GB per worker |
 | `--determinism N\|all` | matches replayed to check determinism (default 2) |
 | `--target "A>B=P"` | expected win rate of A against B; the summary says whether the measured rate (with its interval) meets it |
+| `--keep-logs` | writes the engine output of every match to `matches/<id>.log` (default: only failed matches). Needed to read the `trace` output of a player |
+| `--overlay NAME[,NAME]` | plays on the starter content edited by `scripts/aibench/fixtures/NAME.json` (see "Overlays"); uses its own browser profile (`<profile>-overlay-NAME`, so give a fresh `--profile` after editing a fixture) |
 | `--engine-arg ARG` | an extra engine argument for every match, e.g. `cash=20000`, `sample=60`, `loop=engine`, `eliminate=1@4000` |
 | `--probe` | prints the maps and sides found in the game data |
 | `--profile DIR`, `--port N` | browser profile and port (keep them fixed between runs) |
@@ -64,7 +66,11 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
 * side: the name of a player template (`FactionAmerica`, or `America`), a side shared by several templates (the first
   one is taken), or `random` (decided by the seed). Use `--probe` to list them.
 * variant: a free tag the AI code can read to run an experimental variant next to the standard AI in one match:
-  `AIMatch::getPlayerVariant(player)` in `Common/AIMatch.h` (empty outside the bench).
+  `AIMatch::getPlayerVariant(player)` in `Common/AIMatch.h` (empty outside the bench). The Expert AI reads a list of words
+  joined by `+` (`AIStrategy::newMap`): `trace` prints its decisions (`AISTRAT[...]` lines; add `--keep-logs`),
+  `off-split+kite` switches single Expert features off for an A/B run (`expert:Ironwood:off-merge` against `expert:Ironwood`),
+  `on-kite` switches on a feature whose default is off. The words are `focus wave retreat scout counter save starve siege defend`
+  and the tactics `split threat kite fight merge spread`.
 * More than two players: list them all, the map must have room; every player is on his own team unless the engine
   command line (`players=` field 3, below) says otherwise. The runner's report tables are for 1v1 matchups.
 
@@ -116,6 +122,26 @@ Use `--crc-interval 30` to narrow the window when hunting a desync, then rerun w
   be identical; if they ever differ, the bench no longer plays the game the way players do.
 * `eliminate=<slot>@<frame>` (repeatable) kills everything of a player at a frame. It exists to exercise the end of
   a match (defeat, victory, ranks, the reports) where the AI does not fight.
+
+## Overlays: starter data that exercises more of the AI
+
+The starter faction has two infantry units, a scout and a tank, no static defences and weapons with a blast of 8-16 units, so a few
+behaviours cannot trigger on it. An overlay is a small JSON file in `scripts/aibench/fixtures/` that edits the *copy* of the starter pack
+the bench serves (find/replace or append on the pack's INI files; the repository's data is untouched; the edits are our own original data):
+
+```
+{ "description": "...", "edits": [ { "file": "data/ini/weapon.ini", "find": "text that occurs once", "replace": "new text" },
+                                    { "file": "data/ini/weapon.ini", "append": "Weapon NewOne ... End" } ] }
+```
+
+| overlay | what it changes | what it is for |
+|---|---|---|
+| `towers` | the power plant and the barracks become gun towers (range 200, turret) | static defences: the fight check before and during a wave |
+| `strictfight` | `ExpertSkill` thresholds of the fight check raised | forces the hold and the forced launch of a wave |
+| `splash` | the rocketeer's weapon becomes artillery (range 220, blast 35/60) | enemy area weapons: spreading out |
+
+Overlays can be combined (`--overlay towers,strictfight`). Example: `--overlay splash --matchup "expert:Ironwood,expert:Ironwood:off-spread"`.
+A fixture edit must find its text exactly once, otherwise the bench stops with an error.
 
 ## Tests of the bench itself
 
@@ -172,6 +198,8 @@ scripts/aibench/aibench.mjs       the command line runner
 scripts/aibench/lib/server.mjs    static server for the builds (one origin, isolation headers)
 scripts/aibench/lib/browser.mjs   Playwright: data import, one match per page, result capture
 scripts/aibench/lib/stats.mjs     win rates, Wilson intervals, Elo, determinism comparison
+scripts/aibench/lib/overlay.mjs   --overlay: an edited copy of the starter pack
+scripts/aibench/fixtures/*.json   the overlays
 scripts/aibench/lib/report.mjs    report.json / report.md
 scripts/aibench/test/stats.test.mjs   tests of the statistics:  node --test scripts/aibench/test
 GeneralsMD/Code/GameEngine/Source/Common/AIMatch.cpp, Include/Common/AIMatch.h   the engine mode

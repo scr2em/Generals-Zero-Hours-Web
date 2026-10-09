@@ -124,6 +124,12 @@ void AIStrategy::assignDamage( ObjectID target, Real damage, Int flags )
 // Units are looked at round robin a few per frame; the units that are on a step are looked at every
 // other frame.
 //-------------------------------------------------------------------------------------------------
+/// Kiting is switched on in the skill settings (Kiting = Yes) or for a test (variant "on-kite"), and not off for a test.
+Bool AIStrategy::kitingOn() const
+{
+	return (skill().m_useKiting || m_ai->isFeatureForced(AIPlayer::AIF_KITE)) && !m_ai->isFeatureOff(AIPlayer::AIF_KITE);
+}
+
 AIStepRecord *AIStrategy::findStep( ObjectID unit )
 {
 	for (Int i = 0; i < m_numSteps; ++i)
@@ -167,7 +173,7 @@ Bool AIStrategy::planKite( Object *unit, Object *victim, const AITeamRecord *rec
 	if (mf->m_structure || mf->m_airborne || mf->m_speed <= 0.0f || mf->m_range < 60.0f)
 		return FALSE;
 	// Only mobile fighters that can hurt us chase us; a building or a harmless unit gives no reason to move.
-	if (vf->m_structure || vf->m_airborne || vf->m_speed <= 0.0f || !vf->m_armed || AICombatModel::damagePerSecond(vf, mf) <= 0.0f)
+	if (vf->m_structure || vf->m_airborne || vf->m_speed <= 0.0f || !vf->m_armed || AICombatModel::killRate(vf, mf) < sk.m_kiteMinThreat)
 		return FALSE;
 
 	// Can we keep away from it?
@@ -264,7 +270,7 @@ void AIStrategy::unitTactics( Object *unit, AITeamRecord *rec )
 {
 	if (unit->isEffectivelyDead() || unit->isContained() || unit->isDisabled() || unit->getAI() == nullptr)
 		return;
-	const Bool kiting = skill().m_useKiting && !m_ai->isFeatureOff(AIPlayer::AIF_KITE);
+	const Bool kiting = kitingOn();
 	const Bool spreading = m_spacing > 0.0f;
 	if (rec->m_mode == AITEAM_RETREATING || findStep(unit->getID()) != nullptr || m_numSteps >= MAX_STEPS)
 		return;
@@ -297,8 +303,6 @@ void AIStrategy::unitTactics( Object *unit, AITeamRecord *rec )
 	s.m_victim = victim->getID();
 	s.m_until = until;
 	s.m_phase = 0;
-	s.m_hasResume = (rec->m_mode == AITEAM_ATTACKING || rec->m_mode == AITEAM_DEFENDING);
-	s.m_resume = rec->m_target;
 	ai->aiMoveToPosition(&to, CMD_FROM_AI);
 	if (kite)
 		++m_kiteStarts;
@@ -359,7 +363,7 @@ void AIStrategy::updateSteps()
 				dropStep(&s);
 				continue;
 			}
-			else if (skill().m_useKiting && !m_ai->isFeatureOff(AIPlayer::AIF_KITE) && planKite(unit, victim, nullptr, &to, &until))
+			else if (kitingOn() && planKite(unit, victim, nullptr, &to, &until))
 			{
 				s.m_phase = 0;
 				s.m_until = until;
@@ -377,8 +381,13 @@ void AIStrategy::updateSteps()
 
 		if (finished)
 		{
-			if (s.m_hasResume && (ai->isIdle() || ai->isAttacking()))
-				ai->aiAttackMoveToPosition(&s.m_resume, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
+			// Back to the team's business, whatever it is now (it may have been pulled back meanwhile).
+			const AITeamRecord *rec = unit->getTeam() ? findRecord(unit->getTeam()->getID(), FALSE) : nullptr;
+			if (rec && (rec->m_mode == AITEAM_ATTACKING || rec->m_mode == AITEAM_DEFENDING) && (ai->isIdle() || ai->isAttacking()))
+			{
+				const Coord3D target = rec->m_target;
+				ai->aiAttackMoveToPosition(&target, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
+			}
 			dropStep(&s);
 			continue;
 		}
@@ -389,7 +398,7 @@ void AIStrategy::updateSteps()
 /// Per frame: the units on a step, and a few more units of the field teams.
 void AIStrategy::updateTactics()
 {
-	const Bool kiting = skill().m_useKiting && !m_ai->isFeatureOff(AIPlayer::AIF_KITE);
+	const Bool kiting = kitingOn();
 	if (!kiting && m_spacing <= 0.0f && m_numSteps == 0)
 		return;
 	const UnsignedInt now = TheGameLogic->getFrame();

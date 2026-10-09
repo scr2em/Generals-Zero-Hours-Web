@@ -134,6 +134,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_spreadSteps(0),
 	m_mergedTeams(0),
 	m_mergedUnits(0),
+	m_followUps(0),
 	m_launchBlockedSince(0),
 	m_nextLaunchCheck(0),
 	m_waveBadSince(0),
@@ -167,23 +168,46 @@ void AIStrategy::newMap()
 {
 	AICombatModel::reset();
 	m_enemy.reset();
-	// Test bench variant: "trace" prints decisions; "off-focus+wave+..." disables single features for A/B runs.
+	// Test bench variant, a list of words joined by '+': "trace" prints decisions; "off-focus+wave+..." disables single
+	// features for A/B runs ("off-" starts the list of features to switch off); "on-kite" switches on a feature that is off by
+	// default (a word that follows "on-" or "off-" without a prefix of its own belongs to the same list).
 	const AsciiString variant = AIMatch::getPlayerVariant(m_player);
 	m_trace = strstr(variant.str(), "trace") != nullptr;
-	UnsignedInt off = 0;
+	UnsignedInt off = 0, on = 0;
 	static const struct { const char *name; Int bit; } names[] = {
 		{ "focus", AIPlayer::AIF_FOCUS }, { "wave", AIPlayer::AIF_WAVE }, { "retreat", AIPlayer::AIF_RETREAT },
 		{ "scout", AIPlayer::AIF_SCOUT }, { "counter", AIPlayer::AIF_COUNTER }, { "save", AIPlayer::AIF_SAVE },
 		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
-		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE }, { "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE }, { "spread", AIPlayer::AIF_SPREAD } };
-	const char *offList = strstr(variant.str(), "off-");
-	if (offList)
+		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE },
+		{ "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE }, { "spread", AIPlayer::AIF_SPREAD } };
+	Int mode = 0;	// 1: off list, 2: on list
+	const char *p = variant.str();
+	while (*p)
 	{
+		const char *end = strchr(p, '+');
+		const size_t len = end ? (size_t)(end - p) : strlen(p);
+		if (len >= 4 && strncmp(p, "off-", 4) == 0)
+		{
+			mode = 1;
+			p += 4;
+		}
+		else if (len >= 3 && strncmp(p, "on-", 3) == 0)
+		{
+			mode = 2;
+			p += 3;
+		}
+		const size_t wordLen = end ? (size_t)(end - p) : strlen(p);
 		for (size_t i = 0; i < ARRAY_SIZE(names); ++i)
-			if (strstr(offList, names[i].name))
-				off |= names[i].bit;
+		{
+			if (mode != 0 && wordLen == strlen(names[i].name) && strncmp(p, names[i].name, wordLen) == 0)
+				(mode == 1 ? off : on) |= names[i].bit;
+		}
+		if (end == nullptr)
+			break;
+		p = end + 1;
 	}
 	m_ai->setFeaturesOff(off);
+	m_ai->setFeaturesOn(on);
 }
 
 // Decisions are printed when the test bench gives the player the variant "trace".
@@ -265,7 +289,7 @@ void AIStrategy::update()
 					m_splitPicks, m_splitSwitches, m_threatSwitches, m_supportPicks, m_longRangePicks);
 				AI_TRACE("kiting: %d steps back, %d resumed; refused: %d enemy faster, %d no room", m_kiteStarts, m_kiteResumes, m_kiteRejectFast, m_kiteRejectCorner);
 				AI_TRACE("spread out: spacing %.0f, %d idle units moved apart, %d steps between shots", m_spacing, m_spreadMoves, m_spreadSteps);
-				AI_TRACE("merge: %d new teams kept for the next wave, %d reinforcements sent to the rally point", m_mergedTeams, m_mergedUnits);
+				AI_TRACE("merge: %d new teams kept for the next wave, %d follow-up groups sent after the wave, %d reinforcements sent to the rally point", m_mergedTeams, m_followUps, m_mergedUnits);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
@@ -828,6 +852,47 @@ Bool AIStrategy::checkWaveLaunch( const Coord3D *objective )
 }
 
 /**
+ * Teams that appeared while the wave is out wait at the rally point (evaluateTeam).  Once they add up to a
+ * worthwhile force they follow the wave to its objective together, as a group, instead of trickling out one by
+ * one; a smaller force waits for more, and for the next wave.
+ */
+void AIStrategy::reinforceWave()
+{
+	const AISkillSettings &sk = skill();
+	const UnsignedInt now = TheGameLogic->getFrame();
+	Real reserve = 0.0f;
+	for (Int i = 0; i < m_numTeams; ++i)
+	{
+		const AITeamRecord &rec = m_teams[i];
+		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
+		if (team == nullptr || rec.m_inWave || rec.m_mode != AITEAM_FREE)
+			continue;
+		reserve += teamValue(team);
+	}
+	const Real wanted = 0.3f * (m_launchValue > sk.m_minWaveValue ? m_launchValue : sk.m_minWaveValue);
+	if (reserve < wanted)
+		return;
+
+	AI_TRACE("FOLLOW-UP group of %.0f joins the wave at (%.0f,%.0f)", reserve, m_waveObjective.x, m_waveObjective.y);
+	++m_followUps;
+	m_launchValue += reserve;
+	for (Int i = 0; i < m_numTeams; ++i)
+	{
+		AITeamRecord &rec = m_teams[i];
+		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
+		if (team == nullptr || rec.m_inWave || rec.m_mode != AITEAM_FREE)
+			continue;
+		rec.m_inWave = TRUE;
+		rec.m_mode = AITEAM_ATTACKING;
+		rec.m_modeFrame = now;
+		rec.m_orderFrame = now;
+		rec.m_target = m_waveObjective;
+		rec.m_idleSince = 0;
+		orderTeamAttackMove(team, &m_waveObjective);
+	}
+}
+
+/**
  * A wave that is on its way to an objective it has not reached: compare it with what is known there once more
  * (the enemy model has been updated since the launch).  If it stays clearly the weaker side for a few seconds, the
  * wave turns back, regroups at the rally point and goes again when it is stronger (checkWaveLaunch decides that).
@@ -1324,6 +1389,8 @@ void AIStrategy::updateArmy()
 		// The wave is spent (most of it dead or run away): gather again.
 		if (value >= 0.25f * m_launchValue && m_numTeams > 0 && weight > 0.0f)
 			checkWaveOnTheWay(&center);
+		if (m_armyState == ARMY_ATTACK && mergeOn())
+			reinforceWave();
 		if (m_armyState != ARMY_ATTACK)
 			return;
 		if (value < 0.25f * m_launchValue || (m_numTeams == 0))

@@ -86,6 +86,7 @@ m_attackedSupplyCenter(INVALID_ID),
 m_teamSeconds(10),
 m_curWarehouseID(INVALID_ID),
 m_expert(false),
+m_featureOn(0),
 m_featureOff(0)
 {
 	m_frameLastBuildingBuilt = TheGameLogic->getFrame();

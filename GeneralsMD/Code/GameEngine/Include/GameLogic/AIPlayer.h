@@ -207,6 +207,9 @@ public:
 	enum { PICK_SPLIT = 1, PICK_THREAT = 2, PICK_SUPPORT = 4, PICK_LONGRANGE = 8 };
 	Bool isFeatureOff(Int f) const {return (m_featureOff & f) != 0;}
 	void setFeaturesOff(UnsignedInt mask) {m_featureOff = mask;}
+	/// Features that are off by default in the skill settings can be switched on for a test (player variant "on-kite").
+	Bool isFeatureForced(Int f) const {return (m_featureOn & f) != 0;}
+	void setFeaturesOn(UnsignedInt mask) {m_featureOn = mask;}
 	void buildBySupplies(Int minimumCash, const AsciiString &thingName ); ///< Builds a building by supplies.
 	void buildSpecificBuildingNearestTeam( const AsciiString &thingName, const Team *team );
 	void buildUpgrade(const AsciiString &upgrade ); ///< Builds an upgrade.
@@ -293,6 +296,7 @@ protected:
 
 	GameDifficulty m_difficulty;
 	Bool		m_expert;									///< Expert level (see setExpert).
+	UnsignedInt	m_featureOn;						///< test switches, see isFeatureForced
 	UnsignedInt	m_featureOff;						///< test switches, see isFeatureOff
 
 	Int			m_skillsetSelector;
