@@ -104,6 +104,12 @@ public:
 	/// The selection was moved by hand to 'dest' (a move order of the player): the homes of protectors in it move there.
 	void noteGroupMove( AIGroup *group, const Coord3D *dest );
 
+	// ---- base under attack (AssistBaseAlert.cpp) -------------------------------------------------
+	/// A response is out for this player: units were sent to defend and not yet called back.
+	Bool defendActive( Int playerIndex ) const;
+	void baseDefend( Player *player, const Coord3D &where );
+	void baseReturn( Player *player );
+
 	// ---- formations (AssistFormation.cpp) ------------------------------------------------------
 	/// The formation set for this unit (AFORM_NONE if it has none).
 	Int formationOf( ObjectID id ) const;
@@ -131,6 +137,18 @@ private:
 	};
 	typedef std::map<ObjectID, UnitState> UnitMap;			// ordered by object id: deterministic iteration
 
+	/// Idle army units that were sent to the attacked place, and where they stood.
+	struct DefendState
+	{
+		Bool									m_active;
+		Coord3D								m_location;
+		UnsignedInt						m_frame;
+		std::vector<ObjectID>	m_units;
+		std::vector<Coord3D>	m_origins;
+		DefendState() : m_active( FALSE ), m_frame( 0 ) { m_location.x = m_location.y = m_location.z = 0.0f; }
+	};
+	enum { MAX_DEFEND = 16 };
+
 	void setFormation( AIGroup *group, Int type );
 	void formationMove( AIGroup *group, Int type, const Coord3D &a, const Coord3D &b, Bool attackMove );
 	void pruneDead();
@@ -139,6 +157,7 @@ private:
 	Bool				m_allowed;
 	UnitMap			m_units;
 	ProtectManager	m_protect;
+	DefendState			m_defend[MAX_DEFEND];
 
 	// the drag a formation move was given (valid only while the command is being carried out)
 	Bool				m_aimValid;

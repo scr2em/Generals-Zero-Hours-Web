@@ -856,9 +856,11 @@ set(GAMEENGINE_SRC
     Source/GameLogic/AI/AICombatModel.cpp
     Source/GameLogic/PlayerAssist.cpp
     Source/GameLogic/Protect.cpp
+    Source/GameLogic/AssistBaseAlert.cpp
     Source/GameLogic/AssistTest.cpp
     Source/GameClient/AssistUI.cpp
     Source/GameClient/AssistUIProtect.cpp
+    Source/GameClient/AssistUIAlert.cpp
     Source/GameClient/AssistUICoverage.cpp
     Source/Common/AssistOptions.cpp
     Source/GameLogic/AssistFormation.cpp

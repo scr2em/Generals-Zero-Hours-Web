@@ -210,3 +210,17 @@ public:
 	static Bool translate( const GameMessage *msg );
 	static void drawOverlays( View *view );
 };
+
+
+//-------------------------------------------------------------------------------------------------
+/// The "base under attack" response (AssistUIAlert.cpp).
+class AssistAlertUI
+{
+public:
+	static void init();
+	static void reset();
+	static void defend();											///< send the idle army units near the alert to attack-move there
+	static void sendBack();										///< send them back
+	static Bool translate( const GameMessage *msg );
+	static void drawOverlays( View *view );
+};

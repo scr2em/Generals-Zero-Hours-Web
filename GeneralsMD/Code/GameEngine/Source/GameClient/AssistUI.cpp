@@ -804,6 +804,7 @@ void AssistUI::reset()
 {
 	AssistProtectUI::reset();
 	AssistCoverageUI::reset();
+	AssistAlertUI::reset();
 	for (size_t i = 0; i < s_panels.size(); ++i)
 		s_panels[i]->destroy();
 	s_selection.m_valid = FALSE;
@@ -832,6 +833,7 @@ void AssistUI::update()
 		s_formationPanel = new FormationPanel;
 	AssistProtectUI::init();
 	AssistCoverageUI::init();
+	AssistAlertUI::init();
 	if (s_toolbar == nullptr)
 		s_toolbar = new ToolbarPanel;
 
@@ -859,6 +861,7 @@ void AssistUI::drawOverlays( View *view )
 	drawAim();
 	AssistProtectUI::drawOverlays( view );
 	AssistCoverageUI::drawOverlays( view );
+	AssistAlertUI::drawOverlays( view );
 }
 
 //=================================================================================================
@@ -960,7 +963,7 @@ void AssistUI::drawAim()
 
 namespace
 {
-	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_CLOSE = 100 };
+	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_CLOSE = 100 };
 
 	struct ToggleRow { Int id; const wchar_t *label; Bool *value; };
 }
@@ -976,6 +979,7 @@ public:
 		addButton( OPT_FORMATIONS, 0, L"Formations: picker, hotkeys, drag to aim", nullptr );
 		addButton( OPT_PROTECT, 0, L"Protect: units guard other units, buildings and groups", nullptr );
 		addButton( OPT_COVERAGE, 0, L"Defence coverage view: range rings and gaps in the base edge", nullptr );
+		addButton( OPT_ALERT, 0, L"Base under attack: one click sends idle army units to defend", nullptr );
 		addButton( 200, 0, L"All assists are off until switched on here.", nullptr );
 		addButton( 201, 0, L"Those that give orders also need \"Player assists allowed\" in the match setup.", nullptr );
 		addButton( OPT_CLOSE, 0, L"Close", nullptr );
@@ -1010,6 +1014,7 @@ public:
 		find( OPT_FORMATIONS )->m_on = TheAssistOptions.m_formations;
 		find( OPT_PROTECT )->m_on = TheAssistOptions.m_protect;
 		find( OPT_COVERAGE )->m_on = TheAssistOptions.m_coverage;
+		find( OPT_ALERT )->m_on = TheAssistOptions.m_baseAlert;
 	}
 
 	virtual Bool refresh() override { return TRUE; }
@@ -1052,6 +1057,7 @@ public:
 			case OPT_FORMATIONS: TheAssistOptions.m_formations = !TheAssistOptions.m_formations; break;
 			case OPT_PROTECT: TheAssistOptions.m_protect = !TheAssistOptions.m_protect; break;
 			case OPT_COVERAGE: TheAssistOptions.m_coverage = !TheAssistOptions.m_coverage; break;
+			case OPT_ALERT: TheAssistOptions.m_baseAlert = !TheAssistOptions.m_baseAlert; break;
 			case OPT_CLOSE: closeDialog(); return;
 			default: return;
 		}
@@ -1192,7 +1198,7 @@ GameMessageDisposition AssistUI::translate( const GameMessage *msg )
 	if (t != GameMessage::MSG_RAW_MOUSE_POSITION)
 		invalidateSelection();	// the selection may have changed since the last frame
 
-	if (AssistProtectUI::translate( msg ) || AssistCoverageUI::translate( msg ))
+	if (AssistProtectUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ))
 		return DESTROY_MESSAGE;
 
 	// ---- hotkeys -----------------------------------------------------------------------------

@@ -19,6 +19,8 @@
 #   formations-replay  a match with formation orders is recorded, then played back: no CRC mismatch, same orders
 #   protect          riflemen protect the headquarters, an enemy attacks it, they answer, return home; a move by hand moves the home
 #   protect-replay   the same, recorded and played back
+#   base-alert       the "base under attack" response: idle army units are sent to the attacked place and back (Alt+A twice)
+#   base-alert-replay  the same, recorded and played back
 #   coverage         the defence coverage view: rings of a ground and an air defence, uncovered stretches of the base edge
 site=$(cd "$1" && pwd)
 out=${2:-${TMPDIR:-/tmp}/zh-assist-flows}
@@ -105,6 +107,18 @@ COVER_UNITS="0:IronwoodGuardTower:1:0:220:-90+0:IronwoodFlakTower:1:0:-220:-60"
 run coverage "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodFlakTower w:3 k:Home w:5 s:before \
 	kd:Alt w:1 k:KeyD w:1 ku:Alt w:4 W:ASSIST~coverage~ground~defences=1~air~defences=1~bases=1~uncovered~ground~steps=[1-9][0-9]*~air~steps=[1-9][0-9]* s:coverage \
 	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$COVER_UNITS" --arg -assistDebug --options AssistCoverageView=1
+
+# 8. Base under attack: three idle riflemen stand away from the base, an enemy rifleman shoots the headquarters; the alert raises the
+#    response, the hotkey sends the idle units and the second press sends them back.
+ALERT_UNITS="0:IronwoodRifleman:3+1:IronwoodRifleman:1:0:170:-60"
+ALERT_GAME="w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodRifleman~for~player~1 w:3"
+ALERT_DO="W:ASSIST~match~allowed=1 k:Home w:3 W:ASSIST~alert~raised~at s:alert kd:Alt w:1 k:KeyA w:1 ku:Alt W:ASSIST~base~defend:~[1-9]~units~sent~to s:defending \
+	w:10 kd:Alt w:1 k:KeyA w:1 ku:Alt W:ASSIST~base~defend:~[1-9]~units~sent~back s:back"
+run base-alert "$ALERT_GAME $ALERT_DO N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$ALERT_UNITS" --arg -assistDebug --options AssistBaseAlert=1
+
+run base-alert-replay "$ALERT_GAME $ALERT_DO f:300 \
+	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:600 \
+	K:2:ASSIST~base~defend:~[1-9]~units~sent~to N:CRC~Mismatch N:RuntimeError" --arg -assistTest --arg "$ALERT_UNITS" --arg -assistDebug --options AssistBaseAlert=1
 
 echo "$failed flow(s) failed"
 exit $((failed > 0))
