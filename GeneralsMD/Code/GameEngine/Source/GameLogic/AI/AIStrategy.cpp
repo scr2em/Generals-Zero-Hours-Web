@@ -121,6 +121,13 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_nextScout(0),
 	m_savingSince(0),
 	m_noSavingUntil(0),
+	m_numSteps(0),
+	m_tacticTeam(0),
+	m_tacticUnit(0),
+	m_kiteStarts(0),
+	m_kiteResumes(0),
+	m_kiteRejectFast(0),
+	m_kiteRejectCorner(0),
 	m_splitPicks(0),
 	m_splitSwitches(0),
 	m_threatSwitches(0),
@@ -131,6 +138,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 {
 	memset(m_teams, 0, sizeof(m_teams));
 	memset(m_ledger, 0, sizeof(m_ledger));
+	memset(m_steps, 0, sizeof(m_steps));
 	m_scoutTarget.zero();
 	m_waveObjective.zero();
 	m_rally.zero();
@@ -154,7 +162,7 @@ void AIStrategy::newMap()
 		{ "focus", AIPlayer::AIF_FOCUS }, { "wave", AIPlayer::AIF_WAVE }, { "retreat", AIPlayer::AIF_RETREAT },
 		{ "scout", AIPlayer::AIF_SCOUT }, { "counter", AIPlayer::AIF_COUNTER }, { "save", AIPlayer::AIF_SAVE },
 		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
-		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT } };
+		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE } };
 	const char *offList = strstr(variant.str(), "off-");
 	if (offList)
 	{
@@ -241,6 +249,7 @@ void AIStrategy::update()
 				AI_TRACE("army: managed units %d unmanaged units %d value %.0f siege shortage %.2f", managedUnits, unmanaged, m_armyValue, m_siegeShortage);
 				AI_TRACE("target picks %d: changed by split fire %d, by the threat rules %d; support units %d; out-ranging units %d",
 					m_splitPicks, m_splitSwitches, m_threatSwitches, m_supportPicks, m_longRangePicks);
+				AI_TRACE("kiting: %d steps back, %d resumed; refused: %d enemy faster, %d no room", m_kiteStarts, m_kiteResumes, m_kiteRejectFast, m_kiteRejectCorner);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
 					m_enemy.roleValue(AIROLE_DEFENCE), m_enemy.roleValue(AIROLE_PRODUCTION), m_enemy.roleValue(AIROLE_ECONOMY),
@@ -261,6 +270,8 @@ void AIStrategy::update()
 		updateEconomy();
 		updateSiege();
 	}
+
+	updateTactics();
 
 	if (now >= m_nextPowers && skill().m_smartPowers)
 	{
@@ -1715,6 +1726,10 @@ void AIStrategy::xfer( Xfer *xfer )
 	xfer->xferUnsignedInt(&m_savingSince);
 	xfer->xferUnsignedInt(&m_noSavingUntil);
 	xfer->xferUser(m_ledger, sizeof(m_ledger));
+	xfer->xferInt(&m_numSteps);
+	xfer->xferUser(m_steps, sizeof(m_steps));
+	xfer->xferInt(&m_tacticTeam);
+	xfer->xferInt(&m_tacticUnit);
 }
 
 void AIStrategy::loadPostProcess()

@@ -77,6 +77,7 @@ struct AICombatFigures
 	Real		m_range;						///< longest weapon range
 	Real		m_minRange;					///< shortest range of the longest-range weapon
 	Real		m_speed;						///< ground speed in world units per second (0: immobile)
+	Int			m_reloadFrames;			///< frames between two volleys of the longest range weapon
 	Int			m_supportLevel;			///< 2: heals or repairs others, 1: builds and repairs structures (workers), 0: neither
 
 	enum { MAX_WEAPONS = 3 };
@@ -221,6 +222,17 @@ struct AILedgerEntry
 	UnsignedInt		m_expire;
 };
 
+/// A unit that is stepping out of the fight for a moment (kiting): where it was attacking, and how to resume.
+struct AIStepRecord
+{
+	ObjectID			m_unit;
+	ObjectID			m_victim;
+	UnsignedInt		m_until;						///< end of the current phase
+	Int						m_phase;						///< 0: stepping away, 1: attacking again
+	Bool					m_hasResume;				///< the team was on its way somewhere: go on there once the target is dead
+	Coord3D				m_resume;
+};
+
 enum AIArmyState CPP_11(: Int)
 {
 	ARMY_GATHER = 0,				///< teams gather at the rally point and grow
@@ -281,6 +293,8 @@ public:
 	/// Note that a unit has picked 'target' and will deal about 'damage' to it in the next seconds.
 	/// 'flags' (AIPlayer::PICK_...) says what the target selection did, for the statistics of the trace.
 	void assignDamage( ObjectID target, Real damage, Int flags );
+	/// Unit level tactics, spread over the frames: kiting.
+	void updateTactics();
 
 protected:
 	virtual void crc( Xfer *xfer ) override;
@@ -311,6 +325,15 @@ private:
 	Bool rallyPoint( Coord3D *pos );
 	Real waveTarget() const;
 	Real alliedValueNear( const Coord3D *center, Team *except ) const;
+
+	// tactics (AITactics.cpp)
+	enum { MAX_STEPS = 16 };
+	AIStepRecord *findStep( ObjectID unit );
+	void dropStep( AIStepRecord *rec );
+	void updateSteps();
+	void unitTactics( Object *unit, AITeamRecord *team );
+	Bool planKite( Object *unit, Object *victim, const AITeamRecord *team, Coord3D *to, UnsignedInt *until );
+	Bool enemyCanSee( const Object *victim ) const;
 
 	// economy
 	void tryExpand();
@@ -356,6 +379,14 @@ private:
 	UnsignedInt		m_noSavingUntil;
 	enum { LEDGER_SIZE = 32 };
 	AILedgerEntry	m_ledger[LEDGER_SIZE];		///< split fire: damage assigned to targets, see assignDamage
+	AIStepRecord	m_steps[MAX_STEPS];				///< units that are kiting
+	Int						m_numSteps;
+	Int						m_tacticTeam;							///< round robin over the units of the field teams
+	Int						m_tacticUnit;
+	Int						m_kiteStarts;							///< statistics for the trace
+	Int						m_kiteResumes;
+	Int						m_kiteRejectFast;
+	Int						m_kiteRejectCorner;
 
 	Int						m_splitPicks;			///< statistics for the trace: target picks, and picks changed by split fire, threat rules ...
 	Int						m_splitSwitches;

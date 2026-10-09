@@ -30,7 +30,9 @@
 #include "GameLogic/Armor.h"
 #include "GameLogic/ArmorSet.h"
 #include "GameLogic/Damage.h"
+#include "GameLogic/Locomotor.h"
 #include "GameLogic/Module/ActiveBody.h"
+#include "GameLogic/Module/AIUpdate.h"
 #include "GameLogic/Weapon.h"
 #include "GameLogic/WeaponSet.h"
 
@@ -148,6 +150,8 @@ const AICombatFigures *AICombatModel::figures(const ThingTemplate *tt)
 			{
 				bestRange = range;
 				f->m_minRange = w->getMinimumAttackRange();
+				// The wait between two volleys of this weapon.
+				f->m_reloadFrames = (Int)(clip > 0 ? (clip > 0 && w->getClipReloadTime(noBonus) > delay ? w->getClipReloadTime(noBonus) : delay) : delay);
 			}
 		}
 	}
@@ -180,7 +184,27 @@ const AICombatFigures *AICombatModel::figures(const ThingTemplate *tt)
 	const ArmorTemplateSet *as = tt->findArmorTemplateSet(ArmorSetFlags());
 	f->m_armor = as ? as->getArmorTemplate() : nullptr;
 
-	f->m_speed = f->m_structure ? 0.0f : 1.0f;
+	// Speed: the fastest locomotor of the normal set, in world units per second.
+	f->m_speed = 0.0f;
+	if (!f->m_structure)
+	{
+		const ModuleInfo &modules = tt->getBehaviorModuleInfo();
+		for (Int i = 0; i < modules.getCount(); ++i)
+		{
+			const ModuleData *md = modules.getNthData(i);
+			if (md == nullptr || !md->isAiModuleData())
+				continue;
+			const LocomotorTemplateVector *set = static_cast<const AIUpdateModuleData *>(md)->findLocomotorTemplateVector(LOCOMOTORSET_NORMAL);
+			if (set == nullptr)
+				continue;
+			for (size_t k = 0; k < set->size(); ++k)
+			{
+				const Real speed = (*set)[k]->getMaxSpeed() * LOGICFRAMES_PER_SECOND;
+				if (speed > f->m_speed)
+					f->m_speed = speed;
+			}
+		}
+	}
 
 	// Support: healing and repairing units (by their modules), and workers that build and repair structures.
 	if (!f->m_structure)

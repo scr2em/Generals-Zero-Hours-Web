@@ -265,6 +265,11 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "SplitFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSplitFire ) },
 			{ "SplitWindowSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splitWindowSeconds ) },
 			{ "ThreatTargets",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useThreatTargets ) },
+			{ "Kiting",								INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useKiting ) },
+			{ "KiteMinReloadSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteMinReloadSeconds ) },
+			{ "KiteRangeFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteRangeFactor ) },
+			{ "KiteSpeedFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteSpeedFactor ) },
+			{ "KiteGroupRadius",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteGroupRadius ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1203,6 +1208,11 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_useSplitFire = true;
 	ex.m_splitWindowSeconds = 2.0f;
 	ex.m_useThreatTargets = true;
+	ex.m_useKiting = true;
+	ex.m_kiteMinReloadSeconds = 0.7f;
+	ex.m_kiteRangeFactor = 1.1f;
+	ex.m_kiteSpeedFactor = 1.3f;
+	ex.m_kiteGroupRadius = 400.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1253,6 +1263,11 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferBool( &sk.m_useSplitFire );
 		xfer->xferReal( &sk.m_splitWindowSeconds );
 		xfer->xferBool( &sk.m_useThreatTargets );
+		xfer->xferBool( &sk.m_useKiting );
+		xfer->xferReal( &sk.m_kiteMinReloadSeconds );
+		xfer->xferReal( &sk.m_kiteRangeFactor );
+		xfer->xferReal( &sk.m_kiteSpeedFactor );
+		xfer->xferReal( &sk.m_kiteGroupRadius );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

@@ -149,6 +149,11 @@ struct AISkillSettings
 	Bool m_useSplitFire;			///< Do not send more fire at a target than it takes to kill it; the rest picks the next target.
 	Real m_splitWindowSeconds;///< How long the damage assigned to a target counts as on its way.
 	Bool m_useThreatTargets;	///< Pick targets by the damage they can do to our units nearby: threats, then support units, then artillery.
+	Bool m_useKiting;					///< Fast ranged units step back while their weapon reloads.
+	Real m_kiteMinReloadSeconds;	///< Shortest wait between two volleys that is worth a step back.
+	Real m_kiteRangeFactor;		///< A unit not slower than its enemy kites it when its range is this many times the enemy's ...
+	Real m_kiteSpeedFactor;		///< ... or, with a range not shorter than 0.95 times the enemy's, when it is this many times faster.
+	Real m_kiteGroupRadius;		///< A kiting unit stays within this distance of its team.
 };
 
 class AISideBuildList : public MemoryPoolObject
