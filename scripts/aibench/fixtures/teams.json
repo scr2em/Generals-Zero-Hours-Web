@@ -1,0 +1,6 @@
+{
+ "description": "Adds the map Ironwood Teams (maps/teams.py): six start positions in two team areas on a 2240 x 2240 field (starts 1-3 on the left edge 600 apart, 4-6 turned by 180 degrees). Play it with --map ironwood_teams.",
+ "edits": [
+  { "generate": "maps/teams.py" }
+ ]
+}
