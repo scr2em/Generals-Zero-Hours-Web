@@ -65,8 +65,11 @@ node scripts/aibench/aibench.mjs --native build/native-headless --zh "$ZH_PATH" 
 ```
 
 `--data starter` uses `starterpack/` next to the executable (the `starter_pack` target). `--native` can be combined with
-`--site` to play the same matches in both; their results are not bit-identical (the floating point of the native
-build and of WebAssembly differ), but each build is deterministic on its own. `--boot` needs a web build.
+`--site` to play the same matches in both. Their results are not bit-identical: the game calls the C library's `sinf`,
+`cosf`, `acosf` ... and those of glibc or macOS differ in the last bit from Emscripten's (musl), which changes the
+CRC from the first frame on (the game state has the same layout in both builds; only such float values differ).
+Each build is deterministic on its own, and Linux and macOS may differ from each other for the same reason.
+`--boot` needs a web build.
 `scripts/gameplay/realdata_tests.sh` uses the native build when `build/native-headless` exists.
 
 ## Options
