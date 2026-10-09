@@ -216,6 +216,14 @@ node scripts/aibench/aibench.mjs --baseline build/web-old/GeneralsMD --site buil
 Notes: use the same `--port` and `--profile` every time (browser storage belongs to the origin and profile); close
 other copies of the page; each worker needs memory for a full game (roughly 1 GB) and a core.
 
+## Player assists: the sibling bench
+
+`-assistMatch` is the same kind of mode for the player assists: a skirmish with one human player, driven by a script of
+timed steps (create units, select them, send assist and ordinary orders as the user interface does, let an enemy attack)
+with checks on the game state, at full logic speed. Its runner, `scripts/assistbench/assistbench.mjs`, takes the same game
+data options and reuses `lib/server.mjs` and `lib/browser.mjs` (`runMatch(..., 'ASSISTMATCH')`). The real-data scenarios
+run in `scripts/gameplay/realdata_tests.sh assists`. See `scripts/assistbench/README.md`.
+
 ## Files
 
 ```
@@ -229,6 +237,7 @@ scripts/aibench/fixtures/maps/     generators of overlay maps (gates.py)
 scripts/aibench/lib/report.mjs    report.json / report.md
 scripts/aibench/test/stats.test.mjs   tests of the statistics:  node --test scripts/aibench/test
 GeneralsMD/Code/GameEngine/Source/Common/AIMatch.cpp, Include/Common/AIMatch.h   the engine mode
+GeneralsMD/Code/GameEngine/Include/Common/AIMatchShared.h   its parts that -assistMatch reuses (map/side lookup, JSON, bench flag)
 ```
 
 Engine hooks outside the module: `-aiMatch` in `CommandLine.cpp` (implies headless), `GameMain.cpp` and `WebMain.cpp`
