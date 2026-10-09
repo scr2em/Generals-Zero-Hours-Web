@@ -67,6 +67,8 @@ else()
     endforeach()
     string(APPEND CMAKE_EXE_LINKER_FLAGS " --profiling-funcs")
 endif()
+# Every build: an engine thread that dies prints its stack to the page's log (see the file).
+string(APPEND CMAKE_EXE_LINKER_FLAGS " --pre-js ${CMAKE_CURRENT_LIST_DIR}/web_crash_prejs.js")
 
 add_subdirectory(Dependencies/WebCompat)
 # The fonts that stand in for the Windows fonts (see Dependencies/WebFonts/CMakeLists.txt).

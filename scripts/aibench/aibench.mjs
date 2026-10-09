@@ -28,7 +28,7 @@ Game data:
                           (default ~/.cache/zh-aibench-profile; use the same one every time)
 What to play:
   --map NAME              map (repeatable): folder/file name, display name or map path
-  --matchup SPEC          players of one match (repeatable): "difficulty:side[:variant],difficulty:side[:variant],..."
+  --matchup SPEC          players of one match (repeatable): "difficulty:side[:variant][@team],difficulty:side[:variant][@team],..."
                           difficulty: easy, normal, hard, expert.  side: a faction ("Ironwood", "America", ...) or random.
                           Default with the starter content: hard:Ironwood,hard:Ironwood
   --seeds N               seeds per matchup and map (default 4)        --seed-start N   first seed (default 1)
@@ -50,6 +50,8 @@ How to run:
   --chromium PATH         Chromium executable (default: /opt/pw-browsers, or Playwright's own)
   --headful               show the browser
   --probe                 print the maps and sides of the game data and exit
+  --boot SEC              start the game like a player (intro videos clicked away, main menu with its shell map), watch
+                          it for SEC seconds and exit 1 on any engine failure; the log goes to <out>/boot.log
 `;
 
 function parseArgs(argv) {
@@ -90,6 +92,7 @@ function parseArgs(argv) {
 			case '--chromium': o.chromium = next(); break;
 			case '--headful': o.headful = true; break;
 			case '--probe': o.probe = true; break;
+			case '--boot': o.boot = Number(next()); break;
 			case '-h': case '--help': console.log(USAGE); process.exit(0); break;
 			default: throw new Error(`unknown option ${a}\n\n${USAGE}`);
 		}
@@ -119,19 +122,23 @@ function parseArgs(argv) {
 	if (o.data !== 'starter' && (o.generals || process.env.GENERALS_PATH) && !fs.existsSync(o.data.generals)) throw new Error(`${o.data.generals} does not exist (--generals / $GENERALS_PATH)`);
 	if (!o.maps.length && o.data === 'starter') o.maps.push('Ironwood Crossing');
 	if (!o.matchups.length && o.data === 'starter') o.matchups.push('hard:Ironwood,hard:Ironwood');
-	if (!o.probe && (!o.maps.length || !o.matchups.length)) throw new Error('--map and --matchup are required with your own game data');
+	if (!o.probe && !o.boot && (!o.maps.length || !o.matchups.length)) throw new Error('--map and --matchup are required with your own game data');
 	o.out = path.resolve(o.out || path.join('aibench-out', new Date().toISOString().replace(/[:.]/g, '-')));
 	return o;
 }
 
 // "hard:Ironwood" -> { difficulty, side, variant, label }; the label is the configuration's name in the reports.
+// "expert:China:trace@1": the same on team 1 (players of a team are allies; without @ every player is on his own).
 function parsePlayer(text) {
-	const f = text.trim().split(':');
-	if (f.length < 2) throw new Error(`player "${text}" is not difficulty:side[:variant]`);
+	const at = text.trim().split('@');
+	if (at.length > 2 || (at.length === 2 && !/^\d+$/.test(at[1]))) throw new Error(`player "${text}": the team after @ must be a number`);
+	const team = at.length === 2 ? Number(at[1]) : null;
+	const f = at[0].split(':');
+	if (f.length < 2) throw new Error(`player "${text}" is not difficulty:side[:variant][@team]`);
 	const difficulty = f[0].toLowerCase().replace(/^med(ium)?$/, 'normal').replace(/^brutal$/, 'hard');
 	const variant = f[2] || '';
 	const label = `${difficulty}:${f[1]}` + (variant && variant !== difficulty ? `:${variant}` : '');
-	return { difficulty, side: f[1], variant, label };
+	return { difficulty, side: f[1], variant, team, label };
 }
 
 function buildJobs(o) {
@@ -148,7 +155,7 @@ function buildJobs(o) {
 					const shift = o.rotate ? s % n : 0;
 					const placed = players.map((p, i) => ({ ...p, start: starts[(i + shift) % starts.length] }));
 					const id = `${build.name}-${map.replace(/\W+/g, '_')}-m${mi + 1}-s${seed}`;
-					const spec = placed.map((p) => `${p.difficulty}:${p.side}:${''}:${p.start}:${p.variant}`.replace(/:+$/, '')).join(',');
+					const spec = placed.map((p) => `${p.difficulty}:${p.side}:${p.team ?? ''}:${p.start}:${p.variant}`.replace(/:+$/, '')).join(',');
 					jobs.push({
 						id, build: build.name, map, matchup: mi + 1, seed, players: placed, kind: 'main',
 						args: ['-aiMatch', `map=${map}`, `players=${spec}`, `seed=${seed}`, maxFramesArg, `crcinterval=${o.crcInterval}`, `label=${id}`, ...o.engineArgs],
@@ -193,6 +200,14 @@ async function main() {
 
 	try {
 		for (const b of o.builds) await browser.prepareData(b.name, o.data, log);
+
+		if (o.boot) {
+			const r = await browser.runBoot(o.builds[0].name, o.boot);
+			fs.writeFileSync(path.join(o.out, 'boot.log'), r.log.join('\n') + '\n');
+			log(r.ok ? `boot: PASS (${o.boot} s without an engine failure)` : `boot: FAIL ${r.error}`);
+			process.exitCode = r.ok ? 0 : 1;
+			return;
+		}
 
 		if (o.probe) {
 			const b = o.builds[0].name;

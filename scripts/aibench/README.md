@@ -60,7 +60,7 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
 | `--probe` | prints the maps and sides found in the game data |
 | `--profile DIR`, `--port N` | browser profile and port (keep them fixed between runs) |
 
-### Players: `difficulty:side[:variant]`
+### Players: `difficulty:side[:variant][@team]`
 
 * difficulty: `easy`, `normal`, `hard`, `expert`. Different difficulties can play in one match
   (`expert:Ironwood,hard:Ironwood`). `hard` is the original Hard AI.
@@ -73,8 +73,10 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
   `on-kite` switches on a feature whose default is off. The words are `focus wave retreat scout counter save starve siege defend`
   and the tactics `split threat kite fight merge spread`. Batch 2: `raid protect repair route basedef geo layout garrison clear ability
   airborne bunker` (`geo` has two parts that can be switched off on their own: `georally` and `geosites`).
-* More than two players: list them all, the map must have room; every player is on his own team unless the engine
-  command line (`players=` field 3, below) says otherwise. The runner's report tables are for 1v1 matchups.
+* team: `@N` after the player (`expert:China:trace@1`) puts it on team N; players of a team are allies. Without it every
+  player is on his own team.
+* More than two players: list them all, the map must have room. Team games: use `--no-rotate --starts a,b,c,d` so each
+  team keeps its side of the map. The runner's report tables are for 1v1 matchups; the per-match files have every player.
 
 **About `expert`**: it is the engine's `SLOT_EXPERT_AI` slot state (the level above Hard), mapped in `parsePlayers()` in
 `AIMatch.cpp`. A new level needs one line there and the name in `aibench.mjs` is free-form, so nothing else changes.
