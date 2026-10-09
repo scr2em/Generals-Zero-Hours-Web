@@ -237,9 +237,11 @@ Bool isValidDefinitionName(const AsciiString &name)
 {
 	if (name.isEmpty() || name.getLength() > 100)
 		return FALSE;
+	// Any character the INI reader keeps inside one token: mods use names like "TK-XLocomotor".
 	for (Int i = 0; i < name.getLength(); ++i)
 	{
-		if (!isIdentifierChar(name.getCharAt(i)))
+		const Char c = name.getCharAt(i);
+		if (c <= ' ' || c >= 127 || c == '=' || c == ',' || c == ';')
 			return FALSE;
 	}
 	return TRUE;
@@ -402,6 +404,7 @@ struct TemplateScan
 	AsciiString m_name;
 	AsciiString m_side;
 	AsciiString m_startingBuilding;
+	std::vector<AsciiString> m_startingUnits;
 	Bool m_playable;
 	TemplateScan() : m_playable(FALSE) {}
 };
@@ -537,6 +540,8 @@ struct IniScanner
 					t.m_side = parts[1];
 				else if (strcmp(parts[0].str(), "StartingBuilding") == 0)
 					t.m_startingBuilding = parts[1];
+				else if (strncmp(parts[0].str(), "StartingUnit", 12) == 0)
+					t.m_startingUnits.push_back(parts[1]);
 				else if (strcmp(parts[0].str(), "PlayableSide") == 0)
 					t.m_playable = (stricmp(parts[1].str(), "Yes") == 0 || stricmp(parts[1].str(), "True") == 0);
 			}
@@ -1330,6 +1335,27 @@ void ArmyPackages::loadPackage(ArmyPackage &pkg, Xfer *pXfer)
 			cleanup.release();
 			skip(pkg, AsciiString("PlayerTemplate '") + f.m_playerTemplate + "' needs PlayableSide = Yes and a StartingBuilding");
 			return;
+		}
+		{
+			// The starting objects must exist (in the package or the game data): a faction without them
+			// cannot start a match, and the engine does not survive the attempt.
+			std::vector<AsciiString> starting = t->m_startingUnits;
+			starting.insert(starting.begin(), t->m_startingBuilding);
+			for (size_t k = 0; k < starting.size(); ++k)
+			{
+				const AsciiString &objectName = starting[k];
+				if (objectName.isEmpty() || stricmp(objectName.str(), "None") == 0)
+					continue;
+				Bool found = definitionExists(AsciiString("Object"), objectName);
+				for (size_t d = 0; !found && d < scan.m_defined.size(); ++d)
+					found = scan.m_defined[d].m_type == "Object" && scan.m_defined[d].m_name == objectName;
+				if (!found)
+				{
+					cleanup.release();
+					skip(pkg, AsciiString("PlayerTemplate '") + f.m_playerTemplate + "' starts with object '" + objectName + "', which exists neither in the package nor in the game data");
+					return;
+				}
+			}
 		}
 		if (f.m_ai && !containsString(scan.m_buildListSides, f.m_side))
 		{

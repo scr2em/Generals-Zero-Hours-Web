@@ -999,14 +999,30 @@ void GameEngine::executeFrame()
 					// compute a frame
 					update();
 				}
-				catch (INIException e)
+				catch (const INIException &e)
 				{
 					// Release CRASH doesn't return, so don't worry about executing additional code.
+					// (Caught by reference: INIException has no copy constructor, a copy frees its message twice.)
 					if (e.mFailureMessage)
 						RELEASE_CRASH((e.mFailureMessage));
 					else
 						RELEASE_CRASH(("Uncaught Exception in GameEngine::update"));
 				}
+#ifdef __EMSCRIPTEN__
+				catch (const std::exception &e)
+				{
+					// Web port: say what it was, the console is all a player can send.
+					AsciiString reason;
+					reason.format("Uncaught Exception in GameEngine::update: %s", e.what());
+					RELEASE_CRASH((reason.str()));
+				}
+				catch (ErrorCode code)
+				{
+					AsciiString reason;
+					reason.format("Uncaught Exception in GameEngine::update: error code 0x%08x", (UnsignedInt)code);
+					RELEASE_CRASH((reason.str()));
+				}
+#endif
 				catch (...)
 				{
 					// try to save info off
