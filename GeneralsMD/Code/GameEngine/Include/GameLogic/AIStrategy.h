@@ -212,6 +212,8 @@ struct AITeamRecord
 	UnsignedInt		m_orderFrame;				///< frame of the last order the strategic layer gave the team
 	Coord3D				m_target;						///< retreat point or objective
 	Real					m_lastAdvantage;
+	Bool					m_inWave;						///< part of the wave that is out (set at the launch); a team that appears later waits for the next one
+	ObjectID			m_idMark;						///< object ids from here on belong to units that joined after the last order of the strategic layer (0 = none given)
 };
 
 /// Damage that units have just assigned to a target (split fire): a small table with expiry.
@@ -319,6 +321,7 @@ private:
 	Real forecastAdvantage( const Coord3D *where, Real radius, Real *ourPower, Real *theirPower ) const;
 	Bool checkWaveLaunch( const Coord3D *objective );
 	void checkWaveOnTheWay( const Coord3D *waveCenter );
+	Bool mergeOn() const;
 	void orderTeamMove( Team *team, const Coord3D *pos );
 	void orderTeamAttackMove( Team *team, const Coord3D *pos );
 	void sendReinforcementsToThreat();
@@ -390,6 +393,8 @@ private:
 	Int						m_kiteResumes;
 	Int						m_kiteRejectFast;
 	Int						m_kiteRejectCorner;
+	Int						m_mergedTeams;						///< statistics for the trace: new teams kept at the rally point during a wave, reinforcements sent there
+	Int						m_mergedUnits;
 	UnsignedInt		m_launchBlockedSince;			///< fight check: frame since which the launch of the wave is held back (0 = not)
 	UnsignedInt		m_nextLaunchCheck;
 	UnsignedInt		m_waveBadSince;						///< frame since which the wave on its way looks too weak for the fight ahead

@@ -128,6 +128,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_kiteResumes(0),
 	m_kiteRejectFast(0),
 	m_kiteRejectCorner(0),
+	m_mergedTeams(0),
+	m_mergedUnits(0),
 	m_launchBlockedSince(0),
 	m_nextLaunchCheck(0),
 	m_waveBadSince(0),
@@ -169,7 +171,7 @@ void AIStrategy::newMap()
 		{ "focus", AIPlayer::AIF_FOCUS }, { "wave", AIPlayer::AIF_WAVE }, { "retreat", AIPlayer::AIF_RETREAT },
 		{ "scout", AIPlayer::AIF_SCOUT }, { "counter", AIPlayer::AIF_COUNTER }, { "save", AIPlayer::AIF_SAVE },
 		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
-		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE }, { "fight", AIPlayer::AIF_FIGHT } };
+		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE }, { "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE } };
 	const char *offList = strstr(variant.str(), "off-");
 	if (offList)
 	{
@@ -257,6 +259,7 @@ void AIStrategy::update()
 				AI_TRACE("target picks %d: changed by split fire %d, by the threat rules %d; support units %d; out-ranging units %d",
 					m_splitPicks, m_splitSwitches, m_threatSwitches, m_supportPicks, m_longRangePicks);
 				AI_TRACE("kiting: %d steps back, %d resumed; refused: %d enemy faster, %d no room", m_kiteStarts, m_kiteResumes, m_kiteRejectFast, m_kiteRejectCorner);
+				AI_TRACE("merge: %d new teams kept for the next wave, %d reinforcements sent to the rally point", m_mergedTeams, m_mergedUnits);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
@@ -943,10 +946,17 @@ Bool AIStrategy::isManageableTeam( Team *team ) const
 }
 
 //-------------------------------------------------------------------------------------------------
+Bool AIStrategy::mergeOn() const
+{
+	return skill().m_useMerge && !m_ai->isFeatureOff(AIPlayer::AIF_MERGE);
+}
+
 void AIStrategy::orderTeamMove( Team *team, const Coord3D *pos )
 {
 	if (!team->hasAnyUnits())
 		return;
+	if (AITeamRecord *r = findRecord(team->getID(), FALSE))
+		r->m_idMark = TheGameLogic->getObjectIDCounter();
 	AIGroupPtr group = TheAI->createGroup();
 	if (!group)
 		return;
@@ -962,6 +972,8 @@ void AIStrategy::orderTeamAttackMove( Team *team, const Coord3D *pos )
 {
 	if (!team->hasAnyUnits())
 		return;
+	if (AITeamRecord *r = findRecord(team->getID(), FALSE))
+		r->m_idMark = TheGameLogic->getObjectIDCounter();
 	AIGroupPtr group = TheAI->createGroup();
 	if (!group)
 		return;
@@ -1282,6 +1294,8 @@ void AIStrategy::updateArmy()
 			m_launchValue = value;
 			m_waveObjective = objective;
 			for (Int i = 0; i < m_numTeams; ++i)
+				m_teams[i].m_inWave = TRUE;
+			for (Int i = 0; i < m_numTeams; ++i)
 			{
 				AITeamRecord &rec = m_teams[i];
 				Team *team = TheTeamFactory->findTeamByID(rec.m_team);
@@ -1324,32 +1338,89 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 	const AISkillSettings &sk = skill();
 
 	// Where is the team, how strong, how far can it shoot.
-	Coord3D center;
+	Coord3D rally;
+	const Bool haveRally = rallyPoint(&rally);
+	Coord3D center, allCenter;
 	center.zero();
-	Int count = 0, idleCount = 0;
+	allCenter.zero();
+	Int count = 0, idleCount = 0, allCount = 0, allIdleCount = 0;
+	Int reserves = 0;
 	Real maxRange = 0.0f;
+	// Units that joined the team after its last order (reinforcements) are not a part of the force that is out
+	// there: while the team is away they are kept out of its position, and sent to the rally point (see below).
+	const Bool mergeUnits = haveRally && mergeOn() && rec->m_idMark != 0;
 	for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
 	{
 		Object *obj = it.cur();
 		if (obj == nullptr || obj->isEffectivelyDead())
 			continue;
-		center.x += obj->getPosition()->x;
-		center.y += obj->getPosition()->y;
-		++count;
-		if (obj->getAI() && obj->getAI()->isIdle())
-			++idleCount;
+		const Bool idle = obj->getAI() && obj->getAI()->isIdle();
+		allCenter.x += obj->getPosition()->x;
+		allCenter.y += obj->getPosition()->y;
+		++allCount;
+		if (idle)
+			++allIdleCount;
 		const AICombatFigures *f = AICombatModel::figures(obj->getTemplate());
 		if (f && f->m_range > maxRange)
 			maxRange = f->m_range;
+		if (mergeUnits && obj->getID() >= rec->m_idMark)
+		{
+			++reserves;
+			continue;
+		}
+		center.x += obj->getPosition()->x;
+		center.y += obj->getPosition()->y;
+		++count;
+		if (idle)
+			++idleCount;
+	}
+	if (allCount == 0)
+		return;
+	if (reserves > 0 && count > 0)
+	{
+		center.x /= count;
+		center.y /= count;
+		if (dist2D(center, rally) > 500.0f)
+		{
+			// The team is out: the reinforcements wait at the rally point for the next wave.
+			for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+			{
+				Object *obj = it.cur();
+				if (obj == nullptr || obj->isEffectivelyDead() || obj->getID() < rec->m_idMark || obj->getAI() == nullptr)
+					continue;
+				AIUpdateInterface *ai = obj->getAI();
+				if (dist2D(*obj->getPosition(), rally) < 120.0f)
+					continue;
+				const Coord3D *goal = ai->getGoalPosition();
+				if (ai->isIdle() || goal == nullptr || dist2D(*goal, rally) > 150.0f)
+				{
+					ai->aiMoveToPosition(&rally, CMD_FROM_AI);
+					++m_mergedUnits;
+				}
+			}
+		}
+		else
+		{
+			count = allCount;
+			idleCount = allIdleCount;
+			center = allCenter;
+			center.x /= count;
+			center.y /= count;
+		}
+	}
+	else
+	{
+		count = allCount;
+		idleCount = allIdleCount;
+		center = allCenter;
+		center.x /= count;
+		center.y /= count;
 	}
 	if (count == 0)
 		return;
-	center.x /= count;
-	center.y /= count;
 	center.z = TheTerrainLogic->getGroundHeight(center.x, center.y);
 
-	Coord3D rally;
-	if (!rallyPoint(&rally))
+	if (!haveRally)
 		rally = center;
 	const Real rallyDist = dist2D(center, rally);
 	const Bool allIdle = (idleCount == count);
@@ -1411,7 +1482,9 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 			if (rec->m_mode != AITEAM_FREE || m_ai->isFeatureOff(AIPlayer::AIF_WAVE))
 				break;
 
-			if (m_armyState == ARMY_GATHER)
+			// A team that appeared while a wave is out is not part of it: it gathers at the rally point and joins the next one.
+			const Bool waiting = m_armyState == ARMY_ATTACK && !rec->m_inWave && mergeOn();
+			if (m_armyState == ARMY_GATHER || waiting)
 			{
 				// Bring the team to the army.  (Units that hunt or follow a script path are not idle, so this
 				// also reins in teams that the scripts have sent out alone.)
@@ -1419,6 +1492,8 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 				{
 					rec->m_orderFrame = now;
 					rec->m_target = rally;
+					if (waiting)
+						++m_mergedTeams;
 					if (contact)
 						orderTeamMove(team, &rally);	// not in a position to fight: get to the army
 					else

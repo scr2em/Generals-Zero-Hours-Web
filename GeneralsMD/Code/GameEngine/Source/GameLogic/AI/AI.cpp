@@ -274,6 +274,7 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "LaunchAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchAdvantage ) },
 			{ "PullbackAdvantage",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_pullbackAdvantage ) },
 			{ "LaunchBlockSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchBlockSeconds ) },
+			{ "MergeReinforcements",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useMerge ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1221,6 +1222,7 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_launchAdvantage = 0.8f;
 	ex.m_pullbackAdvantage = 0.5f;
 	ex.m_launchBlockSeconds = 120.0f;
+	ex.m_useMerge = true;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1280,6 +1282,7 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_launchAdvantage );
 		xfer->xferReal( &sk.m_pullbackAdvantage );
 		xfer->xferReal( &sk.m_launchBlockSeconds );
+		xfer->xferBool( &sk.m_useMerge );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

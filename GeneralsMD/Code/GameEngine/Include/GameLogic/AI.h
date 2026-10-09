@@ -158,6 +158,7 @@ struct AISkillSettings
 	Real m_launchAdvantage;		///< Strength of the wave against what is known at its objective (ours/theirs) needed to launch.
 	Real m_pullbackAdvantage;	///< A wave on its way to a fight it is this much weaker than (ours/theirs) pulls back.
 	Real m_launchBlockSeconds;///< A wave held back by the fight check for this long goes anyway.
+	Bool m_useMerge;					///< New teams and reinforcements gather at the rally point and join the next wave, instead of going out one by one.
 };
 
 class AISideBuildList : public MemoryPoolObject
