@@ -1,0 +1,23 @@
+{
+ "name": "formation-line",
+ "description": "a click move in a line: one row of ten across the way they go, not a wedge; every unit ends within 30 of its slot at the destination, facing the move.",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn tanks 0:AmericaTankCrusader:3 at=cc:0^220,-150",
+  "spawn rifles 0:AmericaInfantryRanger:4 at=cc:0^220,0",
+  "spawn rockets 0:AmericaInfantryMissileDefender:3 at=cc:0^220,150",
+  "name army tanks+rifles+rockets",
+  "wait 5",
+  "select army",
+  "formation line",
+  "wait 1",
+  "expect formation army line",
+  "move cc:0^600,0",
+  "wait 1200",
+  "dump army",
+  "expect shape army line",
+  "expect not shape army wedge"
+ ]
+}

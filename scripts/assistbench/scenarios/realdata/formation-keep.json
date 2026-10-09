@@ -1,0 +1,23 @@
+{
+ "name": "formation-keep",
+ "description": "keep shape (the game's own formation): after a move the units stand as they stood before, relative to each other.",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn tanks 0:AmericaTankCrusader:3 at=cc:0^220,-150",
+  "spawn rifles 0:AmericaInfantryRanger:4 at=cc:0^220,0",
+  "spawn rockets 0:AmericaInfantryMissileDefender:3 at=cc:0^220,150",
+  "name army tanks+rifles+rockets",
+  "wait 5",
+  "select army",
+  "formation keep",
+  "wait 1",
+  "expect formation army keep",
+  "snapshot army",
+  "move cc:0^600,0",
+  "wait 1200",
+  "dump army",
+  "expect sameshape army tol=30"
+ ]
+}

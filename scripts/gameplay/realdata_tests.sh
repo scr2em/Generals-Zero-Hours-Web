@@ -10,6 +10,7 @@
 #   team     2v2 on $MAP_TEAM: two Experts against two Hard AIs from both sides of the map, and an Expert next to a weak
 #            ally (an Easy AI in place of a human) against two Experts: do the Expert allies attack?
 #   bunker   China Expert against Hard: does it put infantry in its bunkers?
+#   assists  the player assists, scripted (scripts/assistbench/scenarios/realdata: formations, protect links), seconds each
 #
 # What a pass looks like in the team suite: every Expert launches its first wave ("WAVE launches") within about 11 game minutes
 # (the table says "min 11" or less) and not every Expert sits under alarm for more than a quarter of the game (seconds under alarm
@@ -31,7 +32,7 @@
 #   git add test-reports && git commit -m "Gameplay test report" && git push
 set -euo pipefail
 
-usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; }
 
 QUICK=0
 WORKERS=2
@@ -45,11 +46,11 @@ while [ $# -gt 0 ]; do
 		--build-dir) BUILD_DIR="$2"; shift 2 ;;
 		--no-build) BUILD=0; shift ;;
 		-h|--help) usage; exit 0 ;;
-		boot|1v1|team|bunker) SUITES+=("$1"); shift ;;
+		boot|1v1|team|bunker|assists) SUITES+=("$1"); shift ;;
 		*) echo "Unknown option or suite: $1" >&2; usage >&2; exit 2 ;;
 	esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(boot 1v1 team bunker)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(boot 1v1 team bunker assists)
 
 if [ -z "${ZH_PATH:-}" ] || [ ! -d "$ZH_PATH" ]; then
 	echo "Set ZH_PATH to your Zero Hour folder (the one with INIZH.big), e.g." >&2
@@ -132,6 +133,12 @@ for suite in "${SUITES[@]}"; do
 		bunker)
 			run_suite bunker --map "$MAP_1V1" --timeout 20 --match-timeout 2000 --seeds 2 --determinism 0 --keep-logs \
 				--matchup "expert:China:trace,hard:America" ;;
+		assists)
+			# scripted player assist scenarios (-assistMatch, no rendering): each names its map and units, see scripts/assistbench
+			echo
+			echo "==> assists"
+			node scripts/assistbench/assistbench.mjs --site "$SITE" "${DATA[@]}" --profile "$PROFILE" --port "$PORT" --workers "$WORKERS" \
+				--out "$OUT/assists" scripts/assistbench/scenarios/realdata 2>&1 | tee "$OUT/assists.txt" || status=1 ;;
 	esac
 done
 
@@ -140,11 +147,22 @@ python3 - "$OUT" <<'PY' >> "$OUT/summary.md"
 import glob, json, os, re, sys
 out = sys.argv[1]
 def section(title): print(f"\n## {title}\n")
-for suite in ("boot", "1v1", "team", "bunker"):
+for suite in ("boot", "1v1", "team", "bunker", "assists"):
     d = os.path.join(out, suite)
     if not os.path.isdir(d): continue
     section(suite)
     txt = os.path.join(out, suite + ".txt")
+    if suite == "assists":
+        # scripted scenarios: the bench's own report (pass/fail per scenario, the first failing check); the steps, the checks
+        # and the decisions of the assists are in assists/<scenario>.trace.txt
+        rep = os.path.join(d, "report.md")
+        if os.path.exists(rep):
+            body = open(rep, errors="replace").read().split("\n", 1)[-1]
+            print(body.strip()[:8000])
+        else:
+            lines = open(txt, errors="replace").read().splitlines() if os.path.exists(txt) else []
+            print("(no report)\n\n```\n" + "\n".join(lines[-20:]) + "\n```")
+        continue
     if suite == "boot":
         lines = open(txt, errors="replace").read().splitlines() if os.path.exists(txt) else []
         print("\n".join(l for l in lines if l.startswith("boot:")) or "(no result)")

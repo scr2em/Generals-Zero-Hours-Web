@@ -1,0 +1,26 @@
+{
+ "name": "stance-retreat-rally",
+ "description": "retreat when damaged, without a place of repair: three tanks far out with retreat at 50% are hurt to about 35%; they pull back to the rally point in front of the base and wait there out of the fight. (Needs the commits with MSG_ASSIST_BASE_DEFEND / MSG_ASSIST_STANCE; until then \"this build has no command\".)",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn tanks 0:AmericaTankCrusader:3 at=cc:0^900,0",
+  "wait 5",
+  "select tanks",
+  "send ASSIST_STANCE int:2 int:2 int:50",
+  "wait 2",
+  "snapshot tanks",
+  "spawn raider 1:ChinaInfantryRedguard:1 at=cc:0^1300,0",
+  "damage tanks 65% by=raider",
+  "kill raider",
+  "until not atsnapshot tanks tol=150 max=600",
+  "wait 1500",
+  "expect alive tanks"
+ ],
+ "log": [
+  "^ASSIST stance set mask=2 value=2 percent=50 for 3 units",
+  "^ASSIST stance retreat: unit \\d+ at \\d+% goes to the rally point",
+  "^ASSIST stance retreat: unit \\d+ is out of the fight"
+ ]
+}

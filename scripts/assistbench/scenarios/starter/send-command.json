@@ -1,0 +1,21 @@
+{
+ "name": "starter-send-command",
+ "description": "Smoke check only (starter content, says nothing about gameplay): the bench itself: \"send\" puts any command of the player by name (here MSG_ASSIST_FORMATION, 3: wedge) into the command list; a command the build does not have is an error.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn tanks 0:IronwoodTank:3 at=cc:0^220,-150",
+  "spawn rifles 0:IronwoodRifleman:4 at=cc:0^220,0",
+  "spawn rockets 0:IronwoodRocketeer:3 at=cc:0^220,150",
+  "name army tanks+rifles+rockets",
+  "wait 5",
+  "select army",
+  "send ASSIST_FORMATION int:3",
+  "wait 2",
+  "expect formation army wedge"
+ ],
+ "log": [
+  "^ASSIST formation set type=3 units=10"
+ ]
+}

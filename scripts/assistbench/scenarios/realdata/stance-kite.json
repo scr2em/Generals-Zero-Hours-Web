@@ -1,0 +1,21 @@
+{
+ "name": "stance-kite",
+ "description": "kite: rocket soldiers that outrange enemy infantry step back while their weapon reloads. (Needs the commits with MSG_ASSIST_BASE_DEFEND / MSG_ASSIST_STANCE; until then \"this build has no command\".)",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn rockets 0:AmericaInfantryMissileDefender:4 at=cc:0^500,0",
+  "wait 5",
+  "select rockets",
+  "send ASSIST_STANCE int:1 int:1 int:0",
+  "wait 2",
+  "spawn enemies 1:ChinaInfantryRedguard:3 at=cc:0^720,0",
+  "attack enemies",
+  "wait 900"
+ ],
+ "log": [
+  "^ASSIST stance set mask=1 value=1 percent=0 for 4 units",
+  "^ASSIST stance kite: unit \\d+ steps back from \\d+"
+ ]
+}

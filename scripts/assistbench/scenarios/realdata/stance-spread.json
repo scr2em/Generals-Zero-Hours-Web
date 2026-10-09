@@ -1,0 +1,22 @@
+{
+ "name": "stance-spread",
+ "description": "spread out: a tight group of rangers under fire from a blast weapon moves apart. (Needs the commits with MSG_ASSIST_BASE_DEFEND / MSG_ASSIST_STANCE; until then \"this build has no command\".)",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn rangers 0:AmericaInfantryRanger:6 at=cc:0^500,0",
+  "wait 5",
+  "select rangers",
+  "send ASSIST_STANCE int:4 int:4 int:0",
+  "wait 2",
+  "spawn gun 1:ChinaVehicleInfernoCannon:1 at=cc:0^850,0",
+  "ai gun attack rangers[2]",
+  "wait 600",
+  "expect apart rangers min=25"
+ ],
+ "log": [
+  "^ASSIST stance set mask=4 value=4",
+  "^ASSIST stance spread: (idle )?unit \\d+ (moves apart|steps aside)"
+ ]
+}

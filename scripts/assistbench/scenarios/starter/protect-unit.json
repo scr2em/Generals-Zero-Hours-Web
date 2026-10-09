@@ -1,0 +1,36 @@
+{
+ "name": "starter-protect-unit",
+ "description": "Smoke check only (starter content, says nothing about gameplay): four riflemen protect one tank; an enemy attacks the tank; they answer and return home; unprotect removes the links.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn guards 0:IronwoodRifleman:4 at=cc:0^220,-60",
+  "spawn vip 0:IronwoodTank:1 at=cc:0^380,0",
+  "wait 5",
+  "select guards",
+  "protect guards vip",
+  "wait 2",
+  "expect protects guards vip",
+  "spawn raider 1:IronwoodRifleman:1 at=cc:0^560,120",
+  "ai raider attack vip",
+  "until damaged vip max=450",
+  "until state guards responding any=1 max=300",
+  "until dead raider max=600",
+  "kill raider",
+  "until state guards returning any=1 max=600",
+  "until athome guards max=1200",
+  "select guards",
+  "unprotect",
+  "wait 2",
+  "expect unlinked guards",
+  "expect alive vip"
+ ],
+ "log": [
+  "^ASSIST protect link \\d+ protects",
+  "^ASSIST protect \\d+ answers the alarm",
+  "^ASSIST protect \\d+ goes home",
+  "^ASSIST protect \\d+ is home",
+  "^ASSIST protect link \\d+ removed"
+ ]
+}

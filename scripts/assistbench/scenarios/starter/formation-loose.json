@@ -1,0 +1,22 @@
+{
+ "name": "starter-formation-loose",
+ "description": "Smoke check only (starter content, says nothing about gameplay): a click move in the loose formation: staggered rows 2.4 times further apart; every unit ends within 30 of its slot at the destination, facing the move.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn tanks 0:IronwoodTank:3 at=cc:0^220,-150",
+  "spawn rifles 0:IronwoodRifleman:4 at=cc:0^220,0",
+  "spawn rockets 0:IronwoodRocketeer:3 at=cc:0^220,150",
+  "name army tanks+rifles+rockets",
+  "wait 5",
+  "select army",
+  "formation loose",
+  "wait 1",
+  "expect formation army loose",
+  "move cc:0^600,0",
+  "wait 1200",
+  "dump army",
+  "expect shape army loose"
+ ]
+}
