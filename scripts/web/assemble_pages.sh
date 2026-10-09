@@ -43,7 +43,7 @@ if [ -f "$site_src/zharmy.zip" ] && [ -f "$site_src/pyodide/pyodide.asm.wasm" ];
 else
     echo "note: no converter in $site_src (configured with -DRTS_WEB_PYODIDE=OFF?): the launcher will not import armies from a mod" >&2
 fi
-for f in direct-source.js zhnet.js; do
+for f in direct-source.js zhnet.js zhcursor.js; do
     if [ -f "$site_src/$f" ]; then cp "$site_src/$f" "$out/"; fi
 done
 # Any other module files emitted next to the engine (e.g. worker or data files).
