@@ -67,6 +67,18 @@ else()
     endforeach()
     string(APPEND CMAKE_EXE_LINKER_FLAGS " --profiling-funcs")
 endif()
+# AddressSanitizer: every memory access is checked and the first bad write or read is reported with the stack of
+# the code that did it (and of where the memory was allocated or freed). Slower and needs more memory; for finding
+# memory corruption ("function signature mismatch" or crashes far from their cause). scripts/web/run.sh --asan.
+option(RTS_WEB_ASAN "Build the WebAssembly game with AddressSanitizer" OFF)
+if(RTS_WEB_ASAN)
+    message(STATUS "Emscripten AddressSanitizer build (RTS_WEB_ASAN)")
+    foreach(lang C CXX)
+        string(APPEND CMAKE_${lang}_FLAGS " -fsanitize=address")
+    endforeach()
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
+endif()
+
 # Every build: an engine thread that dies prints its stack to the page's log (see the file).
 string(APPEND CMAKE_EXE_LINKER_FLAGS " --pre-js ${CMAKE_CURRENT_LIST_DIR}/web_crash_prejs.js")
 

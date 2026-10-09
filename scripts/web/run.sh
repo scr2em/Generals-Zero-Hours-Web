@@ -8,6 +8,8 @@
 #   --build-dir DIR   build directory (default build/web, or build/web-debug with --debug)
 #   --no-video        build without FFmpeg (faster first build; the game's videos are skipped)
 #   --debug           debug logging and assertions in the browser console (separate build directory)
+#   --asan            AddressSanitizer build: reports the first bad memory access with its stack (slow; separate
+#                     build directory build/web-asan); for crashes such as "function signature mismatch"
 #   --build-only      build, but do not serve
 #   --no-open         serve, but do not open the browser
 #   -h, --help        this text
@@ -23,10 +25,11 @@ PORT=8000
 BUILD_DIR=""
 VIDEO=ON
 DEBUG=0
+ASAN=0
 SERVE=1
 OPEN=1
 
-usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -34,6 +37,7 @@ while [ $# -gt 0 ]; do
 		--build-dir) BUILD_DIR="$2"; shift 2 ;;
 		--no-video) VIDEO=OFF; shift ;;
 		--debug) DEBUG=1; shift ;;
+		--asan) ASAN=1; shift ;;
 		--build-only) SERVE=0; shift ;;
 		--no-open) OPEN=0; shift ;;
 		-h|--help) usage; exit 0 ;;
@@ -44,7 +48,9 @@ done
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 if [ -z "$BUILD_DIR" ]; then
-	if [ "$DEBUG" = 1 ]; then BUILD_DIR=build/web-debug; else BUILD_DIR=build/web; fi
+	if [ "$ASAN" = 1 ]; then BUILD_DIR=build/web-asan
+	elif [ "$DEBUG" = 1 ]; then BUILD_DIR=build/web-debug
+	else BUILD_DIR=build/web; fi
 fi
 
 step() { printf '\n==> %s\n' "$*"; }
@@ -116,10 +122,13 @@ set -u
 emcc --version | head -n 1
 
 # 3. Configure and build -------------------------------------------------------------------------
-step "Configuring $BUILD_DIR (videos: $VIDEO, debug: $DEBUG)"
+step "Configuring $BUILD_DIR (videos: $VIDEO, debug: $DEBUG, asan: $ASAN)"
 cfg=(-DRTS_WEB_FFMPEG="$VIDEO")
 if [ "$DEBUG" = 1 ]; then
 	cfg+=(-DRTS_DEBUG_LOGGING=ON -DRTS_DEBUG_CRASHING=ON)
+fi
+if [ "$ASAN" = 1 ]; then
+	cfg+=(-DRTS_WEB_ASAN=ON)
 fi
 # Configure only when needed: configuring again rewrites a version header, which costs a relink.
 cache="$BUILD_DIR/CMakeCache.txt"
@@ -130,6 +139,9 @@ else
 	grep -q "^RTS_WEB_FFMPEG:BOOL=$VIDEO\$" "$cache" || need_configure=1
 	if [ "$DEBUG" = 1 ]; then
 		grep -q "^RTS_DEBUG_LOGGING:BOOL=ON\$" "$cache" || need_configure=1
+	fi
+	if [ "$ASAN" = 1 ]; then
+		grep -q "^RTS_WEB_ASAN:BOOL=ON\$" "$cache" || need_configure=1
 	fi
 fi
 if [ "$need_configure" = 1 ]; then
