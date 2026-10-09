@@ -451,6 +451,7 @@ public:
 		MSG_META_ASSIST_PROTECT,										///< protect: choose what the selected units protect
 		MSG_META_ASSIST_UNPROTECT,									///< protect: the selected units stop protecting
 		MSG_META_ASSIST_COVERAGE,										///< defence coverage view on / off
+		MSG_META_ASSIST_ODDS,												///< odds meter on / off
 		MSG_META_ASSIST_BASE_DEFEND,								///< base under attack: send the defenders, or send them back
 
 		MSG_END_META_MESSAGES,											///< Marker to delineate "meta" messages

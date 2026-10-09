@@ -183,6 +183,7 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "ASSIST_FORMATION_LOOSE",										GameMessage::MSG_META_ASSIST_FORM_LOOSE },
 	{ "ASSIST_FORMATION_KEEP",										GameMessage::MSG_META_ASSIST_FORM_KEEP },
 	{ "ASSIST_PROTECT",										GameMessage::MSG_META_ASSIST_PROTECT },
+	{ "ASSIST_ODDS",											GameMessage::MSG_META_ASSIST_ODDS },
 	{ "ASSIST_BASE_DEFEND",								GameMessage::MSG_META_ASSIST_BASE_DEFEND },
 	{ "ASSIST_COVERAGE",									GameMessage::MSG_META_ASSIST_COVERAGE },
 	{ "ASSIST_UNPROTECT",									GameMessage::MSG_META_ASSIST_UNPROTECT },
@@ -997,6 +998,7 @@ void MetaMap::generateMetaMap()
 			{ GameMessage::MSG_META_ASSIST_FORM_CYCLE,  MK_F, ALT, L"Formation: next",      L"Pick the next formation for the selected units" },
 			{ GameMessage::MSG_META_ASSIST_PROTECT,     MK_P, ALT, L"Protect",              L"The selected units protect what you choose next" },
 			{ GameMessage::MSG_META_ASSIST_UNPROTECT,   MK_U, ALT, L"Stop protecting",      L"The selected units stop protecting" },
+			{ GameMessage::MSG_META_ASSIST_ODDS,        MK_O, ALT, L"Odds meter", L"Point at an enemy group with units selected to see who wins" },
 			{ GameMessage::MSG_META_ASSIST_BASE_DEFEND, MK_A, ALT, L"Base under attack response", L"Send idle army units to the attacked place; again to send them back" },
 			{ GameMessage::MSG_META_ASSIST_COVERAGE,    MK_D, ALT, L"Defence coverage view", L"Show the range of own defences and the gaps in the base edge" },
 		};

@@ -224,3 +224,16 @@ public:
 	static Bool translate( const GameMessage *msg );
 	static void drawOverlays( View *view );
 };
+
+
+//-------------------------------------------------------------------------------------------------
+/// The odds meter (AssistUIOdds.cpp).
+class AssistOddsUI
+{
+public:
+	static void init();
+	static void reset();
+	static void toggle();
+	static Bool translate( const GameMessage *msg );
+	static void drawOverlays( View *view );
+};

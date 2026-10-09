@@ -805,6 +805,7 @@ void AssistUI::reset()
 	AssistProtectUI::reset();
 	AssistCoverageUI::reset();
 	AssistAlertUI::reset();
+	AssistOddsUI::reset();
 	for (size_t i = 0; i < s_panels.size(); ++i)
 		s_panels[i]->destroy();
 	s_selection.m_valid = FALSE;
@@ -834,6 +835,7 @@ void AssistUI::update()
 	AssistProtectUI::init();
 	AssistCoverageUI::init();
 	AssistAlertUI::init();
+	AssistOddsUI::init();
 	if (s_toolbar == nullptr)
 		s_toolbar = new ToolbarPanel;
 
@@ -862,6 +864,7 @@ void AssistUI::drawOverlays( View *view )
 	AssistProtectUI::drawOverlays( view );
 	AssistCoverageUI::drawOverlays( view );
 	AssistAlertUI::drawOverlays( view );
+	AssistOddsUI::drawOverlays( view );
 }
 
 //=================================================================================================
@@ -963,7 +966,7 @@ void AssistUI::drawAim()
 
 namespace
 {
-	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_CLOSE = 100 };
+	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_CLOSE = 100 };
 
 	struct ToggleRow { Int id; const wchar_t *label; Bool *value; };
 }
@@ -979,6 +982,7 @@ public:
 		addButton( OPT_FORMATIONS, 0, L"Formations: picker, hotkeys, drag to aim", nullptr );
 		addButton( OPT_PROTECT, 0, L"Protect: units guard other units, buildings and groups", nullptr );
 		addButton( OPT_COVERAGE, 0, L"Defence coverage view: range rings and gaps in the base edge", nullptr );
+		addButton( OPT_ODDS, 0, L"Odds meter: point at an enemy group to see who would win", nullptr );
 		addButton( OPT_ALERT, 0, L"Base under attack: one click sends idle army units to defend", nullptr );
 		addButton( 200, 0, L"All assists are off until switched on here.", nullptr );
 		addButton( 201, 0, L"Those that give orders also need \"Player assists allowed\" in the match setup.", nullptr );
@@ -1015,6 +1019,7 @@ public:
 		find( OPT_PROTECT )->m_on = TheAssistOptions.m_protect;
 		find( OPT_COVERAGE )->m_on = TheAssistOptions.m_coverage;
 		find( OPT_ALERT )->m_on = TheAssistOptions.m_baseAlert;
+		find( OPT_ODDS )->m_on = TheAssistOptions.m_odds;
 	}
 
 	virtual Bool refresh() override { return TRUE; }
@@ -1058,6 +1063,7 @@ public:
 			case OPT_PROTECT: TheAssistOptions.m_protect = !TheAssistOptions.m_protect; break;
 			case OPT_COVERAGE: TheAssistOptions.m_coverage = !TheAssistOptions.m_coverage; break;
 			case OPT_ALERT: TheAssistOptions.m_baseAlert = !TheAssistOptions.m_baseAlert; break;
+			case OPT_ODDS: TheAssistOptions.m_odds = !TheAssistOptions.m_odds; break;
 			case OPT_CLOSE: closeDialog(); return;
 			default: return;
 		}
@@ -1198,7 +1204,7 @@ GameMessageDisposition AssistUI::translate( const GameMessage *msg )
 	if (t != GameMessage::MSG_RAW_MOUSE_POSITION)
 		invalidateSelection();	// the selection may have changed since the last frame
 
-	if (AssistProtectUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ))
+	if (AssistProtectUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ) || AssistOddsUI::translate( msg ))
 		return DESTROY_MESSAGE;
 
 	// ---- hotkeys -----------------------------------------------------------------------------

@@ -861,6 +861,7 @@ set(GAMEENGINE_SRC
     Source/GameClient/AssistUI.cpp
     Source/GameClient/AssistUIProtect.cpp
     Source/GameClient/AssistUIAlert.cpp
+    Source/GameClient/AssistUIOdds.cpp
     Source/GameClient/AssistUICoverage.cpp
     Source/Common/AssistOptions.cpp
     Source/GameLogic/AssistFormation.cpp
