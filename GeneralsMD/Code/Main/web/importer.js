@@ -591,6 +591,45 @@ export async function clearUserData() {
 	}
 }
 
+// The files in the user data (saves, replays, screenshots, options), recursively, as
+// [{ path: 'savegame/save.sav', size, modified }] (paths use the lower case names of the OPFS
+// backend). Reading OPFS from the page while the game runs is fine: the files are only listed and read.
+export async function listUserData(prefix = '') {
+	const out = [];
+	let root;
+	try {
+		root = await (await opfsRoot()).getDirectoryHandle('userdata');
+	} catch (e) {
+		return out;
+	}
+	async function walk(dir, base) {
+		for await (const [name, handle] of dir.entries()) {
+			if (handle.kind === 'directory') {
+				await walk(handle, base + name + '/');
+			} else if ((base + name).startsWith(prefix)) {
+				try {
+					const file = await handle.getFile();
+					out.push({ path: base + name, size: file.size, modified: file.lastModified });
+				} catch (e) { /* the game may be replacing it right now */ }
+			}
+		}
+	}
+	await walk(root, '');
+	return out;
+}
+
+// One file of the user data as a File (null if it is not there).
+export async function readUserFile(path) {
+	try {
+		let dir = await (await opfsRoot()).getDirectoryHandle('userdata');
+		const parts = path.split('/');
+		for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+		return await (await dir.getFileHandle(parts[parts.length - 1])).getFile();
+	} catch (e) {
+		return null;
+	}
+}
+
 export async function storageEstimate() {
 	if (navigator.storage && navigator.storage.estimate) {
 		const { usage = 0, quota = 0 } = await navigator.storage.estimate();

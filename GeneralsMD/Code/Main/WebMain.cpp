@@ -44,6 +44,8 @@
 #include <string.h>
 #include <emscripten.h>
 #include <emscripten/heap.h>
+#include <exception>
+#include <new>
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "WinMain.h"
@@ -54,6 +56,7 @@
 #include "Common/GameEngine.h"
 #include "Common/GameSounds.h"
 #include "Common/Debug.h"
+#include "Common/Errors.h"
 #include "Common/GameMemory.h"
 #include "Common/MessageStream.h"
 #include "Common/PlayerList.h"
@@ -63,6 +66,7 @@
 #include "Common/WorkingDirectory.h"
 #include "GameClient/InGameUI.h"
 #include "GameClient/GameClient.h"
+#include "GameClient/Display.h"
 #include "GameLogic/GameLogic.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/Keyboard.h"
@@ -129,6 +133,13 @@ static intptr_t WebWndProc( uintptr_t hWnd, uint32_t message, uintptr_t wParam, 
 						TheGameEngine->setQuitting(TRUE);
 					}
 				}
+				return 0;
+
+			// ------------------------------------------------------------------------
+			case WEBWM_APP_SCREENSHOT:
+				// The page's Screenshot button, for keyboards that have no key for it.
+				if (TheMessageStream && TheMessageStream->isReadyForMessages())
+					TheMessageStream->appendMessage(GameMessage::MSG_META_TAKE_SCREENSHOT);
 				return 0;
 
 			//-------------------------------------------------------------------------
@@ -381,12 +392,61 @@ static void reportFatal( const char *message )
 	fflush( stderr );
 }
 
+// describeException ==========================================================
+/** Tells the page what the exception that is being handled was. The Windows version ends the game
+	* silently here; in the browser nobody would learn why. Call it from inside a catch block. */
+//=============================================================================
+static void describeException( const char *what )
+{
+	const unsigned heapMB = (unsigned)( emscripten_get_heap_size() / ( 1024 * 1024 ) );
+	try
+	{
+		throw;
+	}
+	catch( ErrorCode code )
+	{
+		switch( code )
+		{
+			case ERROR_OUT_OF_MEMORY:
+				fprintf( stderr, "Fatal error: %s: the game ran out of memory (the browser gave it %u MB). Close other tabs or "
+					"programs, lower the detail in the Options, and start again.\n", what, heapMB );
+				break;
+			case ERROR_BAD_INI:
+				fprintf( stderr, "Fatal error: %s: the game data has a file the game cannot read (see the lines above). "
+					"Select your Zero Hour folder again on the start page.\n", what );
+				break;
+			case ERROR_INVALID_D3D:
+				fprintf( stderr, "Fatal error: %s: the renderer could not start. This browser or graphics driver does not provide "
+					"the WebGL 2 features the game needs.\n", what );
+				break;
+			default:
+				fprintf( stderr, "Fatal error: %s (game error 0x%x)\n", what, (unsigned)code );
+				break;
+		}
+	}
+	catch( const std::bad_alloc & )
+	{
+		fprintf( stderr, "Fatal error: %s: the game ran out of memory (the browser gave it %u MB). Close other tabs or "
+			"programs, lower the detail in the Options, and start again.\n", what, heapMB );
+	}
+	catch( const std::exception &e )
+	{
+		fprintf( stderr, "Fatal error: %s (%s)\n", what, e.what() );
+	}
+	catch( ... )
+	{
+		fprintf( stderr, "Fatal error: %s\n", what );
+	}
+	fflush( stderr );
+}
+
 // Frames run since the game started, for the page (window.__zhFrames, about twice a second)
 // and for the log when -webframelog is on the command line.
 static unsigned s_frameCount = 0;
 static double s_busyMs = 0.0;	// time spent in executeFrame() since the last report
 static bool s_logFrames = false;
 static bool s_logDirectStats = false;	// -webdirectstats: the read counters of the direct file mode, see WebStorage.cpp
+static const char *s_crashTest = nullptr;	// -webcrashtest=<oom|badalloc|ini|trap|abort>: fails on purpose after 60 frames, to test how the page reports it
 
 // runFrames ==================================================================
 /** The body of GameEngine::execute()'s loop, paced by the browser: one frame of the game per
@@ -421,6 +481,14 @@ static bool runFrames()
 			s_busyMs += emscripten_get_now() - frameStart - ( WebPlatform_GetYieldedMs() - yieldedBefore );
 
 			++s_frameCount;
+			if( s_crashTest && s_frameCount == 60 )
+			{
+				if( strcmp( s_crashTest, "oom" ) == 0 ) throw ERROR_OUT_OF_MEMORY;
+				if( strcmp( s_crashTest, "badalloc" ) == 0 ) throw std::bad_alloc();
+				if( strcmp( s_crashTest, "ini" ) == 0 ) throw ERROR_BAD_INI;
+				if( strcmp( s_crashTest, "trap" ) == 0 ) __builtin_trap();
+				if( strcmp( s_crashTest, "abort" ) == 0 ) abort();
+			}
 			if( s_frameCount == 1 )
 			{
 				DEBUG_LOG(("First frame done"));
@@ -434,8 +502,9 @@ static bool runFrames()
 			}
 			if( s_frameCount % 30 == 0 )
 			{
-				MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; window.__zhFrameMs = $2; window.__zhYields = $3; },
-					s_frameCount, (unsigned)emscripten_get_heap_size(), s_busyMs / 30.0, WebPlatform_GetYieldCount() );
+				// (__zhGameWindowed: what the game believes about its window, for tests: it is fullscreen while the page is.)
+				MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; window.__zhFrameMs = $2; window.__zhYields = $3; window.__zhGameWindowed = $4; },
+					s_frameCount, (unsigned)emscripten_get_heap_size(), s_busyMs / 30.0, WebPlatform_GetYieldCount(), TheDisplay ? (int)TheDisplay->getWindowed() : -1 );
 				s_busyMs = 0.0;
 				if( s_logFrames && s_frameCount % 300 == 0 )
 					printf( "frame %u (%u waits for the browser)\n", s_frameCount, WebPlatform_GetYieldCount() );
@@ -448,7 +517,9 @@ static bool runFrames()
 	catch (...)
 	{
 		// An exception that reaches the frame loop is a failure of the game, not of one frame.
-		fprintf( stderr, "Fatal error: unhandled exception in game frame %u\n", s_frameCount );
+		char what[64];
+		snprintf( what, sizeof( what ), "unhandled exception in game frame %u", s_frameCount );
+		describeException( what );
 		return false;
 	}
 }
@@ -524,6 +595,8 @@ int main( int argc, char **argv )
 			WebPlatform_SetYieldLog( 1 );
 		if( strcmp( argv[i], "-webdirectstats" ) == 0 )
 			s_logDirectStats = true;
+		if( strncmp( argv[i], "-webcrashtest=", 14 ) == 0 )
+			s_crashTest = argv[i] + 14;
 		if( strncmp( argv[i], "-webd3d8debug", 13 ) == 0 )
 			WebD3D8_SetDebug( argv[i][13] == '=' ? atoi( argv[i] + 14 ) | 1 : 1 );	// see WebD3D8.h
 	}
@@ -547,7 +620,7 @@ int main( int argc, char **argv )
 
 		if( WebPlatform_MountStorage() != 0 )
 		{
-			fprintf( stderr, "Could not open the game files. Import them or open your game folder from the start page first.\n" );
+			fprintf( stderr, "Could not open the game files. Select your Zero Hour folder on the start page first.\n" );
 			return exitcode;
 		}
 
@@ -613,8 +686,7 @@ int main( int argc, char **argv )
 		// The Windows version swallows this silently; in the browser nobody would learn why
 		// the game never started. Most of these are INI or file errors thrown by the engine's
 		// start-up, which log the details (see the lines above) before throwing.
-		fprintf( stderr, "Fatal error: the game failed to start (exception during start-up)\n" );
-		fflush( stderr );
+		describeException( "the game failed to start" );
 		exitcode = 1;
 	}
 

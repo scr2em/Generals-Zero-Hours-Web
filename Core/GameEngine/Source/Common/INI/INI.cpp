@@ -222,7 +222,7 @@ UnsignedInt INI::loadFileDirectory( AsciiString fileDirName, INILoadType loadTyp
 	{
 #ifdef __EMSCRIPTEN__
 		// There is no debugger or log file in the browser; tell the page which file is missing.
-		fprintf(stderr, "Required game file %s.ini was not found. Import the complete game folders again.\n", iniDir.str());
+		fprintf(stderr, "Required game file %s.ini was not found. Select your Zero Hour folder again on the start page.\n", iniDir.str());
 #endif
 		throw INI_CANT_OPEN_FILE;
 	}
@@ -279,7 +279,7 @@ UnsignedInt INI::loadDirectory( AsciiString dirName, INILoadType loadType, Xfer 
 	if (expectFileFound && filesRead == 0)
 	{
 #ifdef __EMSCRIPTEN__
-		fprintf(stderr, "Required game folder %s was not found or has no INI files. Import the complete game folders again.\n", dirName.str());
+		fprintf(stderr, "Required game folder %s was not found or has no INI files. Select your Zero Hour folder again on the start page.\n", dirName.str());
 #endif
 		throw INI_CANT_OPEN_FILE;
 	}

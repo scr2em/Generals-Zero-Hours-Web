@@ -338,7 +338,9 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 
 DX8IndexBufferClass::~DX8IndexBufferClass()
 {
-	index_buffer->Release();
+	// TheSuperHackers @bugfix The buffer is null when its creation failed.
+	if (index_buffer)
+		index_buffer->Release();
 }
 
 // ----------------------------------------------------------------------------

@@ -335,7 +335,18 @@ void StdLocalFileSystem::getFileListInDirectory(const AsciiString& currentDirect
 			(strcmp(filenameStr.c_str(), ".") != 0 && strcmp(filenameStr.c_str(), "..") != 0)) {
 			// if we haven't already, add this filename to the list.
 			// a stl set should only allow one copy of each filename
+#ifdef __EMSCRIPTEN__
+			// TheSuperHackers @bugfix The web build runs the game's Windows paths: like the Win32 file system, return the
+			// directory as the caller wrote it (with its backslashes) followed by the name. The game cuts the file name
+			// off at the last backslash (the replay list does, for one), which did not find one in "dir/file".
+			AsciiString newFilename = directory;
+			if (newFilename.isNotEmpty() && !newFilename.endsWith("\\") && !newFilename.endsWith("/")) {
+				newFilename.concat('\\');
+			}
+			newFilename.concat(filenameStr.c_str());
+#else
 			AsciiString newFilename = iter->path().string().c_str();
+#endif
 			if (filenameList.find(newFilename) == filenameList.end()) {
 				filenameList.insert(newFilename);
 			}

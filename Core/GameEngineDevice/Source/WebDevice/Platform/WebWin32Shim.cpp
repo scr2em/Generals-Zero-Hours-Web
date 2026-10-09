@@ -154,12 +154,17 @@ WEB_WEAK SHORT WINAPI GetAsyncKeyState(int vKey)
 	return static_cast<SHORT>(WebPlatform_GetKeyState(vKey) & 0x8000);
 }
 
-// A null cursor means the game draws the cursor itself.
+// A null cursor means the game draws the cursor itself. A cursor of LoadCursorFromFile() is the id the page gave it
+// (WebPlatform_CursorLoad: a small number, where the other cursor handles are pointers), which the page shows.
 WEB_WEAK HCURSOR WINAPI SetCursor(HCURSOR hCursor)
 {
 	HCURSOR previous = s_currentCursor;
 	s_currentCursor = hCursor;
-	WebPlatform_SetCursorVisible(hCursor != nullptr);
+	const uintptr_t value = reinterpret_cast<uintptr_t>(hCursor);
+	if (value != 0 && value < 0x10000)
+		WebPlatform_CursorSet(static_cast<int>(value));
+	else
+		WebPlatform_SetCursorVisible(hCursor != nullptr);
 	return previous;
 }
 

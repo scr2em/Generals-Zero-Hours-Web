@@ -43,8 +43,10 @@
 
 // Page access (main browser thread only) ------------------------------------------------------
 
-// Writes left, top, width, height of the canvas in CSS pixels to out[4].
-EM_JS(int, web_platform_get_canvas_rect, (const char *selector, double *out), {
+// Writes left, top, width, height of the canvas in CSS pixels to out[0..3], and to out[4] whether the page point
+// (x, y) is over the canvas or the stage around it (1: the black bars of a letterboxed canvas count), or over something
+// else such as the toolbar (0).
+EM_JS(int, web_platform_get_canvas_rect, (const char *selector, double *out, double x, double y), {
 	var el = document.querySelector(UTF8ToString(selector));
 	if (!el) return 0;
 	var r = el.getBoundingClientRect();
@@ -53,9 +55,11 @@ EM_JS(int, web_platform_get_canvas_rect, (const char *selector, double *out), {
 	HEAPF64[o + 1] = r.top;
 	HEAPF64[o + 2] = r.width;
 	HEAPF64[o + 3] = r.height;
+	var hit = el.parentElement ? el.parentElement : document.body;
+	var top = document.elementFromPoint(x, y);
+	HEAPF64[o + 4] = (!top || top === el || top === hit || top === document.body || top === document.documentElement) ? 1 : 0;
 	return 1;
 });
-
 
 // Suspends the calling thread (JSPI: EM_ASYNC_JS functions are suspending imports) until the browser has
 // run its next animation frame, so that it presents what the thread drew, or until timeoutMs have passed
@@ -163,6 +167,7 @@ struct PlatformState
 
 	// translator state, only touched by the main browser thread
 	bool dikDown[256];
+	bool metaHeld[256];	// keys pressed while a Meta (Command) key was down, whose key up the browser never sends (macOS)
 	int buttonsFromCanvas = 0;	// MK_*BUTTON bits of presses that started on the canvas
 	bool cursorWasInside = false;
 	double wheelRemainder = 0.0;
@@ -184,6 +189,7 @@ struct PlatformState
 		{
 			vkState[i].store(0);
 			dikDown[i] = false;
+			metaHeld[i] = false;
 		}
 		for (int i = 0; i < 3; ++i)
 		{
@@ -346,16 +352,25 @@ void postChar(uint32_t codePoint)
 	}
 }
 
-// Keys the page keeps for itself: reload, devtools, fullscreen.
+// Keys the page keeps for itself, so that the player can always get out: reload and the address bar (the page asks
+// before it reloads a running game) and the developer tools. Everything else is the game's: F5, F12 (the starter
+// content's screenshot key), Tab, Ctrl+digits and the like are not the browser's while the game has the page. F11 is the
+// page's fullscreen button: the page itself handles it (shell.html), with Keyboard Lock where the browser has it.
+// Reserved browser shortcuts (Ctrl+W/T/N, Cmd+Q) cannot be taken by any page; fullscreen with Keyboard Lock gets most.
 bool browserOwnsKey(const EmscriptenKeyboardEvent *e)
 {
-	if (strcmp(e->code, "F11") == 0 || strcmp(e->code, "F12") == 0)
-		return true;
+	if (strcmp(e->code, "F11") == 0)
+		return true;	// handled by the page
 	if ((e->ctrlKey || e->metaKey) && (strcmp(e->code, "KeyR") == 0 || strcmp(e->code, "KeyL") == 0))
 		return true;
-	if (e->ctrlKey && e->shiftKey && (strcmp(e->code, "KeyI") == 0 || strcmp(e->code, "KeyJ") == 0))
+	if (((e->ctrlKey && e->shiftKey) || (e->metaKey && e->altKey)) && (strcmp(e->code, "KeyI") == 0 || strcmp(e->code, "KeyJ") == 0 || strcmp(e->code, "KeyC") == 0))
 		return true;
 	return false;
+}
+
+bool isModifierCode(const char *code)
+{
+	return strncmp(code, "Shift", 5) == 0 || strncmp(code, "Control", 7) == 0 || strncmp(code, "Alt", 3) == 0 || strncmp(code, "Meta", 4) == 0;
 }
 
 void releaseAllKeys()
@@ -374,6 +389,8 @@ void releaseAllKeys()
 		// keep the toggle bit
 		setVkState(vk, false);
 	}
+	for (int dik = 0; dik < 256; ++dik)
+		s.metaHeld[dik] = false;
 	s.buttonsFromCanvas = 0;
 }
 
@@ -418,9 +435,28 @@ bool onKey(int eventType, const EmscriptenKeyboardEvent *e, void *)
 			s.dikDown[dik] = down;
 			pushKeyEvent(dik, down);
 		}
+		// macOS sends no key up for a key pressed while Command is held. Release those keys when Command is.
+		if (down && e->metaKey && !isModifierCode(e->code))
+			s.metaHeld[dik] = true;
+		else if (!down)
+			s.metaHeld[dik] = false;
 	}
 	setVkState(vk, down);
 	updateGenericModifiers();
+	if (!down && strncmp(e->code, "Meta", 4) == 0)
+	{
+		for (int k = 1; k < 256; ++k)
+		{
+			if (!s.metaHeld[k])
+				continue;
+			s.metaHeld[k] = false;
+			if (s.dikDown[k])
+			{
+				s.dikDown[k] = false;
+				pushKeyEvent(k, false);
+			}
+		}
+	}
 
 	// Win32 message
 	const bool sysKey = e->altKey && !e->ctrlKey;
@@ -461,15 +497,18 @@ bool onKey(int eventType, const EmscriptenKeyboardEvent *e, void *)
 // Mouse translation
 //-------------------------------------------------------------------------------------------------
 
-// Browser pixel position -> client position, scaled by the CSS to canvas pixel ratio.
+// Browser pixel position -> client position, scaled by the CSS to canvas pixel ratio. inside: the pointer is over the
+// game. A pointer over the black bars of a letterboxed canvas still belongs to the game and counts as at the nearest edge
+// of the game (screen edge scrolling works with a canvas that does not touch the edges of the screen, and the cursor
+// does not "leave" while it moves towards an edge); elsewhere on the page (the toolbar) it is outside.
 void mapToClient(int clientX, int clientY, int &x, int &y, bool &inside)
 {
 	PlatformState &s = state();
-	double rect[4];
+	double rect[5];
 	const int w = s.clientWidth.load(std::memory_order_relaxed);
 	const int h = s.clientHeight.load(std::memory_order_relaxed);
 
-	if (!web_platform_get_canvas_rect(s.canvasSelector, rect) || rect[2] <= 0.0 || rect[3] <= 0.0)
+	if (!web_platform_get_canvas_rect(s.canvasSelector, rect, (double)clientX, (double)clientY) || rect[2] <= 0.0 || rect[3] <= 0.0)
 	{
 		x = clientX;
 		y = clientY;
@@ -482,6 +521,12 @@ void mapToClient(int clientX, int clientY, int &x, int &y, bool &inside)
 	x = (int)floor(px);
 	y = (int)floor(py);
 	inside = (px >= 0.0 && py >= 0.0 && px < (double)w && py < (double)h);
+	if (!inside && rect[4] != 0.0)
+	{
+		x = x < 0 ? 0 : (x >= w ? w - 1 : x);
+		y = y < 0 ? 0 : (y >= h ? h - 1 : y);
+		inside = true;
+	}
 }
 
 uintptr_t mouseKeyState(const EmscriptenMouseEvent *e)
@@ -709,6 +754,16 @@ extern "C" int WebPlatform_Init(const char *canvasSelector)
 	check(emscripten_set_visibilitychange_callback_on_thread(nullptr, false, onVisibility, mainThread), "visibilitychange");
 	check(emscripten_set_resize_callback_on_thread(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, false, onResize, mainThread), "resize");
 
+	// The pointer leaving the page: the DOM reports it as mouseleave of the document element, which emscripten's
+	// callbacks do not cover on the window.
+	MAIN_THREAD_ASYNC_EM_ASM({
+		if (typeof Module === 'undefined' || window.__zhPointerHooked) return;
+		window.__zhPointerHooked = true;
+		document.documentElement.addEventListener('mouseleave', function () {
+			if (Module._WebPlatform_PointerLeft) Module._WebPlatform_PointerLeft();
+		});
+	});
+
 	s.initialized = true;
 	return failures == 0 ? 1 : 0;
 }
@@ -791,17 +846,63 @@ extern "C" void WebPlatform_GetClientSize(int *width, int *height)
 	if (height) *height = s.clientHeight.load();
 }
 
+// What the page shows over the canvas: a cursor id (1 and up), 0 for none (the game draws its own), -1 for the system
+// arrow. Only changes are sent: the game sets its cursor every frame.
+static void sendCursor(int code)
+{
+	static std::atomic<int> s_last{-2};
+	if (s_last.exchange(code) == code)
+		return;
+	MAIN_THREAD_ASYNC_EM_ASM({
+		var el = document.querySelector(UTF8ToString($1));
+		if (window.zhCursor) window.zhCursor.set($0);
+		else if (el) el.style.cursor = $0 > 0 ? 'default' : ($0 == 0 ? 'none' : 'default');
+	}, code, state().canvasSelector);
+}
+
 extern "C" void WebPlatform_SetCursorVisible(int visible)
 {
-	MAIN_THREAD_ASYNC_EM_ASM({
-		var el = document.querySelector(UTF8ToString($0));
-		if (el) el.style.cursor = $1 ? 'default' : 'none';
-	}, state().canvasSelector, visible);
+	sendCursor(visible ? -1 : 0);
 }
 
 extern "C" int WebPlatform_IsActive(void)
 {
 	return state().active.load(std::memory_order_relaxed);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void WebPlatform_PointerLeft(void)
+{
+	PlatformState &s = state();
+	if (!s.cursorWasInside)
+		return;
+	s.cursorWasInside = false;
+	// A position outside of the client area is how the game learns that the cursor left (see WebWndProc).
+	pushMessage(WEBWM_MOUSEMOVE, 0, makeLParam(-1, -1), -1, -1);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void WebPlatform_RequestScreenshot(void)
+{
+	pushMessage(WEBWM_APP_SCREENSHOT, 0, 0);
+}
+
+extern "C" int WebPlatform_CursorLoad(const void *data, int size)
+{
+	static std::atomic<int> s_nextId{1};
+	if (data == nullptr || size <= 0)
+		return 0;
+	const int id = s_nextId.fetch_add(1);
+	// The page copies the bytes before this returns (the call waits for it), so the caller's buffer is free afterwards.
+	const int ok = MAIN_THREAD_EM_ASM_INT({
+		if (typeof window === 'undefined' || !window.zhCursor) return 0;
+		window.zhCursor.load($0, HEAPU8.slice($1, $1 + $2));
+		return 1;
+	}, id, data, size);
+	return ok ? id : 0;
+}
+
+extern "C" void WebPlatform_CursorSet(int id)
+{
+	sendCursor(id > 0 ? id : 0);
 }
 
 //-------------------------------------------------------------------------------------------------

@@ -156,6 +156,7 @@ if(EMSCRIPTEN)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${ZH_WEB_DIR}/importer.js
                 ${ZH_WEB_DIR}/coi-serviceworker.js
+                ${ZH_WEB_DIR}/zhcursor.js
                 ${ZH_WEB_DIR}/serve.py
                 ${ZH_DIRECT_DIR}/direct-source.js
                 ${ZH_NET_DIR}/client/zhnet.js

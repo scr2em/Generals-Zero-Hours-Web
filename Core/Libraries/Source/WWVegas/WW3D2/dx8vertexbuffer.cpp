@@ -404,7 +404,9 @@ DX8VertexBufferClass::~DX8VertexBufferClass()
 	_DX8VertexBufferCount--;
 	WWDEBUG_SAY(("Current vertex buffer count: %d",_DX8VertexBufferCount));
 #endif
-	VertexBuffer->Release();
+	// TheSuperHackers @bugfix The buffer is null when its creation failed (for example a buffer of zero vertices).
+	if (VertexBuffer)
+		VertexBuffer->Release();
 }
 
 // ----------------------------------------------------------------------------

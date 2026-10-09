@@ -108,6 +108,25 @@ void WebPlatform_SetCursorVisible(int visible);
 // 1 while the page has focus and is visible.
 int WebPlatform_IsActive(void);
 
+// The pointer left the page (Module._WebPlatform_PointerLeft, from the page's mouseleave): the game stops screen edge
+// scrolling like it does when the cursor leaves its window. Callable from any thread.
+void WebPlatform_PointerLeft(void);
+
+// Asks the game to take a screenshot, like its screenshot key does (the page's Screenshot button, for keyboards without
+// the key: Module._WebPlatform_RequestScreenshot). The game's window procedure gets WEBWM_APP_SCREENSHOT.
+void WebPlatform_RequestScreenshot(void);
+
+// ---- mouse cursors ---------------------------------------------------------
+//
+// The game's cursors are Windows animated cursor files (.ANI). The page (web/zhcursor.js) decodes them to CSS cursors and
+// animates them on the canvas; without it the system arrow stays.
+
+// Hands a cursor file's bytes to the page. Returns a cursor id (1 and up), or 0 when it cannot be shown.
+int WebPlatform_CursorLoad(const void *data, int size);
+
+// Shows a cursor returned by WebPlatform_CursorLoad over the canvas; 0 hides the system cursor (the game draws its own).
+void WebPlatform_CursorSet(int id);
+
 // ---- yielding to the browser (JSPI) ----------------------------------------
 //
 // The browser shows what the engine thread drew only when that thread returns to its event loop.
@@ -264,7 +283,10 @@ enum
 	WEBWM_MBUTTONDOWN = 0x0207,
 	WEBWM_MBUTTONUP = 0x0208,
 	WEBWM_MBUTTONDBLCLK = 0x0209,
-	WEBWM_MOUSEWHEEL = 0x020A
+	WEBWM_MOUSEWHEEL = 0x020A,
+
+	// Messages of this layer itself (WM_APP and up)
+	WEBWM_APP_SCREENSHOT = 0x8001
 };
 
 #ifdef __cplusplus

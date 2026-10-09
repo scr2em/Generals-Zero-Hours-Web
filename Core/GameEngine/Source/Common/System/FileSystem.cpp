@@ -369,7 +369,9 @@ Bool FileSystem::isPathInDirectory(const AsciiString& testPath, const AsciiStrin
 		basePathNormalized.concat(pathSep);
 	}
 
-#ifdef _WIN32
+	// TheSuperHackers @bugfix The web build's file system is case insensitive like Windows' (save game map paths
+	// are lower case). Its normalized paths use '/'.
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
 	if (!testPathNormalized.startsWithNoCase(basePathNormalized))
 #else
 	if (!testPathNormalized.startsWith(basePathNormalized))

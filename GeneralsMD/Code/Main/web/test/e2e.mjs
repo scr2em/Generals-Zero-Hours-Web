@@ -555,6 +555,7 @@ if (starter) {
 		const t = await p.textContent('#state-starter');
 		check('corrupt file is detected by its checksum', /corrupt/.test(t), t);
 		check('play stays disabled after a failed download', await p.isDisabled('#play'));
+		await p.unrouteAll({ behavior: 'ignoreErrors' });	// downloads still in flight must not run into the closed page
 		await ctx.close();
 	}
 
@@ -591,6 +592,119 @@ if (starter) {
 		t = await walkOpfs(p);
 		check('own install replaced the starter content', ('game/inizh.big' in t) && !Object.keys(t).some((k) => k.startsWith('game/art/')) && !Object.keys(t).some((k) => k.startsWith('game/data/ini/object')), Object.keys(t).slice(0, 8).join(','));
 		check('starter state reset after importing', /Not downloaded/.test(await p.textContent('#state-starter')), await p.textContent('#state-starter'));
+		await ctx.close();
+	}
+}
+
+// ---- 6. the game ends, goes wrong, asks for resolution; the player's files; keys -------------------------------
+if (starter) {
+	const settled = (i) => /^(Ready|.*failed|.*[Nn]ot enough|This server|Could not|.*corrupt|.*wrong size)/.test(document.getElementById(i).textContent);
+	const context = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+	const page = await context.newPage();
+	const logs = [];
+	page.on('console', (m) => logs.push(m.text()));
+	page.on('dialog', (d) => d.accept());	// "leave this page?" while a game runs
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+	await page.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
+	await page.click('#download-starter');
+	await page.waitForFunction(settled, 'state-starter', { timeout: 120000 });
+	const readyCount = () => logs.filter((l) => l.includes('TEST: ready')).length;
+
+	// 6a. resolution choices
+	check('the resolution defaults to the game\'s own setting', (await page.inputValue('#resolution')) === 'auto');
+	check('the resolution hint explains the choice', /Options screen saved/.test(await page.textContent('#res-hint')), await page.textContent('#res-hint'));
+	await page.selectOption('#resolution', 'fit');
+	check('the hint shows the window size for "fit"', /1100 × 800/.test(await page.textContent('#res-hint')), await page.textContent('#res-hint'));
+	await page.selectOption('#resolution', '1280x720');
+	await page.click('#play');
+	await page.waitForFunction(() => document.getElementById('stage').hidden === false);
+	await page.waitForFunction(() => window.__zh.logLines.some((l) => l.includes('TEST: ready')), null, { timeout: 30000 }).catch(() => {});
+	let args = await page.evaluate(() => window.Module.arguments.join(' '));
+	check('an explicit resolution is passed to the game', /-xres 1280 -yres 720/.test(args), args);
+	check('the game is announced as running', await page.evaluate(() => window.__zh.state().gameRunning === true));
+
+	// 6b. keys: the game gets everything but reload, the address bar and the developer tools (a key the game keeps is
+	// default-prevented, so the browser does not act on it)
+	await page.evaluate(() => {
+		window.__keysSeen = [];
+		window.addEventListener('keydown', (e) => window.__keysSeen.push(e.code + (e.ctrlKey ? '+ctrl' : '') + (e.metaKey ? '+meta' : '') + (e.shiftKey ? '+shift' : '') + ':' + (e.defaultPrevented ? 'game' : 'browser')), false);
+	});
+	for (const k of ['Control+Digit1', 'F5', 'F12', 'Tab', 'Space', 'Control+KeyR', 'Control+Shift+KeyI', 'Escape', 'Alt+KeyA', 'F9']) await page.keyboard.press(k);
+	const seenKeys = await page.evaluate(() => window.__keysSeen.join(' '));
+	check('keys: Ctrl+digit, F5, F12, Tab, Space, Escape, Alt+key and the F keys are the game\'s', ['Digit1+ctrl', 'F5', 'F12', 'Tab', 'Space', 'Escape', 'KeyA', 'F9'].every((k) => seenKeys.includes(k + ':game')), seenKeys);
+	check('keys: reload and the developer tools stay the browser\'s', /KeyR\+ctrl:browser/.test(seenKeys) && /KeyI\+ctrl\+shift:browser/.test(seenKeys), seenKeys);
+
+	// 6c. the game ends (as Module.onExit does): the page says so and offers to play again
+	await page.evaluate(() => window.Module.onExit(0));
+	check('ended: the page says the game ended', await page.isVisible('#ended') && /The game has ended/.test(await page.textContent('#ended-title')), await page.textContent('#ended-title'));
+	check('ended: no error panel for a clean exit', await page.isHidden('#errors'));
+	check('ended: details are only for failures', await page.isHidden('#ended-details'));
+	await page.screenshot({ path: path.join(out, '9-ended.png') });
+	const before = readyCount();
+	await page.click('#play-again');
+	await page.waitForFunction(() => window.__zh && window.__zh.state().gameRunning === true, null, { timeout: 60000 });
+	await page.waitForFunction((n) => window.__zh.logLines.some((l) => l.includes('TEST: ready')) && n >= 1, before, { timeout: 30000 }).catch(() => {});
+	check('play again: the game starts again without another click', await page.evaluate(() => window.__zh.state().gameRunning === true && !document.getElementById('stage').hidden));
+	check('play again: the engine ran again', readyCount() > before, String(readyCount()) + ' vs ' + before);
+
+	// 6d. problems are told in words, with a way on
+	await page.evaluate(() => window.Module.printErr('Fatal error: unhandled exception in game frame 12: the game ran out of memory (the browser gave it 4096 MB).'));
+	await page.waitForFunction(() => window.__zh.state().gameEnded === true, null, { timeout: 5000 });
+	check('out of memory: titled and explained', /ran out of memory/.test(await page.textContent('#ended-title')) && /Close other tabs/.test(await page.textContent('#ended-text')), await page.textContent('#ended-title'));
+	check('out of memory: the error panel has the hint and the log', await page.isVisible('#errors') && /lower the detail/.test(await page.textContent('#errors-hint')) && /Fatal error/.test(await page.textContent('#errors-log')));
+	check('out of memory: play again is offered', await page.isVisible('#play-again'));
+	await page.screenshot({ path: path.join(out, '10-out-of-memory.png') });
+	await context.close();
+
+	// 6e. every kind of problem the page knows is told in words
+	{
+		const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+		const p = await ctx.newPage();
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await p.waitForFunction(() => /Not (imported|downloaded)/.test(document.getElementById('state-game').textContent));
+		const cases = [
+			['Lost access to your game folder: game/data/ini/x.ini: NotAllowedError denied', /lost access to your folder/i],
+			['Cannot read game/a.big: NotReadableError The requested file could not be read (was the file changed or moved on disk after the folder was opened?)', /could not be read/i],
+			['Fatal error: The renderer could not start. This browser or graphics driver does not provide the WebGL 2 features the game needs.', /graphics could not start/i],
+			['QuotaExceededError: The quota has been exceeded.', /storage is full/i],
+			['Required game file Data\\INI\\GameData.ini was not found. Select your Zero Hour folder again on the start page.', /files are missing/i],
+			['Aborted(Cannot enlarge memory arrays to size 4294967296 bytes (OOM).)', /ran out of memory/i],
+			['[WebD3D8] WebGL2 renderer: Google Inc. (Google) / ANGLE', null],	// the renderer's normal start-up line is no problem
+		];
+		for (const [line, want] of cases) {
+			const title = await p.evaluate((l) => window.__zh.classify(l), line);
+			check('problem: ' + line.slice(0, 50), want ? want.test(title || '') : title === null, String(title));
+		}
+		await ctx.close();
+	}
+
+	// 6f. the player's files: screenshots, saved games and replays in the browser's storage
+	{
+		const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
+		const p = await ctx.newPage();
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await p.waitForFunction(() => /Not (imported|downloaded)/.test(document.getElementById('state-game').textContent));
+		await p.evaluate(async () => {
+			const root = await navigator.storage.getDirectory();
+			let dir = await root.getDirectoryHandle('userdata', { create: true });
+			dir = await dir.getDirectoryHandle('command and conquer generals zero hour data', { create: true });
+			for (const [sub, name, size] of [['screenshots', 'sshot_20260101_120000_000.jpg', 1000], ['save', '00000001.sav', 5000], ['replays', '00000000.rep', 300], ['mappreviews', 'x.tga', 10]]) {
+				const d = await dir.getDirectoryHandle(sub, { create: true });
+				const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+				await w.write(new Uint8Array(size).fill(7));
+				await w.close();
+			}
+		});
+		await p.click('#open-files');
+		await p.waitForFunction(() => document.querySelectorAll('.file-row').length >= 3);
+		const text = await p.textContent('#files-list');
+		check('files: screenshots, saved games and replays are listed', /Screenshots \(1\)/.test(text) && /Saved games \(1\)/.test(text) && /Replays \(1\)/.test(text), text.replace(/\s+/g, ' ').slice(0, 200));
+		check('files: nothing else is listed', !/mappreviews|x\.tga/.test(text));
+		const [download] = await Promise.all([p.waitForEvent('download'), p.click('.file-row button')]);
+		check('files: a screenshot downloads under its name', /sshot_20260101_120000_000\.jpg/.test(download.suggestedFilename()), download.suggestedFilename());
+		await p.screenshot({ path: path.join(out, '11-files.png') });
+		await p.click('#files-close');
+		check('files: the panel closes', await p.isHidden('#files'));
 		await ctx.close();
 	}
 }

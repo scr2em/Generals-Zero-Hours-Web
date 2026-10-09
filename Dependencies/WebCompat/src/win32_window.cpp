@@ -27,6 +27,7 @@
 #include "webcompat_internal.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -712,8 +713,33 @@ HCURSOR WINAPI LoadCursorA(HINSTANCE, LPCSTR)
 	return reinterpret_cast<HCURSOR>(WebCompat::NewStockHandle());
 }
 
-HCURSOR WINAPI LoadCursorFromFileA(LPCSTR)
+// The browser platform layer (WebDevice/Platform/WebPlatform.h) hands cursor files to the page. Weak, so that programs
+// without it (the tests of this library) link; their cursors are plain handles.
+extern "C" int WebPlatform_CursorLoad(const void *data, int size) __attribute__((weak));
+
+// A cursor file (.ANI) is read and given to the page, which shows it over the canvas (web/zhcursor.js). The handle is the
+// id the page uses, a small number; the other cursor handles are pointers (SetCursor() in WebWin32Shim.cpp tells them apart).
+HCURSOR WINAPI LoadCursorFromFileA(LPCSTR lpFileName)
 {
+	if (&WebPlatform_CursorLoad != nullptr && lpFileName && *lpFileName)
+	{
+		char resolved[PATH_MAX];
+		if (WebCompat::ResolvePath(lpFileName, resolved, sizeof(resolved)))
+		{
+			if (FILE *file = fopen(resolved, "rb"))
+			{
+				std::string bytes;
+				char buffer[4096];
+				size_t n;
+				while ((n = fread(buffer, 1, sizeof(buffer), file)) > 0 && bytes.size() < (1u << 20))
+					bytes.append(buffer, n);
+				fclose(file);
+				const int id = bytes.empty() ? 0 : WebPlatform_CursorLoad(bytes.data(), (int)bytes.size());
+				if (id > 0 && id < 0x10000)
+					return reinterpret_cast<HCURSOR>(static_cast<uintptr_t>(id));
+			}
+		}
+	}
 	return reinterpret_cast<HCURSOR>(WebCompat::NewStockHandle());
 }
 

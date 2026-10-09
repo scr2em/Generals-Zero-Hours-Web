@@ -135,8 +135,16 @@ addToLibrary({
       if (!d.reported.has(index)) {
         d.reported.add(index);
         var entry = d.payload().entries[index];
-        err('Cannot read ' + entry.path + ': ' + (error && error.name) + ' ' + (error && error.message) +
-          ' (was the file changed or moved on disk after the folder was opened? Open the folder again.)');
+        var name = error && error.name;
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+          // Chrome took the permission to read the folder back (or the site's permissions were reset) while the game ran.
+          // The page recognises this line and tells the player what to do.
+          err('Lost access to your game folder: ' + entry.path + ': ' + name + ' ' + (error && error.message) +
+            ' (the browser took back the permission to read it; start the game again and allow access).');
+        } else {
+          err('Cannot read ' + entry.path + ': ' + name + ' ' + (error && error.message) +
+            ' (was the file changed or moved on disk after the folder was opened? Open the folder again.)');
+        }
       }
       return -{{{ cDefs.EIO }}};
     },

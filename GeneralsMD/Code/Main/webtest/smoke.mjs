@@ -84,7 +84,7 @@ async function importData() {
 	for (const [btn, id, dir] of [['#pick-game', 'state-game', 'ZeroHour'], ['#pick-generals', 'state-generals', 'Generals']]) {
 		const [ch] = await Promise.all([page.waitForEvent('filechooser'), page.click(btn)]);
 		await ch.setFiles(path.join(opt.data, dir));
-		await page.waitForFunction((i) => /^(Ready|That does not|Import failed|Not enough)/.test(document.getElementById(i).textContent), id, { timeout: 120000 });
+		await page.waitForFunction((i) => /^(Ready|Original Generals|That does not|That folder|Import failed|Not enough)/.test(document.getElementById(i).textContent), id, { timeout: 120000 });
 		console.log(id, '=', await page.textContent('#' + id));
 	}
 }

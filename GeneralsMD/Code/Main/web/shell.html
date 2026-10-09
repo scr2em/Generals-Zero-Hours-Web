@@ -248,6 +248,64 @@
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 	}
+
+	/* ---- the game has ended ---- */
+	#ended {
+		position: fixed;
+		inset: 0;
+		z-index: 8;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 16px;
+		background: rgba(8, 10, 14, 0.88);
+	}
+	#ended .card { max-width: 480px; text-align: center; }
+	#ended h2 { margin: 0 0 6px; font-size: 20px; }
+	#ended p { margin: 0 0 18px; color: var(--muted); overflow-wrap: anywhere; }
+	#ended .buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+
+	/* ---- files of the player (screenshots, replays, saved games) ---- */
+	#files {
+		position: fixed;
+		inset: 0;
+		z-index: 9;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 16px;
+		background: rgba(8, 10, 14, 0.7);
+	}
+	#files .card { max-width: 640px; max-height: 90vh; display: flex; flex-direction: column; padding: 20px; }
+	#files header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+	#files header h2 { flex: 1; margin: 0; font-size: 18px; }
+	#files-list { overflow: auto; min-height: 60px; }
+	#files-list h3 { margin: 14px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+	.file-row { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; align-items: center; padding: 6px 0; border-top: 1px solid var(--border); font-size: 13px; }
+	.file-row .meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+	.file-row a, .file-row button { font-size: 12px; padding: 4px 10px; border-radius: 6px; }
+	.file-row a { color: var(--text); background: var(--surface-2); border: 1px solid var(--border); text-decoration: none; }
+	.file-row a:hover { border-color: var(--muted); }
+	#files-empty { color: var(--muted); }
+
+	/* ---- small messages over the game ---- */
+	#toast {
+		position: fixed;
+		left: 50%;
+		bottom: 24px;
+		transform: translateX(-50%);
+		max-width: min(90vw, 560px);
+		padding: 8px 14px;
+		border-radius: 8px;
+		background: rgba(22, 27, 34, 0.92);
+		color: #e6edf3;
+		font-size: 13px;
+		z-index: 7;
+		pointer-events: none;
+	}
+	#errors-hint { margin: 0; padding: 8px 12px 0; font-size: 13px; }
+	.hint { color: var(--muted); font-size: 12px; }
+	.fine .link { margin-left: 12px; }
 </style>
 </head>
 <body>
@@ -323,25 +381,32 @@
 		</div>
 
 		<div class="actions">
-			<label class="inline">Resolution
-				<select id="resolution">
-					<option value="800x600">800 &times; 600</option>
-					<option value="1024x768" selected>1024 &times; 768</option>
-					<option value="1280x720">1280 &times; 720</option>
-					<option value="1600x900">1600 &times; 900</option>
-					<option value="1920x1080">1920 &times; 1080</option>
-				</select>
-			</label>
+<label class="inline">Resolution
+					<select id="resolution" aria-describedby="res-hint">
+						<option value="auto" selected>As set in the game&rsquo;s Options</option>
+						<option value="fit">Fit this window</option>
+						<option value="fitsharp">Fit this window, sharp (every screen pixel)</option>
+						<option value="800x600">800 &times; 600</option>
+						<option value="1024x768">1024 &times; 768</option>
+						<option value="1280x720">1280 &times; 720</option>
+						<option value="1600x900">1600 &times; 900</option>
+						<option value="1920x1080">1920 &times; 1080</option>
+					</select>
+				</label>
 			<span class="spacer"></span>
 			<span class="state" id="play-mode" aria-live="polite"></span>
 			<button type="button" id="play" class="primary" disabled>Play</button>
 		</div>
 
+		<p class="hint" id="res-hint"></p>
+
 		<p class="fine">
-			Your own game files never leave your computer: the game reads them from your folder (or, with the copy option, from a copy in
+				Your own game files never leave your computer: the game reads them from your folder (or, with the copy option, from a copy in
 			this browser&rsquo;s private storage). The free starter content is downloaded from this site instead and needs none of them.
 			<button type="button" class="link" id="clear">Remove imported files</button>
+			<button type="button" class="link" id="open-files">Saved games, replays and screenshots&hellip;</button>
 		</p>
+		<p class="hint">In the game: Esc opens the game menu. F11 toggles fullscreen, which also gives the game every key (hold Esc to leave it). Ctrl+R reloads the page.</p>
 		<input type="file" id="folder-input" webkitdirectory multiple hidden>
 	</div>
 </main>
@@ -352,10 +417,39 @@
 	<div id="toolbar">
 		<span id="mode-badge" hidden>Free starter content &middot; original placeholder game</span>
 		<span id="net-badge" hidden></span>
-		<button type="button" id="fullscreen" title="Toggle fullscreen">Fullscreen</button>
-		<button type="button" id="quit" title="Leave the game">Exit</button>
+		<button type="button" id="screenshot" title="Take a screenshot (the game&rsquo;s screenshot key does the same)">Screenshot</button>
+			<button type="button" id="shots" title="Download screenshots, replays and saved games">Files</button>
+			<button type="button" id="fullscreen" title="Toggle fullscreen (F11). Fullscreen gives the game all keys; hold Esc to leave it.">Fullscreen</button>
+			<button type="button" id="quit" title="Quit the game (asks the game to quit; press again to leave at once)">Exit</button>
+		</div>
+		<div id="toast" role="status" aria-live="polite" hidden></div>
 	</div>
-</div>
+
+	<section id="ended" hidden aria-live="assertive">
+		<div class="card">
+			<h2 id="ended-title">The game has ended</h2>
+			<p id="ended-text"></p>
+			<div class="buttons">
+				<button type="button" id="play-again" class="primary">Play again</button>
+				<button type="button" id="back-to-start">Back to the start page</button>
+				<button type="button" id="ended-files">Screenshots and saves&hellip;</button>
+				<button type="button" id="ended-details" hidden>Show details</button>
+				<button type="button" id="ended-continue" hidden title="Only if the picture still moves: one part of the game failed, the rest may be running">Keep playing anyway</button>
+			</div>
+		</div>
+	</section>
+
+	<section id="files" hidden role="dialog" aria-modal="true" aria-labelledby="files-title">
+		<div class="card">
+			<header>
+				<h2 id="files-title">Saved games, replays and screenshots</h2>
+				<button type="button" id="files-refresh">Refresh</button>
+				<button type="button" id="files-close">Close</button>
+			</header>
+			<p class="hint">These live in this browser (Origin Private File System). Download what you want to keep.</p>
+			<div id="files-list"></div>
+		</div>
+	</section>
 
 <section id="errors" hidden>
 	<header>
@@ -363,12 +457,14 @@
 		<button type="button" id="errors-copy">Copy</button>
 		<button type="button" id="errors-close">Close</button>
 	</header>
+<p id="errors-hint" hidden></p>
 	<pre id="errors-log"></pre>
 </section>
 
 <!-- Emscripten puts the script tag of the game here; it is started by the Play button. -->
 <template id="game-script">{{{ SCRIPT }}}</template>
 
+<script src="zhcursor.js"></script>
 <script src="zhnet.js"></script>
 <script type="module">
 import * as importer from './importer.js';
@@ -389,8 +485,40 @@ function pushLog(line, isError) {
 		showErrors();
 	}
 }
+// ---- problems that the player can do something about ------------------------------------------------
+
+const PROBLEMS = [
+	{ re: /out of memory|Cannot enlarge memory|bad_alloc|\(OOM\)/i, title: 'The game ran out of memory',
+		hint: 'The browser would not give the game more memory. Close other tabs and programs, lower the detail level or the resolution in the game’s Options, and play again.' },
+	{ re: /renderer could not start|could not (create|get) (a )?(WebGL|GL) context|WebGL context (was )?lost|CONTEXT_LOST/i, title: 'The graphics could not start',
+		hint: 'The game needs WebGL 2. Check that hardware acceleration is on (chrome://settings/system) and that the graphics driver is up to date (chrome://gpu shows what Chrome found).' },
+	{ re: /WebAssembly\.Suspending|promising|JSPI/i, title: 'This browser is too old',
+		hint: 'The game needs WebAssembly JavaScript Promise Integration. Use Chrome 137 or newer.' },
+	{ re: /QuotaExceededError|quota/i, title: 'The browser’s storage is full',
+		hint: 'Saved games and options cannot be written. Free some disk space on this computer, or remove old saves and replays (“Saved games, replays and screenshots”), and play again.' },
+	{ re: /Lost access to your game folder|NotAllowedError|SecurityError/i, title: 'The game lost access to your folder',
+		hint: 'Chrome took back the permission to read your Zero Hour folder, or the folder was moved. Play again and allow access when asked, or choose the folder again on the start page.' },
+	{ re: /NotReadableError|file changed or moved|NotFoundError/i, title: 'A game file could not be read',
+		hint: 'The file changed or moved on disk after the folder was opened (or an external drive went away). Choose the folder again on the start page.' },
+	{ re: /Required game (file|folder) .* not found|Could not open the game files|Could not enter/i, title: 'Game files are missing',
+		hint: 'Select your Zero Hour folder again on the start page.' },
+	{ re: /game data has a file the game cannot read|Uncaught Exception during initialization/i, title: 'The game data could not be read',
+		hint: 'A file the game needs is missing or damaged (the log below says which). Select your Zero Hour folder again on the start page.' },
+];
+let problem = null;
+
+function noteProblem(text) {
+	if (problem) return;
+	for (const p of PROBLEMS) {
+		if (p.re.test(text)) { problem = p; return; }
+	}
+}
+
 function showErrors(title) {
-	if (title) $('errors-title').textContent = title;
+	// What went wrong in words the player can act on, when the log says it (the log below stays for the details).
+	$('errors-title').textContent = title || (problem ? problem.title : 'Something went wrong');
+	$('errors-hint').hidden = !problem;
+	$('errors-hint').textContent = problem ? problem.hint : '';
 	$('errors').hidden = false;
 	$('errors-log').textContent = logLines.join('\n');
 	$('errors-log').scrollTop = $('errors-log').scrollHeight;
@@ -405,12 +533,25 @@ window.addEventListener('unhandledrejection', (e) => { pushLog('Unhandled: ' + (
 // ---------------------------------------------------------------------------------------------
 
 const env = importer.checkEnvironment();
+// A separate canvas: the game's own canvas is handed to the engine thread and cannot be tried here.
+function webgl2Available() {
+	try {
+		const gl = document.createElement('canvas').getContext('webgl2');
+		if (!gl) return false;
+		const lose = gl.getExtension('WEBGL_lose_context');
+		if (lose) lose.loseContext();
+		return true;
+	} catch (e) {
+		return false;
+	}
+}
 function describeEnvironment() {
 	const problems = [];
 	if (!env.secureContext) problems.push('This page must be served over HTTPS (or from localhost).');
 	if (!env.crossOriginIsolated) problems.push('This page is not cross-origin isolated (COOP/COEP headers missing), which the game needs for threads. Serve it with serve.py.');
 	if (!env.opfs) problems.push('This browser has no Origin Private File System.');
 	if (!env.offscreenCanvas) problems.push('This browser cannot render WebGL from a worker (OffscreenCanvas).');
+	else if (!webgl2Available()) problems.push('WebGL 2 is not available in this browser, which the game\u2019s renderer needs. Turn on hardware acceleration (chrome://settings/system) and check chrome://gpu.');
 	// The engine thread suspends to let the browser show loading screens (JSPI, shipped in Chrome 137).
 	if (typeof WebAssembly === 'undefined' || typeof WebAssembly.Suspending !== 'function' || typeof WebAssembly.promising !== 'function') problems.push('This browser has no WebAssembly JavaScript Promise Integration, which the game needs. Use Chrome 137 or newer.');
 	return problems;
@@ -853,77 +994,317 @@ if (net) {
 
 const canvas = $('canvas');
 let clientSize = { width: 800, height: 600 };
+let gameRunning = false;   // the engine was started and has not ended
+let gameEnded = false;
+let launchSize = null;     // the size the game started with
 
+function toast(text, ms = 4000) {
+	const el = $('toast');
+	el.textContent = text;
+	el.hidden = false;
+	clearTimeout(toast.timer);
+	toast.timer = setTimeout(() => { el.hidden = true; }, ms);
+}
+
+// The canvas keeps the game's aspect ratio inside the window (black bars around it), so a window of any shape
+// shows the whole picture. A canvas pixel is shown on exactly one screen pixel when the size allows it (the
+// "sharp" setting, a Retina display): the browser does not smooth that.
 function layoutCanvas() {
 	const stage = $('stage');
 	if (stage.hidden) return;
-	const scale = Math.min(stage.clientWidth / clientSize.width, stage.clientHeight / clientSize.height);
-	canvas.style.width = Math.max(1, Math.floor(clientSize.width * scale)) + 'px';
-	canvas.style.height = Math.max(1, Math.floor(clientSize.height * scale)) + 'px';
+	const dpr = window.devicePixelRatio || 1;
+	let scale = Math.min(stage.clientWidth / clientSize.width, stage.clientHeight / clientSize.height);
+	if (Math.abs(scale * dpr - 1) < 0.03) scale = 1 / dpr;
+	canvas.style.width = Math.max(1, Math.floor(clientSize.width * scale * dpr) / dpr) + 'px';
+	canvas.style.height = Math.max(1, Math.floor(clientSize.height * scale * dpr) / dpr) + 'px';
 }
 window.addEventListener('resize', layoutCanvas);
 window.addEventListener('zh-clientsize', (e) => {
 	clientSize = e.detail;
 	layoutCanvas();
+	// The player changed the resolution in the game's Options (the game saved it): from now on the game's setting is the one
+	// to use, not the size picked on this page. (Not during start-up, where the renderer settles on its size.)
+	if (gameRunning && window.__zhFirstFrameAt && launchSize && (e.detail.width !== launchSize[0] || e.detail.height !== launchSize[1])) {
+		launchSize = [e.detail.width, e.detail.height];
+		try { localStorage.setItem('zh-resolution', 'auto'); } catch (err) { /* ignore */ }
+	}
 });
+// The display's pixel density changes when the window moves to another screen (or the page is zoomed).
+(function watchPixelRatio() {
+	const query = matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)');
+	query.addEventListener('change', () => { layoutCanvas(); watchPixelRatio(); }, { once: true });
+}());
 
+// Fullscreen of the stage, with Keyboard Lock where Chrome has it: Escape, Ctrl+digits, Alt combinations and the like then
+// reach the game instead of the browser (hold Escape to leave fullscreen in that state).
 async function toggleFullscreen() {
 	if (document.fullscreenElement) {
 		await document.exitFullscreen();
 		return;
 	}
 	await $('stage').requestFullscreen({ navigationUI: 'hide' });
-	// Lets the game see Escape, Ctrl+digits and friends instead of the browser.
 	if (navigator.keyboard && navigator.keyboard.lock) {
-		navigator.keyboard.lock().catch(() => {});
+		navigator.keyboard.lock().then(() => toast('Fullscreen: the game gets all keys. Hold Esc or press F11 to leave.', 5000)).catch(() => {});
 	}
+}
+function tellEngine(name, ...args) {
+	try {
+		if (window.Module && typeof window.Module[name] === 'function') window.Module[name](...args);
+	} catch (e) { /* the engine is not running */ }
 }
 document.addEventListener('fullscreenchange', () => {
-	if (!document.fullscreenElement && navigator.keyboard && navigator.keyboard.unlock) {
-		navigator.keyboard.unlock();
-	}
+	const fullscreen = !!document.fullscreenElement;
+	if (!fullscreen && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
 	layoutCanvas();
 });
-$('fullscreen').onclick = () => toggleFullscreen().catch((e) => pushLog('Fullscreen: ' + e.message, false));
-$('quit').onclick = () => location.reload();
+$('fullscreen').onclick = () => { toggleFullscreen().catch((e) => pushLog('Fullscreen: ' + e.message, false)); canvas.focus(); };
+// F11 is the page's: the browser's own fullscreen would not let it lock the keyboard.
+window.addEventListener('keydown', (e) => {
+	if (e.code === 'F11' && !$('stage').hidden) {
+		e.preventDefault();
+		if (!e.repeat) toggleFullscreen().catch((err) => pushLog('Fullscreen: ' + err.message, false));
+	}
+}, true);
 
-function gameArguments() {
-	const [w, h] = $('resolution').value.split('x');
-	const args = ['-xres', w, '-yres', h];
-	for (const extra of params.getAll('arg')) args.push(extra);
-	return args;
+// ---- leaving the game -------------------------------------------------------------------------------
+
+// Asks the game to quit like the close button of a window does: the game shows its quit menu (or quits at once from
+// the menus). A second click leaves at once.
+let quitAsked = 0;
+$('quit').onclick = () => {
+	if (!gameRunning) { goBack(false); return; }
+	if (quitAsked && Date.now() - quitAsked < 10000) { goBack(false); return; }
+	quitAsked = Date.now();
+	tellEngine('_WebPlatform_RequestClose');
+	toast('Asked the game to quit. Click Exit again to leave at once (an unsaved match is lost).', 6000);
+	canvas.focus();
+};
+
+// Reloads the page (the engine cannot be started twice in one page): to the start page, or with the game started again.
+function goBack(autoPlay) {
+	gameRunning = false;
+	try {
+		if (autoPlay) sessionStorage.setItem('zh-autoplay', '1');
+		else sessionStorage.removeItem('zh-autoplay');
+	} catch (e) { /* ignore */ }
+	location.reload();
+}
+$('play-again').onclick = () => goBack(true);
+$('back-to-start').onclick = () => goBack(false);
+$('ended-details').onclick = () => showErrors();
+$('ended-continue').onclick = () => {
+	gameEnded = false;
+	gameRunning = true;
+	crashTimer = 0;
+	$('ended').hidden = true;
+	$('errors').hidden = true;
+	$('toolbar').style.display = '';
+	canvas.focus();
+};
+$('ended-files').onclick = () => openFiles();
+
+// A running game is not left by accident (Ctrl+R, a closed tab): the browser asks first.
+window.addEventListener('beforeunload', (e) => {
+	if (gameRunning) {
+		e.preventDefault();
+		e.returnValue = '';
+	}
+});
+
+// The game has ended (it quit, crashed, or ran out of memory): say so, and offer to play again.
+function endGame(info) {
+	if (gameEnded) return;
+	gameEnded = true;
+	gameRunning = false;
+	if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+	const clean = info.code === 0 && !problem && !info.crashed;
+	$('ended-title').textContent = clean ? 'The game has ended' : (problem ? problem.title : 'The game stopped unexpectedly');
+	$('ended-text').textContent = clean
+		? 'You can play again right away, or go back to the start page to change the game files or the resolution.'
+		: (problem ? problem.hint : 'The game ended with an error' + (info.code ? ' (code ' + info.code + ')' : '') + '. Details are in the log; "Play again" starts it again.');
+	$('ended-details').hidden = clean;
+	$('ended-continue').hidden = !info.soft;
+	$('ended').hidden = false;
+	$('toolbar').style.display = 'none';
+	if (!clean) showErrors();
+	$('play-again').focus();
 }
 
-function startGame() {
-	if ($('play').disabled) return;
+// A line from the engine that means it is not going on.
+const FATAL_RE = /RuntimeError|unreachable|worker sent an error|Aborted\(|^Fatal error|Cannot enlarge memory|memory access out of bounds|Uncaught/i;
+let crashTimer = 0;
+function noteFatal() {
+	if (crashTimer || !gameRunning) return;
+	// The lines that explain it follow the first one.
+	crashTimer = setTimeout(() => endGame({ code: 1, crashed: true, soft: true }), 700);
+}
+
+// ---- the player's files in the browser's storage (screenshots, replays, saved games) ----------------
+
+const FILE_GROUPS = [
+	['screenshots', 'Screenshots'],
+	['save', 'Saved games'],
+	['replays', 'Replays'],
+];
+async function renderFiles() {
+	const list = $('files-list');
+	list.textContent = 'Reading…';
+	let entries = [];
+	try { entries = await importer.listUserData(); } catch (e) { list.textContent = 'Cannot read the browser storage: ' + (e && e.message || e); return; }
+	list.textContent = '';
+	let shown = 0;
+	for (const [dir, title] of FILE_GROUPS) {
+		const rows = entries.filter((f) => f.path.split('/')[1] === dir).sort((a, b) => b.modified - a.modified);
+		if (!rows.length) continue;
+		const h = document.createElement('h3');
+		h.textContent = title + ' (' + rows.length + ')';
+		list.appendChild(h);
+		for (const f of rows) {
+			shown++;
+			const row = document.createElement('div');
+			row.className = 'file-row';
+			const name = f.path.split('/').pop();
+			const label = document.createElement('span');
+			label.textContent = name;
+			const meta = document.createElement('span');
+			meta.className = 'meta';
+			meta.textContent = importer.formatBytes(f.size) + ' · ' + new Date(f.modified).toLocaleString();
+			const get = document.createElement('button');
+			get.type = 'button';
+			get.textContent = 'Download';
+			get.onclick = async () => {
+				const file = await importer.readUserFile(f.path);
+				if (!file) { toast('That file is gone.'); return; }
+				const a = document.createElement('a');
+				a.href = URL.createObjectURL(file);
+				a.download = name;
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+			};
+			row.append(label, meta, get);
+			list.appendChild(row);
+		}
+	}
+	if (!shown) {
+		const empty = document.createElement('p');
+		empty.id = 'files-empty';
+		empty.textContent = 'Nothing yet. Saved games, replays and screenshots from the game show up here.';
+		list.appendChild(empty);
+	}
+}
+function openFiles() {
+	$('files').hidden = false;
+	renderFiles();
+	$('files-close').focus();
+}
+function closeFiles() {
+	$('files').hidden = true;
+	if (!$('stage').hidden) canvas.focus();
+}
+$('files-close').onclick = closeFiles;
+$('files-refresh').onclick = renderFiles;
+$('shots').onclick = openFiles;
+$('open-files').onclick = openFiles;
+$('files').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeFiles(); } });
+
+// The game saves screenshots with its screenshot key (F12 in the starter content, Print Screen in the original): this is the
+// same for keyboards without it.
+$('screenshot').onclick = () => {
+	tellEngine('_WebPlatform_RequestScreenshot');
+	toast('Screenshot taken. “Files” downloads it.', 3500);
+	canvas.focus();
+};
+
+// ---- starting ---------------------------------------------------------------------------------------
+
+// The resolution in the game's Options file, if the game has saved one: [width, height] or null.
+async function savedResolution() {
+	try {
+		const entries = await importer.listUserData();
+		const file = entries.find((f) => /(^|\/)options\.ini$/.test(f.path));
+		if (!file) return null;
+		const text = await (await importer.readUserFile(file.path)).text();
+		const m = /^\s*Resolution\s*=\s*(\d+)\s+(\d+)/mi.exec(text);
+		return m ? [Number(m[1]), Number(m[2])] : null;
+	} catch (e) {
+		return null;
+	}
+}
+
+function fitSize(sharp) {
+	const k = sharp ? (window.devicePixelRatio || 1) : 1;
+	let w = Math.floor(window.innerWidth * k), h = Math.floor(window.innerHeight * k);
+	const cap = Math.min(1, Math.sqrt(8294400 / (w * h)));	// at most 4K worth of pixels
+	w = Math.max(800, Math.floor(w * cap)) & ~1;
+	h = Math.max(600, Math.floor(h * cap)) & ~1;
+	return [w, h];
+}
+
+// The size the game starts with, and the command line arguments that make it so: [[w, h], args].
+async function resolutionChoice() {
+	const v = $('resolution').value;
+	if (v === 'auto') {
+		const saved = await savedResolution();
+		return saved ? [saved, []] : [[1024, 768], ['-xres', '1024', '-yres', '768']];
+	}
+	const [w, h] = v === 'fit' ? fitSize(false) : v === 'fitsharp' ? fitSize(true) : v.split('x').map(Number);
+	return [[w, h], ['-xres', String(w), '-yres', String(h)]];
+}
+
+function describeResolution() {
+	const v = $('resolution').value;
+	const text = {
+		auto: 'The game starts at the resolution its Options screen saved (1024 × 768 the first time). Changes made in the game are kept.',
+		fit: 'The game starts at the size of this window (' + fitSize(false).join(' × ') + '). Resize the window later and the picture follows it with black bars.',
+		fitsharp: 'The game starts at the size of this window in screen pixels (' + fitSize(true).join(' × ') + '): crisp on Retina and other high density screens, and needs a faster graphics card.',
+	}[v];
+	$('res-hint').textContent = text || 'This overrides the resolution that the game’s Options screen saved.';
+}
+$('resolution').addEventListener('change', describeResolution);
+window.addEventListener('resize', () => { if (!$('setup').hidden) describeResolution(); });
+
+async function startGame() {
+	if ($('play').disabled || gameRunning || gameEnded) return;
+	$('play').disabled = true;
 	try { localStorage.setItem('zh-resolution', $('resolution').value); } catch (e) { /* ignore */ }
 
-	const [w, h] = $('resolution').value.split('x').map(Number);
-	clientSize = { width: w, height: h };
+	const [size, resolutionArgs] = await resolutionChoice();
+	launchSize = size;
+	clientSize = { width: size[0], height: size[1] };
+	const args = [...resolutionArgs];
+	for (const extra of params.getAll('arg')) args.push(extra);
+
 	$('setup').hidden = true;
 	$('stage').hidden = false;
 	$('mode-badge').hidden = currentMode() !== 'starter';
 	layoutCanvas();
 	canvas.focus();
+	gameRunning = true;
+	window.__zhPlayAt = Date.now();	// (start up time, for tests: __zhFirstFrameAt - __zhPlayAt)
 
 	window.Module = {
 		canvas,
-		arguments: gameArguments(),
+		arguments: args,
 		print: (text) => { console.log(text); pushLog(text, false); },
 		printErr: (text) => {
 			console.warn(text);
-			pushLog(text, /abort|RuntimeError|unreachable|out of memory|uncaught/i.test(text));
+			noteProblem(text);
+			if (/saves and options will not be kept/.test(text)) toast('This browser window cannot keep files (a private window?): saved games and options are lost when it closes.', 12000);
+			const fatal = FATAL_RE.test(text);
+			pushLog(text, fatal || /out of memory/i.test(text));
+			if (fatal) noteFatal();
 		},
 		setStatus: () => {},
 		onAbort: (what) => {
 			pushLog('Aborted: ' + what, false);
-			showErrors('The game stopped unexpectedly');
+			noteProblem(String(what));
+			endGame({ code: 1, crashed: true });
 		},
 		onExit: (code) => {
 			pushLog('Exited with code ' + code, false);
-			$('loading').hidden = false;
-			$('loading').textContent = 'The game has ended (exit code ' + code + '). Use Exit to start again.';
-			if (code !== 0) showErrors('The game ended with an error');
+			endGame({ code });
 		},
 		postRun: [() => { $('loading').hidden = true; }],
 	};
@@ -934,6 +1315,7 @@ function startGame() {
 			direct.attachCurrent(window.Module);
 		} catch (e) {
 			pushLog('Could not open the game folder: ' + (e && e.message || e), true);
+			gameRunning = false;
 			return;
 		}
 	}
@@ -961,15 +1343,53 @@ function resumeAudio() {
 }
 for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, resumeAudio, { capture: true });
 
+// A hidden tab gets no animation frames, so the game stands still (it waits for the next frame); its sound is paused with
+// it and goes on when the tab is back.
+document.addEventListener('visibilitychange', () => {
+	try {
+		const ctx = window.zhWebAudio && window.zhWebAudio.ctx;
+		if (!ctx) return;
+		if (document.visibilityState === 'hidden') ctx.suspend();
+		else ctx.resume();
+	} catch (e) { /* ignore */ }
+});
+
+// Memory: the game can use about 4 GB. Say so before the browser refuses more.
+let memoryWarned = false;
+setInterval(() => {
+	if (!gameRunning || !window.__zhHeapBytes || memoryWarned) return;
+	if (window.__zhHeapBytes > 3.5 * 1024 * 1024 * 1024) {
+		memoryWarned = true;
+		toast('The game is close to the browser’s memory limit. Closing other tabs helps; lower the detail in Options if it stops.', 9000);
+	}
+}, 3000);
+
 try {
 	const saved = localStorage.getItem('zh-resolution');
 	if (saved && [...$('resolution').options].some(o => o.value === saved)) $('resolution').value = saved;
 } catch (e) { /* ignore */ }
+describeResolution();
 
 // For tests and automation.
-window.__zh = { importer, direct, startGame, logLines, refreshStatus, joinRoom, fail: (text) => pushLog(text, true) };
+window.__zh = {
+	importer, direct, startGame, logLines, refreshStatus, joinRoom, fail: (text) => pushLog(text, true),
+	state: () => ({ gameRunning, gameEnded, problem: problem && problem.title, launchSize, clientSize, fullscreen: !!document.fullscreenElement }),
+	renderFiles,
+	classify: (text) => { const p = PROBLEMS.find((q) => q.re.test(text)); return p ? p.title : null; },
+};
 
-refreshStatus().catch((e) => pushLog('Status: ' + e, false));
+// "Play again" reloads the page and starts the game as soon as the start page is ready (it needs no new click: the
+// folder permission Chrome kept, or the files in this browser's storage, are all it needs).
+(async function autoPlay() {
+	let want = false;
+	try { want = sessionStorage.getItem('zh-autoplay') === '1'; sessionStorage.removeItem('zh-autoplay'); } catch (e) { /* ignore */ }
+	try {
+		await refreshStatus();
+	} catch (e) { pushLog('Status: ' + e, false); }
+	if (!want) return;
+	for (let i = 0; i < 100 && $('play').disabled && !gameRunning; ++i) await new Promise((r) => setTimeout(r, 150));
+	if (!$('play').disabled && !gameRunning) $('play').click();
+}());
 </script>
 </body>
 </html>
