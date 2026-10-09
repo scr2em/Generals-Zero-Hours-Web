@@ -121,10 +121,13 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_nextScout(0),
 	m_savingSince(0),
 	m_noSavingUntil(0),
+	m_splitPicks(0),
+	m_splitSwitches(0),
 	m_trace(FALSE),
 	m_nextStatus(0)
 {
 	memset(m_teams, 0, sizeof(m_teams));
+	memset(m_ledger, 0, sizeof(m_ledger));
 	m_scoutTarget.zero();
 	m_waveObjective.zero();
 	m_rally.zero();
@@ -147,7 +150,8 @@ void AIStrategy::newMap()
 	static const struct { const char *name; Int bit; } names[] = {
 		{ "focus", AIPlayer::AIF_FOCUS }, { "wave", AIPlayer::AIF_WAVE }, { "retreat", AIPlayer::AIF_RETREAT },
 		{ "scout", AIPlayer::AIF_SCOUT }, { "counter", AIPlayer::AIF_COUNTER }, { "save", AIPlayer::AIF_SAVE },
-		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND } };
+		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
+		{ "split", AIPlayer::AIF_SPLIT } };
 	const char *offList = strstr(variant.str(), "off-");
 	if (offList)
 	{
@@ -232,6 +236,7 @@ void AIStrategy::update()
 						if (isManageableTeam(tm)) managedUnits += n; else if (n > 0) { unmanaged += n; AI_TRACE("  unmanaged team %s active %d units %d", tm->getPrototype()->getName().str(), tm->isActive() ? 1 : 0, n); }
 					}
 				AI_TRACE("army: managed units %d unmanaged units %d value %.0f siege shortage %.2f", managedUnits, unmanaged, m_armyValue, m_siegeShortage);
+				AI_TRACE("split fire: %d target picks, %d changed by the rule", m_splitPicks, m_splitSwitches);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
 					m_enemy.roleValue(AIROLE_DEFENCE), m_enemy.roleValue(AIROLE_PRODUCTION), m_enemy.roleValue(AIROLE_ECONOMY),
@@ -1669,7 +1674,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 1;
+	XferVersion currentVersion = 2;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -1705,6 +1710,7 @@ void AIStrategy::xfer( Xfer *xfer )
 	xfer->xferCoord3D(&m_scoutTarget);
 	xfer->xferUnsignedInt(&m_savingSince);
 	xfer->xferUnsignedInt(&m_noSavingUntil);
+	xfer->xferUser(m_ledger, sizeof(m_ledger));
 }
 
 void AIStrategy::loadPostProcess()

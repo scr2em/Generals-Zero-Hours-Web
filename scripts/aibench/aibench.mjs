@@ -31,6 +31,7 @@ What to play:
   --no-rotate             do not rotate: the players keep the order of the matchup on the start positions
   --timeout MIN           game minutes after which a match is a timeout (default 20)
   --crc-interval N        logic frames between CRC samples (default 300)
+  --keep-logs             write the engine output of every match to matches/<id>.log (default: only failed matches)
   --engine-arg ARG        an extra engine argument for every match (repeatable), e.g. loop=engine, cash=20000, sample=60
 How to run:
   --workers N             matches at the same time (default 2)
@@ -68,6 +69,7 @@ function parseArgs(argv) {
 			case '--no-rotate': o.rotate = false; break;
 			case '--timeout': o.minutes = Number(next()); break;
 			case '--crc-interval': o.crcInterval = Number(next()); break;
+			case '--keep-logs': o.keepLogs = true; break;
 			case '--engine-arg': o.engineArgs.push(next()); break;
 			case '--workers': o.workers = Number(next()); break;
 			case '--retries': o.retries = Number(next()); break;
@@ -180,7 +182,7 @@ async function main() {
 		const finish = (job, r, total) => {
 			const rec = { id: job.id, build: job.build, kind: job.kind, job, ok: r.ok, error: r.error || null, result: r.result, wallMs: r.wallMs, attempts: r.attempts };
 			fs.writeFileSync(path.join(o.out, 'matches', job.id + '.json'), JSON.stringify({ job, ok: r.ok, error: r.error, wallMs: r.wallMs, result: r.result }, null, 1));
-			if (!r.ok) fs.writeFileSync(path.join(o.out, 'matches', job.id + '.log'), r.log.join('\n') + '\n');
+			if (!r.ok || o.keepLogs) fs.writeFileSync(path.join(o.out, 'matches', job.id + '.log'), r.log.join('\n') + '\n');
 			++done;
 			const res = r.ok ? r.result.result : null;
 			const winner = res && res.winners.length ? job.players[res.winners[0]].label : '-';

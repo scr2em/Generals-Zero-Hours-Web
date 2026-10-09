@@ -262,6 +262,8 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "KeepBackline",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpacing ) },
 			{ "ExpandEconomy",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_expandEconomy ) },
 			{ "SmartPowers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_smartPowers ) },
+			{ "SplitFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSplitFire ) },
+			{ "SplitWindowSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splitWindowSeconds ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -639,8 +641,14 @@ static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter
 	if (mine == nullptr)
 		return iter->first();
 
+	Player *owner = me->getControllingPlayer();
+	const AISkillSettings &skill = TheAI->getAiData()->m_expertSkill;
+	const Bool split = skill.m_useSplitFire && !owner->isAiFeatureOff(AIPlayer::AIF_SPLIT);
+
 	Object *best = nullptr;
 	Real bestScore = 0.0f;
+	Object *bestPlain = nullptr;	// the pick without the split fire rule
+	Real bestPlainScore = 0.0f;
 	Int examined = 0;
 	for (Object *e = iter->first(); e && examined < 8; e = iter->next(), ++examined)
 	{
@@ -673,11 +681,36 @@ static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter
 			score += 20.0f;																												// in reach right now
 		score -= 40.0f * (dist >= range ? 1.0f : dist / range);									// near is better
 
+		if (bestPlain == nullptr || score > bestPlainScore)
+		{
+			bestPlain = e;
+			bestPlainScore = score;
+		}
+
+		// Split fire: damage that other units have already assigned to the target counts against it, so
+		// that once enough is on its way to kill it the rest of the group takes the next target.
+		if (split && body)
+		{
+			const Real assigned = owner->getAiAssignedDamage(e->getID());
+			if (assigned > 0.0f)
+			{
+				const Real ratio = assigned / (body->getHealth() * 1.05f + 1.0f);
+				score -= ratio >= 1.0f ? 100.0f : 40.0f * ratio * ratio;
+			}
+		}
+
 		if (best == nullptr || score > bestScore)
 		{
 			best = e;
 			bestScore = score;
 		}
+	}
+
+	if (split && best)
+	{
+		const Real dps = AICombatModel::damagePerSecond(mine, AICombatModel::figures(best->getTemplate()));
+		if (dps > 0.0f)
+			owner->assignAiDamage(best->getID(), dps * skill.m_splitWindowSeconds, best != bestPlain);
 	}
 	return best;
 }
@@ -1071,6 +1104,8 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_useSpacing = true;
 	ex.m_expandEconomy = true;
 	ex.m_smartPowers = true;
+	ex.m_useSplitFire = true;
+	ex.m_splitWindowSeconds = 2.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1118,6 +1153,8 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferBool( &sk.m_useSpacing );
 		xfer->xferBool( &sk.m_expandEconomy );
 		xfer->xferBool( &sk.m_smartPowers );
+		xfer->xferBool( &sk.m_useSplitFire );
+		xfer->xferReal( &sk.m_splitWindowSeconds );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

@@ -485,6 +485,17 @@ Bool AISkirmishPlayer::chooseAttackObjective(const Coord3D *from, Real power, Co
 	return m_strategy ? m_strategy->chooseObjective(from, power, objective) : false;
 }
 
+Real AISkirmishPlayer::expertAssignedDamage(ObjectID target) const
+{
+	return m_strategy ? m_strategy->assignedDamage(target) : 0.0f;
+}
+
+void AISkirmishPlayer::expertAssignDamage(ObjectID target, Real damage, Bool switched)
+{
+	if (m_strategy)
+		m_strategy->assignDamage(target, damage, switched);
+}
+
 Int AISkirmishPlayer::extraGatherers() const
 {
 	return m_strategy ? m_strategy->extraGatherers() : 0;

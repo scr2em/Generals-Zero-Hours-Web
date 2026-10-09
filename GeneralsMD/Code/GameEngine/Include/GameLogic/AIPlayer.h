@@ -184,6 +184,9 @@ public: // AIPlayer interface, may be overridden by AISkirmishPlayer.  jba.
 	virtual Bool isSkirmishAI() {return false;}
 	/// Expert: where a group at 'from' with strength 'power' should attack next (value against defence); false if the player has no opinion.
 	virtual Bool chooseAttackObjective(const Coord3D *from, Real power, Coord3D *objective) {return false;}
+	/// Expert: damage already assigned to a target by units that picked it a moment ago (split fire), and a new assignment.
+	virtual Real expertAssignedDamage(ObjectID target) const {return 0.0f;}
+	virtual void expertAssignDamage(ObjectID target, Real damage, Bool switched) {}
 	virtual Player *getAiEnemy() {return nullptr;}	///< Solo AI attacks based on scripting.  Only skirmish auto-acquires an enemy at this point.  jba.
 	virtual Bool checkBridges(Object *unit, Waypoint *way) {return false;}
 	virtual void repairStructure(ObjectID structure);
@@ -199,7 +202,7 @@ public:
 	virtual void setExpert(Bool expert) {m_expert = expert;}
 	Bool isExpert() const {return m_expert;}
 	/// Switches of single Expert features, for A/B tests on the test bench (player variant "off:focus+wave..."; AIFeature bits). Not saved: only the bench sets them.
-	enum AIFeature { AIF_FOCUS = 1, AIF_WAVE = 2, AIF_RETREAT = 4, AIF_SCOUT = 8, AIF_COUNTER = 16, AIF_SAVE = 32, AIF_STARVE = 64, AIF_SIEGE = 128, AIF_DEFEND = 256 };
+	enum AIFeature { AIF_FOCUS = 1, AIF_WAVE = 2, AIF_RETREAT = 4, AIF_SCOUT = 8, AIF_COUNTER = 16, AIF_SAVE = 32, AIF_STARVE = 64, AIF_SIEGE = 128, AIF_DEFEND = 256, AIF_SPLIT = 512 };
 	Bool isFeatureOff(Int f) const {return (m_featureOff & f) != 0;}
 	void setFeaturesOff(UnsignedInt mask) {m_featureOff = mask;}
 	void buildBySupplies(Int minimumCash, const AsciiString &thingName ); ///< Builds a building by supplies.

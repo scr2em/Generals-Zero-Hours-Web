@@ -144,6 +144,10 @@ struct AISkillSettings
 	Bool m_useSpacing;				///< Keep long range and fragile units behind the front line.
 	Bool m_expandEconomy;			///< Build supply centers at further supply sources.
 	Bool m_smartPowers;				///< Fire ready superweapons at the best known target without waiting for a script.
+
+	// ---- tactics ----
+	Bool m_useSplitFire;			///< Do not send more fire at a target than it takes to kill it; the rest picks the next target.
+	Real m_splitWindowSeconds;///< How long the damage assigned to a target counts as on its way.
 };
 
 class AISideBuildList : public MemoryPoolObject

@@ -212,6 +212,14 @@ struct AITeamRecord
 	Real					m_lastAdvantage;
 };
 
+/// Damage that units have just assigned to a target (split fire): a small table with expiry.
+struct AILedgerEntry
+{
+	ObjectID			m_target;
+	Real					m_damage;
+	UnsignedInt		m_expire;
+};
+
 enum AIArmyState CPP_11(: Int)
 {
 	ARMY_GATHER = 0,				///< teams gather at the rally point and grow
@@ -265,6 +273,13 @@ public:
 	Bool enemyStartPosition( Coord3D *pos ) const;
 
 	Real armyValueNear( const Coord3D *pos, Real radius, Bool enemies ) const;
+
+	// ---- tactics (AITactics.cpp) -------------------------------------------------------------
+	/// Damage that units picking 'target' a moment ago will deal to it (split fire).
+	Real assignedDamage( ObjectID target ) const;
+	/// Note that a unit has picked 'target' and will deal about 'damage' to it in the next seconds.
+	/// 'switched': the split-fire rule made the unit take another target than it would have.
+	void assignDamage( ObjectID target, Real damage, Bool switched );
 
 protected:
 	virtual void crc( Xfer *xfer ) override;
@@ -338,6 +353,11 @@ private:
 	Coord3D				m_scoutTarget;
 	UnsignedInt		m_savingSince;
 	UnsignedInt		m_noSavingUntil;
+	enum { LEDGER_SIZE = 32 };
+	AILedgerEntry	m_ledger[LEDGER_SIZE];		///< split fire: damage assigned to targets, see assignDamage
+
+	Int						m_splitPicks;			///< statistics for the trace: target picks, and picks changed by split fire
+	Int						m_splitSwitches;
 	Bool					m_trace;					///< print decisions (test bench: variant "trace")
 	UnsignedInt		m_nextStatus;
 };

@@ -1911,6 +1911,19 @@ Bool Player::getAiAttackObjective(const Coord3D *from, Real power, Coord3D *obje
 }
 
 //=============================================================================
+Real Player::getAiAssignedDamage(ObjectID target)
+{
+	return m_ai ? m_ai->expertAssignedDamage(target) : 0.0f;
+}
+
+//=============================================================================
+void Player::assignAiDamage(ObjectID target, Real damage, Bool switched)
+{
+	if (m_ai)
+		m_ai->expertAssignDamage(target, damage, switched);
+}
+
+//=============================================================================
 Bool Player::isAiFeatureOff(Int feature)
 {
 	return m_ai ? m_ai->isFeatureOff(feature) : false;
