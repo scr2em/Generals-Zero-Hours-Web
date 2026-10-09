@@ -306,7 +306,8 @@ void AIStrategy::applyVariant()
 		{ "garrison", AIPlayer::AIF_GARRISON }, { "clear", AIPlayer::AIF_CLEAR },
 		{ "ability", AIPlayer::AIF_ABILITY },
 		{ "airborne", AIPlayer::AIF_AIRBORNE },
-		{ "bunker", AIPlayer::AIF_BUNKER } };
+		{ "bunker", AIPlayer::AIF_BUNKER },
+		{ "team", AIPlayer::AIF_TEAM } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -433,6 +434,10 @@ void AIStrategy::update()
 				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
 				AI_TRACE("bunkers: %d posts, %d men inside or on the way, %d entered so far, %d infantry trained for them", m_bunkerPosts, m_numBunkerMen, m_bunkerEntered, m_bunkerTrained);
 				AI_TRACE("airborne: %d missions, %d drops, %d targets destroyed, %d aircraft lost, %d times no safe way", m_airMissions, m_airDrops, m_airKills, m_airLost, m_airNoPath);
+				Real stallShown = 0.0f;
+				const Real targetShown = waveTarget(&stallShown);
+				AI_TRACE("waves: army %.0f of %.0f needed (%.0f once it has stopped growing; enemy seen %.0f, defences %.0f, allies %.0f), army state %s, %d alarm(s) so far", m_armyValue, targetShown, stallShown, m_enemy.armyValue(),
+					m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE), m_enemy.allyValue(), m_armyState == ARMY_GATHER ? "gather" : "wave out", m_bdAlarms);
 				AI_TRACE("routes: %d waves routed around defences, %d breaches started (%d with the defences down)", m_routesPlanned, m_breachesStarted, m_breachKills);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
@@ -1278,12 +1283,29 @@ Bool AIStrategy::rallyPoint( Coord3D *pos )
 }
 
 /// The army value the AI wants before it attacks: enough to beat what it has seen, and a minimum of its own.
-Real AIStrategy::waveTarget() const
+Real AIStrategy::waveTarget( Real *stallNeed ) const
 {
 	const AISkillSettings &sk = skill();
-	Real target = sk.m_waveSizeScale * (1.5f * m_enemy.armyValue() + 0.8f * (m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE)));
+	const Real full = sk.m_waveSizeScale * (1.5f * m_enemy.armyValue() + 0.8f * (m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE)));
+	Real target = full;
+	// An army that has stopped growing launches at this share of the target.
+	Real stall = 0.6f * full;
+	// Team games: the enemy model holds all the enemies (and, with shared vision, what the allies found of them), but the army of
+	// the allies fights them too: our wave only has to make up the difference.
+	if (teamWavesOn() && m_enemy.allyValue() > 0.0f)
+	{
+		const Real help = sk.m_allyWaveWeight * m_enemy.allyValue();
+		target = full - help > sk.m_allyWaveFloor * full ? full - help : sk.m_allyWaveFloor * full;
+		stall = 0.6f * full - help > sk.m_allyWaveFloor * 0.6f * full ? 0.6f * full - help : sk.m_allyWaveFloor * 0.6f * full;
+	}
 	if (target < sk.m_minWaveValue)
 		target = sk.m_minWaveValue;
+	if (stall < 0.6f * sk.m_minWaveValue)
+		stall = 0.6f * sk.m_minWaveValue;
+	if (stall > target)
+		stall = target;
+	if (stallNeed)
+		*stallNeed = stall;
 	return target;
 }
 
@@ -1517,12 +1539,13 @@ void AIStrategy::updateArmy()
 			return;
 		if (m_bdActive && baseDefenceOn())
 			return;		// the base first
-		const Real target = waveTarget();
+		Real stallNeed = 0.0f;
+		const Real target = waveTarget(&stallNeed);
 		// An army that has stopped growing (all teams alive, money spent elsewhere) does not wait for ever.
 		const Bool stalled = now - m_armyGrowthFrame >= secondsToFrames(sk.m_waveHoldSeconds);
 		// The army must be able to take buildings down, too (or have waited for it long enough).
 		const Bool equipped = m_siegeShortage <= 0.5f || now - m_armyGrowthFrame >= 2 * secondsToFrames(sk.m_waveHoldSeconds);
-		if ((value >= target && equipped) || (stalled && value >= 0.6f * target && equipped))
+		if ((value >= target && equipped) || (stalled && value >= stallNeed && equipped))
 		{
 			if (m_launchBlockedSince != 0 && now < m_nextLaunchCheck)
 				return;	// held back by the fight check: look again in a moment

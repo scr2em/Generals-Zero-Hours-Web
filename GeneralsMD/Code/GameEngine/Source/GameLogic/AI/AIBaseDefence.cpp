@@ -57,6 +57,11 @@ Bool AIStrategy::baseDefenceOn() const
 	return skill().m_useBaseDefence && !m_ai->isFeatureOff(AIPlayer::AIF_BASEDEF);
 }
 
+Bool AIStrategy::teamWavesOn() const
+{
+	return skill().m_useTeamWaves && !m_ai->isFeatureOff(AIPlayer::AIF_TEAM);
+}
+
 /// One of our objects took damage: when it stands inside the base zone and an enemy did it, that is a threat (reported by the body module).
 void AIStrategy::noteBaseDamage( Object *victim, ObjectID attacker, Real amount )
 {

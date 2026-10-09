@@ -187,6 +187,8 @@ public:
 	Real armyValue() const { return m_roleValue[AIROLE_INFANTRY] + m_roleValue[AIROLE_VEHICLE] + m_roleValue[AIROLE_AIRCRAFT]; }
 	Real totalValue() const;
 	Real armedValue() const { return m_armedValue; }
+	/// Value of the armed units of our allies (other players of our team) seen in the last full pass over the objects.
+	Real allyValue() const { return m_allyValue; }
 	UnsignedInt lastScanFrame() const { return m_lastScanFrame; }
 
 	const AIComposition *composition() const { return m_comp; }
@@ -207,6 +209,8 @@ private:
 	Real				m_roleValue[AIROLE_COUNT];
 	Int					m_roleCount[AIROLE_COUNT];
 	Real				m_armedValue;
+	Real				m_allyValue;				///< armed allied units, as of the last complete pass
+	Real				m_scanAlly;					///< the same, summed in the pass that is under way
 	AIComposition	m_comp[MAX_COMPOSITION];
 	Int					m_numComp;
 };
@@ -406,7 +410,7 @@ private:
 	void updateSiege();
 	void updateArmy();
 	Bool rallyPoint( Coord3D *pos );
-	Real waveTarget() const;
+	Real waveTarget( Real *stallNeed = nullptr ) const;
 	Real alliedValueNear( const Coord3D *center, Team *except ) const;
 
 	// tactics (AITactics.cpp)
@@ -513,6 +517,7 @@ private:
 
 	// base defence priority (AIBaseDefence.cpp)
 	Bool baseDefenceOn() const;
+	Bool teamWavesOn() const;
 	void noteBaseDamage( Object *victim, ObjectID attacker, Real amount );
 	Bool findBaseThreat( Coord3D *where, Real *value ) const;
 	void sendTeamToBase( Team *team, AITeamRecord &rec, const Coord3D &where );

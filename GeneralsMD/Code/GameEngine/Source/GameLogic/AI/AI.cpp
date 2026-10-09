@@ -334,6 +334,9 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "FillBunkers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useBunkers ) },
 			{ "BunkerReserve",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerReserve ) },
 			{ "BunkerArmyShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerArmyShare ) },
+			{ "TeamWaves",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useTeamWaves ) },
+			{ "AllyWaveWeight",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveWeight ) },
+			{ "AllyWaveFloor",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveFloor ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1269,6 +1272,9 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_useBunkers = true;
 	ex.m_bunkerReserve = 200.0f;
 	ex.m_bunkerArmyShare = 0.3f;
+	ex.m_useTeamWaves = true;
+	ex.m_allyWaveWeight = 0.6f;
+	ex.m_allyWaveFloor = 0.4f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1387,6 +1393,9 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferBool( &sk.m_useBunkers );
 		xfer->xferReal( &sk.m_bunkerReserve );
 		xfer->xferReal( &sk.m_bunkerArmyShare );
+		xfer->xferBool( &sk.m_useTeamWaves );
+		xfer->xferReal( &sk.m_allyWaveWeight );
+		xfer->xferReal( &sk.m_allyWaveFloor );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 
