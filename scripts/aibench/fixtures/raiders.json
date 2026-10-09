@@ -1,0 +1,14 @@
+{
+ "description": "The rocketeer runs at speed 75 (the army averages about 40): the fast raiders of the economic raids.",
+ "edits": [
+  {
+   "file": "data/ini/object.ini",
+   "find": "Locomotor = SET_NORMAL IronwoodInfantryLocomotor\n  Prerequisites\n    Object = IronwoodBarracks\n  End\n  BuildCost = 250",
+   "replace": "Locomotor = SET_NORMAL IronwoodRunnerLocomotor\n  Prerequisites\n    Object = IronwoodBarracks\n  End\n  BuildCost = 250"
+  },
+  {
+   "file": "data/ini/locomotor.ini",
+   "append": "\n; Bench overlay: a fast infantry locomotor.\nLocomotor IronwoodRunnerLocomotor\n  Surfaces = GROUND\n  Speed = 75\n  SpeedDamaged = 60\n  TurnRate = 500\n  TurnRateDamaged = 400\n  Acceleration = 150\n  AccelerationDamaged = 100\n  Braking = 150\n  MinTurnSpeed = 0\n  ZAxisBehavior = NO_Z_MOTIVE_FORCE\n  Appearance = TWO_LEGS\n  StickToGround = Yes\n  GroupMovementPriority = MOVES_FRONT\nEnd"
+  }
+ ]
+}

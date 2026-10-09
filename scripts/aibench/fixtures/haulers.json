@@ -1,0 +1,18 @@
+{
+ "description": "The headquarters sends out a parked supply hauler (a gatherer, KindOf HARVESTER) every 20 s, 170 units from the base: seen gatherers away from the base for the economic raids and the worker protection.",
+ "edits": [
+  {
+   "file": "data/ini/object.ini",
+   "find": "  Behavior = AutoDepositUpdate ModuleTag_Income",
+   "replace": "  Behavior = OCLUpdate ModuleTag_Haulers\n    OCL = OCL_IronwoodHauler\n    MinDelay = 20000\n    MaxDelay = 20000\n  End\n  Behavior = AutoDepositUpdate ModuleTag_Income"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "append": "\n; Bench overlay: a parked supply hauler (gatherer without a supply system), spawned by the headquarters.\nObject IronwoodHauler\n  Scale = 1.0\n  Side = Ironwood\n  EditorSorting = VEHICLE\n  DisplayName = OBJECT:IronwoodWorker\n  Draw = W3DModelDraw ModuleTag_Draw\n    OkToChangeModelColor = Yes\n    DefaultConditionState\n      Model = iw_worker\n    End\n  End\n  KindOf = SELECTABLE VEHICLE HARVESTER\n  Body = ActiveBody ModuleTag_Body\n    MaxHealth = 160.0\n    InitialHealth = 160.0\n  End\n  ArmorSet\n    Conditions = None\n    Armor = IronwoodVehicleArmor\n    DamageFX = None\n  End\n  Behavior = AIUpdateInterface ModuleTag_AI\n  End\n  Behavior = LifetimeUpdate ModuleTag_Life\n    MinLifetime = 90000\n    MaxLifetime = 90000\n  End\n  Behavior = DestroyDie ModuleTag_Destroy\n  End\n  Behavior = FXListDie ModuleTag_DeathFX\n    DeathFX = FX_StarterVehicleDie\n  End\n  Locomotor = SET_NORMAL IronwoodWorkerLocomotor\n  VisionRange = 100.0\n  ShroudClearingRange = 140.0\n  RadarPriority = UNIT\n  BuildCost = 400\n  Geometry = CYLINDER\n  GeometryMajorRadius = 6.0\n  GeometryMinorRadius = 6.0\n  GeometryHeight = 12.0\n  GeometryIsSmall = Yes\n  WeaponSet\n    Conditions = None\n  End\n  Behavior = PhysicsBehavior ModuleTag_Physics\n  End\nEnd\n"
+  },
+  {
+   "file": "data/ini/objectcreationlist.ini",
+   "append": "\n; Bench overlay: the headquarters sends out a hauler now and then.\nObjectCreationList OCL_IronwoodHauler\n  CreateObject\n    ObjectNames = IronwoodHauler\n    Count = 1\n    Offset = X:170 Y:60 Z:0\n    Disposition = ON_GROUND_ALIGNED\n  End\nEnd\n"
+  }
+ ]
+}

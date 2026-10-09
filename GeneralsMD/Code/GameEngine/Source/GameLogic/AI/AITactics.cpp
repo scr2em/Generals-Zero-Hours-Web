@@ -268,7 +268,7 @@ Bool AIStrategy::planKite( Object *unit, Object *victim, const AITeamRecord *rec
 /// Looks at one unit of a field team.
 void AIStrategy::unitTactics( Object *unit, AITeamRecord *rec )
 {
-	if (unit->isEffectivelyDead() || unit->isContained() || unit->isDisabled() || unit->getAI() == nullptr)
+	if (unit->isEffectivelyDead() || unit->isContained() || unit->isDisabled() || unit->getAI() == nullptr || isDetached(unit->getID()))
 		return;
 	const Bool kiting = kitingOn();
 	const Bool spreading = m_spacing > 0.0f;

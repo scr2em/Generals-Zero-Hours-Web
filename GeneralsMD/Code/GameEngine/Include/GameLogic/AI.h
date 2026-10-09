@@ -163,6 +163,16 @@ struct AISkillSettings
 	Bool m_useSpread;					///< Keep units apart against enemies with area weapons.
 	Real m_splashRadiusThreshold;	///< Enemy weapons with a blast at least this big make the army spread out.
 	Real m_maxSpacing;				///< Largest distance kept between units to avoid splash damage.
+
+	// ---- batch 2: economic raids ----
+	Bool m_useRaids;					///< A small fast group hits seen enemy gatherers and workers away from their defences.
+	Int  m_raidUnits;					///< Most units in a raiding party.
+	Real m_raidSpeedFactor;		///< A raider is at least this many times as fast as the average unit of the army.
+	Real m_raidStartSeconds;	///< No raids before this game time.
+	Real m_raidMaxSeconds;		///< A raid ends (the party comes home) after this long.
+	Real m_raidCooldownSeconds;///< Pause between two raids.
+	Real m_raidPullbackAdvantage;///< The party pulls back when the fight around it is weaker than this (ours/theirs).
+	Real m_raidGuardShare;		///< A target guarded by armed units worth more than this share of the party's value is left alone.
 };
 
 class AISideBuildList : public MemoryPoolObject

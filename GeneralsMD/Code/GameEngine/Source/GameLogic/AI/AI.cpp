@@ -279,6 +279,14 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "SpreadVsSplash",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpread ) },
 			{ "SplashRadiusThreshold",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splashRadiusThreshold ) },
 			{ "MaxSpacing",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_maxSpacing ) },
+			{ "RaidEconomy",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRaids ) },
+			{ "RaidUnits",						INI::parseInt,		nullptr, offsetof( AISkillSettings, m_raidUnits ) },
+			{ "RaidSpeedFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidSpeedFactor ) },
+			{ "RaidStartSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidStartSeconds ) },
+			{ "RaidMaxSeconds",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidMaxSeconds ) },
+			{ "RaidCooldownSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidCooldownSeconds ) },
+			{ "RaidPullbackAdvantage",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidPullbackAdvantage ) },
+			{ "RaidGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidGuardShare ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1231,6 +1239,14 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_useSpread = true;
 	ex.m_splashRadiusThreshold = 20.0f;
 	ex.m_maxSpacing = 70.0f;
+	ex.m_useRaids = true;
+	ex.m_raidUnits = 3;
+	ex.m_raidSpeedFactor = 1.25f;
+	ex.m_raidStartSeconds = 120.0f;
+	ex.m_raidMaxSeconds = 75.0f;
+	ex.m_raidCooldownSeconds = 30.0f;
+	ex.m_raidPullbackAdvantage = 0.9f;
+	ex.m_raidGuardShare = 0.3f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1295,6 +1311,14 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferBool( &sk.m_useSpread );
 		xfer->xferReal( &sk.m_splashRadiusThreshold );
 		xfer->xferReal( &sk.m_maxSpacing );
+		xfer->xferBool( &sk.m_useRaids );
+		xfer->xferInt( &sk.m_raidUnits );
+		xfer->xferReal( &sk.m_raidSpeedFactor );
+		xfer->xferReal( &sk.m_raidStartSeconds );
+		xfer->xferReal( &sk.m_raidMaxSeconds );
+		xfer->xferReal( &sk.m_raidCooldownSeconds );
+		xfer->xferReal( &sk.m_raidPullbackAdvantage );
+		xfer->xferReal( &sk.m_raidGuardShare );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

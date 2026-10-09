@@ -142,6 +142,20 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_launchesHeld(0),
 	m_launchesForced(0),
 	m_pullbacks(0),
+	m_numRaiders(0),
+	m_raidTarget(INVALID_ID),
+	m_raidPhase(0),
+	m_raidStart(0),
+	m_raidPhaseFrame(0),
+	m_raidBadSince(0),
+	m_raidCooldown(0),
+	m_nextRaidCheck(0),
+	m_raidNoteFrame(0),
+	m_raidPartyValue(0.0f),
+	m_raidsLaunched(0),
+	m_raidKills(0),
+	m_raidPullbacks(0),
+	m_raidLosses(0),
 	m_splitPicks(0),
 	m_splitSwitches(0),
 	m_threatSwitches(0),
@@ -153,6 +167,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_teams, 0, sizeof(m_teams));
 	memset(m_ledger, 0, sizeof(m_ledger));
 	memset(m_steps, 0, sizeof(m_steps));
+	memset(m_raiders, 0, sizeof(m_raiders));
+	m_raidAim.zero();
 	m_scoutTarget.zero();
 	m_waveObjective.zero();
 	m_rally.zero();
@@ -179,7 +195,8 @@ void AIStrategy::newMap()
 		{ "scout", AIPlayer::AIF_SCOUT }, { "counter", AIPlayer::AIF_COUNTER }, { "save", AIPlayer::AIF_SAVE },
 		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
 		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE },
-		{ "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE }, { "spread", AIPlayer::AIF_SPREAD } };
+		{ "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE }, { "spread", AIPlayer::AIF_SPREAD },
+		{ "raid", AIPlayer::AIF_RAID } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -290,6 +307,7 @@ void AIStrategy::update()
 				AI_TRACE("kiting: %d steps back, %d resumed; refused: %d enemy faster, %d no room", m_kiteStarts, m_kiteResumes, m_kiteRejectFast, m_kiteRejectCorner);
 				AI_TRACE("spread out: spacing %.0f, %d idle units moved apart, %d steps between shots", m_spacing, m_spreadMoves, m_spreadSteps);
 				AI_TRACE("merge: %d new teams kept for the next wave, %d follow-up groups sent after the wave, %d reinforcements sent to the rally point", m_mergedTeams, m_followUps, m_mergedUnits);
+				AI_TRACE("raids: %d launched, %d gatherers killed, %d pulled back, %d raiders lost%s", m_raidsLaunched, m_raidKills, m_raidPullbacks, m_raidLosses, m_numRaiders ? " (a party is out)" : "");
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
@@ -313,6 +331,7 @@ void AIStrategy::update()
 	}
 
 	updateTactics();
+	updateRaid();
 
 	if (now >= m_nextPowers && skill().m_smartPowers)
 	{
@@ -1022,9 +1041,30 @@ Bool AIStrategy::mergeOn() const
 	return skill().m_useMerge && !m_ai->isFeatureOff(AIPlayer::AIF_MERGE);
 }
 
+/// Does the team have a member that is not on a task of its own?
+Bool AIStrategy::hasFreeMember( Team *team ) const
+{
+	for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+	{
+		if (it.cur() && !it.cur()->isEffectivelyDead() && !isDetached(it.cur()->getID()))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/// A team order does not reach the units that are on a task of their own (a raid ...): take them out of the group.
+void AIStrategy::removeDetachedFrom( AIGroupPtr group, Team *team ) const
+{
+	for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+	{
+		if (it.cur() && isDetached(it.cur()->getID()))
+			group->remove(it.cur());
+	}
+}
+
 void AIStrategy::orderTeamMove( Team *team, const Coord3D *pos )
 {
-	if (!team->hasAnyUnits())
+	if (!team->hasAnyUnits() || !hasFreeMember(team))
 		return;
 	if (AITeamRecord *r = findRecord(team->getID(), FALSE))
 		r->m_idMark = TheGameLogic->getObjectIDCounter();
@@ -1036,12 +1076,13 @@ void AIStrategy::orderTeamMove( Team *team, const Coord3D *pos )
 #else
 	team->getTeamAsAIGroup(group.Peek());
 #endif
+	removeDetachedFrom(group, team);
 	group->groupMoveToPosition(pos, FALSE, CMD_FROM_AI);
 }
 
 void AIStrategy::orderTeamAttackMove( Team *team, const Coord3D *pos )
 {
-	if (!team->hasAnyUnits())
+	if (!team->hasAnyUnits() || !hasFreeMember(team))
 		return;
 	if (AITeamRecord *r = findRecord(team->getID(), FALSE))
 		r->m_idMark = TheGameLogic->getObjectIDCounter();
@@ -1053,6 +1094,7 @@ void AIStrategy::orderTeamAttackMove( Team *team, const Coord3D *pos )
 #else
 	team->getTeamAsAIGroup(group.Peek());
 #endif
+	removeDetachedFrom(group, team);
 	group->groupAttackMoveToPosition(pos, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
 }
 
@@ -1220,7 +1262,7 @@ void AIStrategy::updateScout()
 		for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
 		{
 			Object *obj = it.cur();
-			if (obj == nullptr || obj->isEffectivelyDead() || obj->getAI() == nullptr || !isCombatUnit(obj))
+			if (obj == nullptr || obj->isEffectivelyDead() || obj->getAI() == nullptr || !isCombatUnit(obj) || isDetached(obj->getID()))
 				continue;
 			const Real speed = obj->getAI()->getCurLocomotorSpeed();
 			speedSum += speed;
@@ -1425,7 +1467,7 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 	for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
 	{
 		Object *obj = it.cur();
-		if (obj == nullptr || obj->isEffectivelyDead())
+		if (obj == nullptr || obj->isEffectivelyDead() || isDetached(obj->getID()))
 			continue;
 		const Bool idle = obj->getAI() && obj->getAI()->isIdle();
 		allCenter.x += obj->getPosition()->x;
@@ -2012,7 +2054,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 2;
+	XferVersion currentVersion = 3;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2059,6 +2101,20 @@ void AIStrategy::xfer( Xfer *xfer )
 	xfer->xferUnsignedInt(&m_nextLaunchCheck);
 	xfer->xferUnsignedInt(&m_waveBadSince);
 	xfer->xferUnsignedInt(&m_nextWaveCheck);
+	if (version >= 3)
+	{
+		xfer->xferInt(&m_numRaiders);
+		xfer->xferUser(m_raiders, sizeof(m_raiders));
+		xfer->xferObjectID(&m_raidTarget);
+		xfer->xferCoord3D(&m_raidAim);
+		xfer->xferInt(&m_raidPhase);
+		xfer->xferUnsignedInt(&m_raidStart);
+		xfer->xferUnsignedInt(&m_raidPhaseFrame);
+		xfer->xferUnsignedInt(&m_raidBadSince);
+		xfer->xferUnsignedInt(&m_raidCooldown);
+		xfer->xferUnsignedInt(&m_nextRaidCheck);
+		xfer->xferReal(&m_raidPartyValue);
+	}
 }
 
 void AIStrategy::loadPostProcess()

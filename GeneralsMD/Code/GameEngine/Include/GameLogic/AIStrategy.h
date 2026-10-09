@@ -299,6 +299,10 @@ public:
 	/// Unit level tactics, spread over the frames: kiting, spreading out.
 	void updateTactics();
 
+	// ---- batch 2 (AIRaid.cpp, ...) -------------------------------------------------------------
+	/// Is the unit on a task of its own (a raid ...) that the team logic must leave alone?
+	Bool isDetached( ObjectID id ) const;
+
 protected:
 	virtual void crc( Xfer *xfer ) override;
 	virtual void xfer( Xfer *xfer ) override;
@@ -324,6 +328,8 @@ private:
 	void checkWaveOnTheWay( const Coord3D *waveCenter );
 	void reinforceWave();
 	Bool mergeOn() const;
+	Bool hasFreeMember( Team *team ) const;
+	void removeDetachedFrom( AIGroupPtr group, Team *team ) const;
 	void orderTeamMove( Team *team, const Coord3D *pos );
 	void orderTeamAttackMove( Team *team, const Coord3D *pos );
 	void sendReinforcementsToThreat();
@@ -345,6 +351,20 @@ private:
 	Bool planKite( Object *unit, Object *victim, const AITeamRecord *team, Coord3D *to, UnsignedInt *until );
 	Bool enemyCanSee( const Object *victim ) const;
 	Bool kitingOn() const;
+
+	// economic raids (AIRaid.cpp)
+	enum { MAX_RAIDERS = 4 };
+	Bool raidOn() const;
+	void updateRaid();
+	void tryStartRaid();
+	void updateRaidOut();
+	void sendRaidersHome( const char *why );
+	void endRaid();
+	Bool raidTargetSafe( const Coord3D &pos, Real partyValue, Real *guard, const Coord3D *from ) const;
+	Bool findRaidTarget( const Coord3D &from, const Object *raider, Real partyValue, Real radius, Bool liveObjects, ObjectID except, ObjectID *id, Coord3D *pos ) const;
+	Int collectRaiders( Object **out, Int maxCount, const Object *forTarget );
+	void orderRaiders( Object *target, const Coord3D *aim );
+	void dropDeadRaiders();
 
 	// economy
 	void tryExpand();
@@ -418,6 +438,22 @@ private:
 	Int						m_threatSwitches;
 	Int						m_supportPicks;
 	Int						m_longRangePicks;
+	ObjectID			m_raiders[MAX_RAIDERS];		///< economic raids: the party that is out (or on its way home)
+	Int						m_numRaiders;
+	ObjectID			m_raidTarget;
+	Coord3D				m_raidAim;
+	Int						m_raidPhase;							///< 0: none, 1: out, 2: going home
+	UnsignedInt		m_raidStart;
+	UnsignedInt		m_raidPhaseFrame;
+	UnsignedInt		m_raidBadSince;
+	UnsignedInt		m_raidCooldown;
+	UnsignedInt		m_nextRaidCheck;
+	UnsignedInt		m_raidNoteFrame;
+	Real					m_raidPartyValue;
+	Int						m_raidsLaunched;					///< statistics for the trace
+	Int						m_raidKills;
+	Int						m_raidPullbacks;
+	Int						m_raidLosses;
 	Bool					m_trace;					///< print decisions (test bench: variant "trace")
 	UnsignedInt		m_nextStatus;
 };
