@@ -399,6 +399,20 @@ void splitWords(const Char *line, Int length, Bool splitEquals, std::vector<Asci
 	}
 }
 
+// "ObjectReskin <new> <existing>" defines an Object too: it is allowed in Object.ini and its new name
+// follows the rules of objects.
+Bool blockAllowedInFile(const char *blockType, const AsciiString &fileBlockType)
+{
+	if (strcmp(blockType, fileBlockType.str()) == 0)
+		return TRUE;
+	return fileBlockType == "Object" && strcmp(blockType, "ObjectReskin") == 0;
+}
+
+const char *definitionTypeOf(const char *blockType)
+{
+	return strcmp(blockType, "ObjectReskin") == 0 ? "Object" : blockType;
+}
+
 struct TemplateScan
 {
 	AsciiString m_name;
@@ -490,8 +504,9 @@ struct IniScanner
 		// a block of the INI reader: keyword and name, no '='
 		if (!hasEquals && words.size() >= 2 && isEngineBlockKeyword(words[0]))
 		{
-			if (strcmp(words[0].str(), m_blockType.str()) != 0)
+			if (!blockAllowedInFile(words[0].str(), m_blockType))
 				return fail(lineNo, "'%s' blocks are not allowed in this file (only %s)", words[0].str(), m_blockType.str());
+			const AsciiString defType(definitionTypeOf(words[0].str()));
 
 			const AsciiString &name = words[1];
 			if (!isValidDefinitionName(name))
@@ -502,14 +517,28 @@ struct IniScanner
 				return fail(lineNo, "%s name '%s' has nothing after the prefix", m_blockType.str(), name.str());
 			for (size_t i = 0; i < m_scan.m_defined.size(); ++i)
 			{
-				if (m_scan.m_defined[i].m_type == m_blockType && m_scan.m_defined[i].m_name == name)
+				if (m_scan.m_defined[i].m_type == defType && m_scan.m_defined[i].m_name == name)
 					return fail(lineNo, "%s '%s' is defined twice in the package", m_blockType.str(), name.str());
 			}
-			if (definitionExists(m_blockType, name))
+			if (definitionExists(defType, name))
 				return fail(lineNo, "%s '%s' already exists (a package may not redefine anything)", m_blockType.str(), name.str());
 
+			if (strcmp(words[0].str(), "ObjectReskin") == 0)
+			{
+				// the engine copies the existing object when it reads the line: it must be defined already,
+				// in the game data or earlier in this file
+				if (words.size() < 3)
+					return fail(lineNo, "ObjectReskin '%s' names no object to copy", name.str());
+				const AsciiString &parent = words[2];
+				Bool found = definitionExists(AsciiString("Object"), parent);
+				for (size_t i = 0; !found && i < m_scan.m_defined.size(); ++i)
+					found = m_scan.m_defined[i].m_type == "Object" && m_scan.m_defined[i].m_name == parent;
+				if (!found)
+					return fail(lineNo, "ObjectReskin '%s' copies '%s', which is not defined before it (neither in the game data nor earlier in the package)", name.str(), parent.str());
+			}
+
 			DefinedName d;
-			d.m_type = m_blockType;
+			d.m_type = defType;
 			d.m_name = name;
 			m_scan.m_defined.push_back(d);
 
@@ -1561,7 +1590,7 @@ Bool ArmyPackages::checkBlock(const char *blockType, const AsciiString &name, As
 	if (m_current == nullptr)
 		return TRUE;
 
-	if (strcmp(blockType, m_currentBlockType.str()) != 0)
+	if (!blockAllowedInFile(blockType, m_currentBlockType))
 	{
 		error.format("%s blocks are not allowed in %s (only %s)", blockType, m_currentFile.str(), m_currentBlockType.str());
 		return FALSE;
@@ -1576,7 +1605,7 @@ Bool ArmyPackages::checkBlock(const char *blockType, const AsciiString &name, As
 		error.format("%s '%s' does not start with %s", blockType, name.str(), prefix.str());
 		return FALSE;
 	}
-	if (definitionExists(blockType, name))
+	if (definitionExists(AsciiString(definitionTypeOf(blockType)), name))
 	{
 		error.format("%s '%s' already exists", blockType, name.str());
 		return FALSE;
