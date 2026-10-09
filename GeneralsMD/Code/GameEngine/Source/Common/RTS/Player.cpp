@@ -1924,6 +1924,13 @@ void Player::assignAiDamage(ObjectID target, Real damage, Int flags)
 }
 
 //=============================================================================
+void Player::aiObjectDamaged(Object *victim, ObjectID attacker, Real amount)
+{
+	if (m_ai)
+		m_ai->expertObjectDamaged(victim, attacker, amount);
+}
+
+//=============================================================================
 Bool Player::isAiFeatureOff(Int feature)
 {
 	return m_ai ? m_ai->isFeatureOff(feature) : false;

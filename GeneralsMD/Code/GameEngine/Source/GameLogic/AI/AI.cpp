@@ -287,6 +287,12 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "RaidCooldownSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidCooldownSeconds ) },
 			{ "RaidPullbackAdvantage",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidPullbackAdvantage ) },
 			{ "RaidGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidGuardShare ) },
+			{ "ProtectWorkers",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useProtect ) },
+			{ "ProtectLeashRadius",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectLeash ) },
+			{ "ProtectResponseRadius",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectResponseRadius ) },
+			{ "ProtectCalmSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectCalmSeconds ) },
+			{ "ProtectMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectMaxSeconds ) },
+			{ "ProtectResponders",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_protectResponders ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1247,6 +1253,12 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_raidCooldownSeconds = 30.0f;
 	ex.m_raidPullbackAdvantage = 0.9f;
 	ex.m_raidGuardShare = 0.3f;
+	ex.m_useProtect = true;
+	ex.m_protectLeash = 450.0f;
+	ex.m_protectResponseRadius = 500.0f;
+	ex.m_protectCalmSeconds = 6.0f;
+	ex.m_protectMaxSeconds = 75.0f;
+	ex.m_protectResponders = 4;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1319,6 +1331,12 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_raidCooldownSeconds );
 		xfer->xferReal( &sk.m_raidPullbackAdvantage );
 		xfer->xferReal( &sk.m_raidGuardShare );
+		xfer->xferBool( &sk.m_useProtect );
+		xfer->xferReal( &sk.m_protectLeash );
+		xfer->xferReal( &sk.m_protectResponseRadius );
+		xfer->xferReal( &sk.m_protectCalmSeconds );
+		xfer->xferReal( &sk.m_protectMaxSeconds );
+		xfer->xferInt( &sk.m_protectResponders );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

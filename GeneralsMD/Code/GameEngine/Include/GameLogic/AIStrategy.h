@@ -31,6 +31,7 @@
 #include "Common/Snapshot.h"
 #include "Common/Team.h"
 #include "GameLogic/AI.h"
+#include "GameLogic/AIProtect.h"
 
 class AIPlayer;
 class Object;
@@ -302,6 +303,8 @@ public:
 	// ---- batch 2 (AIRaid.cpp, ...) -------------------------------------------------------------
 	/// Is the unit on a task of its own (a raid ...) that the team logic must leave alone?
 	Bool isDetached( ObjectID id ) const;
+	/// One of the player's objects took damage (called by the body module; feeds the protect relation).
+	void onObjectDamaged( Object *victim, ObjectID attacker, Real amount ) { m_protect.onDamaged(victim, attacker, amount); }
 
 protected:
 	virtual void crc( Xfer *xfer ) override;
@@ -365,6 +368,10 @@ private:
 	Int collectRaiders( Object **out, Int maxCount, const Object *forTarget );
 	void orderRaiders( Object *target, const Coord3D *aim );
 	void dropDeadRaiders();
+
+	// defend the workers (AITactics.cpp, AIProtect.cpp)
+	Bool protectOn() const;
+	void updateProtection();
 
 	// economy
 	void tryExpand();
@@ -454,6 +461,9 @@ private:
 	Int						m_raidKills;
 	Int						m_raidPullbacks;
 	Int						m_raidLosses;
+	AIProtect			m_protect;							///< protect relation: armed units that answer an attack on the gatherers and workers
+	UnsignedInt		m_nextProtect;
+	Bool					m_protectActive;
 	Bool					m_trace;					///< print decisions (test bench: variant "trace")
 	UnsignedInt		m_nextStatus;
 };

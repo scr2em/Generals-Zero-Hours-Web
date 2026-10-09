@@ -187,6 +187,8 @@ public: // AIPlayer interface, may be overridden by AISkirmishPlayer.  jba.
 	/// Expert: damage already assigned to a target by units that picked it a moment ago (split fire), and a new assignment.
 	virtual Real expertAssignedDamage(ObjectID target) const {return 0.0f;}
 	virtual void expertAssignDamage(ObjectID target, Real damage, Int flags) {}
+	/// Expert: one of the player's objects has been damaged by 'attacker' (may be invalid) for 'amount' (protect relations).
+	virtual void expertObjectDamaged(Object *victim, ObjectID attacker, Real amount) {}
 	virtual Player *getAiEnemy() {return nullptr;}	///< Solo AI attacks based on scripting.  Only skirmish auto-acquires an enemy at this point.  jba.
 	virtual Bool checkBridges(Object *unit, Waypoint *way) {return false;}
 	virtual void repairStructure(ObjectID structure);
@@ -202,7 +204,7 @@ public:
 	virtual void setExpert(Bool expert) {m_expert = expert;}
 	Bool isExpert() const {return m_expert;}
 	/// Switches of single Expert features, for A/B tests on the test bench (player variant "off:focus+wave..."; AIFeature bits). Not saved: only the bench sets them.
-	enum AIFeature { AIF_FOCUS = 1, AIF_WAVE = 2, AIF_RETREAT = 4, AIF_SCOUT = 8, AIF_COUNTER = 16, AIF_SAVE = 32, AIF_STARVE = 64, AIF_SIEGE = 128, AIF_DEFEND = 256, AIF_SPLIT = 512, AIF_THREAT = 1024, AIF_KITE = 2048, AIF_FIGHT = 4096, AIF_MERGE = 8192, AIF_SPREAD = 16384, AIF_RAID = 32768 };
+	enum AIFeature { AIF_FOCUS = 1, AIF_WAVE = 2, AIF_RETREAT = 4, AIF_SCOUT = 8, AIF_COUNTER = 16, AIF_SAVE = 32, AIF_STARVE = 64, AIF_SIEGE = 128, AIF_DEFEND = 256, AIF_SPLIT = 512, AIF_THREAT = 1024, AIF_KITE = 2048, AIF_FIGHT = 4096, AIF_MERGE = 8192, AIF_SPREAD = 16384, AIF_RAID = 32768, AIF_PROTECT = 65536 };
 	/// What a target pick of the Expert target selection was like (bits of the 'flags' of expertAssignDamage; for the trace statistics).
 	enum { PICK_SPLIT = 1, PICK_THREAT = 2, PICK_SUPPORT = 4, PICK_LONGRANGE = 8 };
 	Bool isFeatureOff(Int f) const {return (m_featureOff & f) != 0;}

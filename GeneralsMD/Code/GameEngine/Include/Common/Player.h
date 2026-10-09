@@ -455,6 +455,7 @@ public:
 	Bool isAiFeatureOff(Int feature);	///< test bench switch of an Expert feature
 	Real getAiAssignedDamage(ObjectID target);			///< Expert: damage other units already aim at 'target' (split fire)
 	void assignAiDamage(ObjectID target, Real damage, Int flags);	///< Expert: note damage a unit is about to deal to 'target'
+	void aiObjectDamaged(Object *victim, ObjectID attacker, Real amount);	///< Expert: tell the computer player that one of its objects took damage (protect relations)
 
 	/// Expert: the best objective for an attack by a group at 'from' (see AIPlayer::chooseAttackObjective).
 	Bool getAiAttackObjective(const Coord3D *from, Real power, Coord3D *objective);

@@ -46,6 +46,7 @@
 #include "GameClient/ParticleSys.h"
 #include "GameLogic/AI.h"
 #include "GameLogic/AIPathfind.h"
+#include "GameLogic/AIProtect.h"
 #include "GameLogic/Armor.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
@@ -609,6 +610,10 @@ void ActiveBody::attemptDamage( DamageInfo *damageInfo )
 				obj->getControllingPlayer()->setAttackedBy(srcPlayer->getPlayerIndex());
 			}
 		}
+
+		// Computer players that guard this object (protect relations) hear about the hit.
+		if( damageInfo->in.m_damageType != DAMAGE_HEALING && damageInfo->out.m_actualDamageClipped > 0.0f )
+			AIProtectNotifyDamage( obj, damageInfo->in.m_sourceID, damageInfo->out.m_actualDamageClipped );
 
 		// if our health has gone down then do run the damage module callback
 		if( m_currentHealth < m_prevHealth )

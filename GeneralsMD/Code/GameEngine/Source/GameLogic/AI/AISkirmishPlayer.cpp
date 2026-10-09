@@ -496,6 +496,12 @@ void AISkirmishPlayer::expertAssignDamage(ObjectID target, Real damage, Int flag
 		m_strategy->assignDamage(target, damage, flags);
 }
 
+void AISkirmishPlayer::expertObjectDamaged(Object *victim, ObjectID attacker, Real amount)
+{
+	if (m_strategy)
+		m_strategy->onObjectDamaged(victim, attacker, amount);
+}
+
 Int AISkirmishPlayer::extraGatherers() const
 {
 	return m_strategy ? m_strategy->extraGatherers() : 0;

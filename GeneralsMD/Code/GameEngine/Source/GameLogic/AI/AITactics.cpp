@@ -608,3 +608,102 @@ Bool AIStrategy::planSpread( Object *unit, Object *victim, Coord3D *to, Unsigned
 	}
 	return FALSE;
 }
+
+//-------------------------------------------------------------------------------------------------
+// defend the workers
+//
+// The gatherers and workers of the player are the protected objects of a protect relation (AIProtect.cpp); the
+// armed units of the field teams that are at home (not on a wave, not retreating) are its protectors.  When an
+// enemy damages a gatherer or a worker, the nearest suitable protectors go for the attacker and return to where they
+// stood afterwards.  The relation is refreshed every two seconds (units come and go); the answers are given by the
+// protect module, once per frame.
+//-------------------------------------------------------------------------------------------------
+Bool AIStrategy::protectOn() const
+{
+	return (skill().m_useProtect || m_ai->isFeatureForced(AIPlayer::AIF_PROTECT)) && !m_ai->isFeatureOff(AIPlayer::AIF_PROTECT);
+}
+
+void AIStrategy::updateProtection()
+{
+	m_protect.update();
+	if (!protectOn())
+	{
+		if (m_protectActive)
+		{
+			m_protect.release(1);
+			m_protectActive = FALSE;
+		}
+		return;
+	}
+	const UnsignedInt now = TheGameLogic->getFrame();
+	if (now < m_nextProtect)
+		return;
+	m_nextProtect = now + 2 * LOGICFRAMES_PER_SECOND;
+	const AISkillSettings &sk = skill();
+
+	// The protected: our gatherers and workers.
+	ObjectID protectedSet[AIProtect::MAX_PROTECTED];
+	Int numProtected = 0;
+	for (Player::PlayerTeamList::const_iterator it = m_player->getPlayerTeams()->begin(); it != m_player->getPlayerTeams()->end(); ++it)
+	{
+		for (DLINK_ITERATOR<Team> iter = (*it)->iterate_TeamInstanceList(); !iter.done(); iter.advance())
+		{
+			Team *team = iter.cur();
+			if (team == nullptr)
+				continue;
+			for (DLINK_ITERATOR<Object> oit = team->iterate_TeamMemberList(); !oit.done(); oit.advance())
+			{
+				Object *obj = oit.cur();
+				if (obj == nullptr || obj->isEffectivelyDead() || obj->isKindOf(KINDOF_STRUCTURE) || numProtected >= AIProtect::MAX_PROTECTED)
+					continue;
+				if (obj->isKindOf(KINDOF_HARVESTER) || obj->isKindOf(KINDOF_DOZER))
+					protectedSet[numProtected++] = obj->getID();
+			}
+		}
+	}
+
+	// The protectors: armed mobile units of the teams that are at home.
+	ObjectID protectors[AIProtect::MAX_PROTECTORS];
+	Int numProtectors = 0;
+	for (Int i = 0; i < m_numTeams && numProtectors < AIProtect::MAX_PROTECTORS; ++i)
+	{
+		const AITeamRecord &rec = m_teams[i];
+		if (rec.m_mode == AITEAM_ATTACKING || rec.m_mode == AITEAM_RETREATING)
+			continue;
+		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
+		if (team == nullptr)
+			continue;
+		for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done() && numProtectors < AIProtect::MAX_PROTECTORS; it.advance())
+		{
+			Object *obj = it.cur();
+			if (obj == nullptr || obj->isEffectivelyDead() || obj->isContained() || obj->isDisabled() || obj->getAI() == nullptr || isDetached(obj->getID()))
+				continue;
+			const AICombatFigures *f = AICombatModel::figures(obj->getTemplate());
+			if (f == nullptr || !f->m_armed || f->m_structure || f->m_airborne || f->m_speed <= 0.0f)
+				continue;
+			BodyModuleInterface *body = obj->getBodyModule();
+			if (body && body->getMaxHealth() > 0.0f && body->getHealth() < 0.4f * body->getMaxHealth())
+				continue;
+			protectors[numProtectors++] = obj->getID();
+		}
+	}
+
+	if (numProtected == 0 || numProtectors == 0)
+	{
+		if (m_protectActive)
+		{
+			m_protect.release(1);
+			m_protectActive = FALSE;
+		}
+		return;
+	}
+
+	AIProtectParams params;
+	params.m_leashRadius = sk.m_protectLeash;
+	params.m_responseRadius = sk.m_protectResponseRadius;
+	params.m_calmSeconds = sk.m_protectCalmSeconds;
+	params.m_maxSeconds = sk.m_protectMaxSeconds;
+	params.m_maxResponders = sk.m_protectResponders;
+	m_protect.assign(1, protectors, numProtectors, protectedSet, numProtected, params, nullptr);
+	m_protectActive = TRUE;
+}

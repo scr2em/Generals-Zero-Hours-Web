@@ -173,6 +173,14 @@ struct AISkillSettings
 	Real m_raidCooldownSeconds;///< Pause between two raids.
 	Real m_raidPullbackAdvantage;///< The party pulls back when the fight around it is weaker than this (ours/theirs).
 	Real m_raidGuardShare;		///< A target guarded by armed units worth more than this share of the party's value is left alone.
+
+	// ---- batch 2: defend the workers ----
+	Bool m_useProtect;				///< Armed units near the gatherers and workers answer an attack on them, then return.
+	Real m_protectLeash;			///< The responders do not follow the fight farther than this from where they stood.
+	Real m_protectResponseRadius;	///< Only units within this distance of the attacked object answer.
+	Real m_protectCalmSeconds;///< A response ends this long after the last hit when no enemy is near.
+	Real m_protectMaxSeconds;	///< Longest time a responder stays away.
+	Int  m_protectResponders;	///< Most units sent per alarm.
 };
 
 class AISideBuildList : public MemoryPoolObject

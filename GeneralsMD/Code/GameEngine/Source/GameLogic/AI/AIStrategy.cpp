@@ -151,6 +151,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_raidCooldown(0),
 	m_nextRaidCheck(0),
 	m_raidNoteFrame(0),
+	m_nextProtect(0),
+	m_protectActive(FALSE),
 	m_raidPartyValue(0.0f),
 	m_raidsLaunched(0),
 	m_raidKills(0),
@@ -196,7 +198,7 @@ void AIStrategy::newMap()
 		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
 		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE },
 		{ "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE }, { "spread", AIPlayer::AIF_SPREAD },
-		{ "raid", AIPlayer::AIF_RAID } };
+		{ "raid", AIPlayer::AIF_RAID }, { "protect", AIPlayer::AIF_PROTECT } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -225,6 +227,10 @@ void AIStrategy::newMap()
 	}
 	m_ai->setFeaturesOff(off);
 	m_ai->setFeaturesOn(on);
+	m_protect.reset();
+	m_protect.setTrace(m_trace, m_player->getPlayerIndex());
+	m_nextProtect = 0;
+	m_protectActive = FALSE;
 }
 
 // Decisions are printed when the test bench gives the player the variant "trace".
@@ -308,6 +314,7 @@ void AIStrategy::update()
 				AI_TRACE("spread out: spacing %.0f, %d idle units moved apart, %d steps between shots", m_spacing, m_spreadMoves, m_spreadSteps);
 				AI_TRACE("merge: %d new teams kept for the next wave, %d follow-up groups sent after the wave, %d reinforcements sent to the rally point", m_mergedTeams, m_followUps, m_mergedUnits);
 				AI_TRACE("raids: %d launched, %d gatherers killed, %d pulled back, %d raiders lost%s", m_raidsLaunched, m_raidKills, m_raidPullbacks, m_raidLosses, m_numRaiders ? " (a party is out)" : "");
+				AI_TRACE("protect: %d alarms, %d protectors sent, %d returned, %d away now", m_protect.numAlarms(), m_protect.numResponses(), m_protect.numReturns(), m_protect.numAway());
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
@@ -332,6 +339,7 @@ void AIStrategy::update()
 
 	updateTactics();
 	updateRaid();
+	updateProtection();
 
 	if (now >= m_nextPowers && skill().m_smartPowers)
 	{
@@ -2054,7 +2062,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 3;
+	XferVersion currentVersion = 4;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2114,6 +2122,14 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferUnsignedInt(&m_raidCooldown);
 		xfer->xferUnsignedInt(&m_nextRaidCheck);
 		xfer->xferReal(&m_raidPartyValue);
+	}
+	if (version >= 4)
+	{
+		xfer->xferUnsignedInt(&m_nextProtect);
+		xfer->xferBool(&m_protectActive);
+		m_protect.xfer(xfer);
+		if (xfer->getXferMode() == XFER_LOAD)
+			m_protect.setTrace(m_trace, m_player->getPlayerIndex());
 	}
 }
 
