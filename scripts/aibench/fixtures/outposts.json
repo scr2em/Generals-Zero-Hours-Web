@@ -1,0 +1,22 @@
+{
+ "description": "The headquarters puts an armed outpost (reach 220, lives 150 s, renewed every 140 s) 330 units out in the field, between the bases: a defence on the way of the waves.",
+ "edits": [
+  {
+   "file": "data/ini/weapon.ini",
+   "append": "\n; Bench overlay: an outpost gun (reaches 220).\nWeapon IronwoodOutpostGun\n  PrimaryDamage = 14.0\n  PrimaryDamageRadius = 0.0\n  AttackRange = 220.0\n  DamageType = ARMOR_PIERCING\n  DeathType = NORMAL\n  WeaponSpeed = 999999.0\n  FireFX = FX_StarterCannonShot\n  ClipSize = 0\n  ClipReloadTime = 0\n  DelayBetweenShots = 700\n  AntiAirborneVehicle = No\n  AntiGround = Yes\nEnd"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  Behavior = AutoDepositUpdate ModuleTag_Income",
+   "replace": "  Behavior = OCLUpdate ModuleTag_Outposts\n    OCL = OCL_IronwoodOutpost\n    MinDelay = 140000\n    MaxDelay = 140000\n  End\n  Behavior = AutoDepositUpdate ModuleTag_Income"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "append": "\n; Bench overlay: an outpost (armed structure) that the headquarters builds out in the field.\nObject IronwoodOutpost\n  Scale = 1.0\n  Side = Ironwood\n  EditorSorting = STRUCTURE\n  DisplayName = OBJECT:IronwoodPowerPlant\n  Draw = W3DModelDraw ModuleTag_Draw\n    OkToChangeModelColor = Yes\n    DefaultConditionState\n      Model = iw_power\n    End\n  End\n  KindOf = STRUCTURE IMMOBILE CAN_ATTACK SELECTABLE FS_BASE_DEFENSE\n  Body = StructureBody ModuleTag_Body\n    MaxHealth = 700.0\n    InitialHealth = 700.0\n  End\n  ArmorSet\n    Conditions = None\n    Armor = IronwoodStructureArmor\n    DamageFX = None\n  End\n  WeaponSet\n    Conditions = None\n    Weapon = PRIMARY IronwoodOutpostGun\n  End\n  Behavior = AIUpdateInterface ModuleTag_AI\n    Turret\n      TurretTurnRate = 180\n      TurretPitchRate = 60\n      ControlledWeaponSlots = PRIMARY\n      AllowsPitch = No\n    End\n    AutoAcquireEnemiesWhenIdle = Yes\n  End\n  Behavior = LifetimeUpdate ModuleTag_Life\n    MinLifetime = 150000\n    MaxLifetime = 150000\n  End\n  Behavior = DestroyDie ModuleTag_Destroy\n  End\n  Behavior = FXListDie ModuleTag_DeathFX\n    DeathFX = FX_StarterBuildingDie\n  End\n  VisionRange = 200.0\n  ShroudClearingRange = 260.0\n  RadarPriority = STRUCTURE\n  BuildCost = 600\n  Geometry = CYLINDER\n  GeometryMajorRadius = 14.0\n  GeometryMinorRadius = 14.0\n  GeometryHeight = 20.0\n  GeometryIsSmall = No\nEnd"
+  },
+  {
+   "file": "data/ini/objectcreationlist.ini",
+   "append": "\n; Bench overlay: the headquarters puts an outpost out in the field.\nObjectCreationList OCL_IronwoodOutpost\n  CreateObject\n    ObjectNames = IronwoodOutpost\n    Count = 1\n    Offset = X:330 Y:0 Z:0\n    Disposition = ON_GROUND_ALIGNED\n  End\nEnd"
+  }
+ ]
+}

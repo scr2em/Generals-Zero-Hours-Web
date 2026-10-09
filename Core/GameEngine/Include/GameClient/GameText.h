@@ -65,6 +65,8 @@ typedef std::vector<AsciiString> AsciiStringVec;
 	*/
 //===============================
 
+class File;
+
 class GameTextInterface : public SubsystemInterface
 {
 
@@ -85,6 +87,16 @@ class GameTextInterface : public SubsystemInterface
 		virtual AsciiStringVec& getStringsWithLabelPrefix(AsciiString label) = 0;
 
 		virtual void					initMapStringFile( const AsciiString& filename ) = 0;
+
+		// Army packages (docs/ARMY_PACKAGES.md): extra strings that stay for the whole run (unlike the map strings).
+		// Tables that do not support this answer FALSE.
+		/// Reads a .str file and adds its strings, all or nothing. Every label must start with "<tag>_", "<tag>:" or "SIDE:<tag>_"
+		/// (case-insensitive) and must not exist yet. On failure nothing is added and error says why.
+		virtual Bool					addExtraStrings( File *file, const Char *tag, AsciiString &error ) { error = "not supported"; return FALSE; }
+		/// Adds one string under a label that does not exist yet.
+		virtual Bool					addExtraString( const Char *label, const WideChar *text ) { return FALSE; }
+		/// TRUE when a string with that label exists (main table, map table or extra strings).
+		virtual Bool					doesStringExist( const Char *label ) { return FALSE; }
 
 #if __cplusplus < 201103L // TheSuperHackers @todo Remove function when abandoning VC6
 		inline UnicodeString FETCH_OR_SUBSTITUTE_FORMAT( const Char *label, const WideChar *substituteFormat, ... )

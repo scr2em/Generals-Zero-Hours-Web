@@ -36,6 +36,7 @@
 #include "Common/AudioSettings.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
+#include "GameClient/AssistUI.h"
 #include "Common/OptionPreferences.h"
 #include "Common/GameLOD.h"
 #include "Common/Recorder.h"
@@ -214,6 +215,12 @@ static Bool ignoreSelected = FALSE;
 WindowLayout *OptionsLayout = nullptr;
 
 static OptionPreferences *pref = nullptr;
+
+/// The preferences of the options screen that is open (null if none): the player assist options keep it in step with Options.ini.
+OptionPreferences *GetOptionsMenuPreferences()
+{
+	return pref;
+}
 
 static void setDefaults()
 {
@@ -947,6 +954,9 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	SignalUIInteraction(SHELL_SCRIPT_HOOK_OPTIONS_OPENED);
 
+	// the "Player assists" button (a layout may have one; if not, one is made below the keyboard shortcuts button)
+	AssistUI::setupOptionsButton( "OptionsMenu.wnd", "ButtonKeyboardOptions" );
+
 	comboBoxLANIPID				 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxIP" );
 	comboBoxLANIP					 = TheWindowManager->winGetWindowFromId( nullptr,  comboBoxLANIPID);
 	comboBoxOnlineIPID		 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxOnlineIP" );
@@ -1653,6 +1663,10 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			else if ( controlID == buttonKeyboardOptionsMenu )
 			{
 				TheShell->push( "Menus/KeyboardOptionsMenu.wnd" );
+			}
+			else if ( controlID == AssistUI::optionsButtonId( "OptionsMenu.wnd" ) )
+			{
+				AssistUI::openOptionsDialog();
 			}
 			else if(controlID == checkDrawAnchorID )
       {

@@ -174,6 +174,18 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "TAKE_SCREENSHOT_PNG",											GameMessage::MSG_META_TAKE_SCREENSHOT_PNG },
 	{ "ALL_CHEER",																GameMessage::MSG_META_ALL_CHEER },
 
+	// player assists (optional helpers)
+	{ "ASSIST_FORMATION_NONE",										GameMessage::MSG_META_ASSIST_FORM_NONE },
+	{ "ASSIST_FORMATION_LINE",										GameMessage::MSG_META_ASSIST_FORM_LINE },
+	{ "ASSIST_FORMATION_COLUMN",										GameMessage::MSG_META_ASSIST_FORM_COLUMN },
+	{ "ASSIST_FORMATION_WEDGE",										GameMessage::MSG_META_ASSIST_FORM_WEDGE },
+	{ "ASSIST_FORMATION_BOX",										GameMessage::MSG_META_ASSIST_FORM_BOX },
+	{ "ASSIST_FORMATION_LOOSE",										GameMessage::MSG_META_ASSIST_FORM_LOOSE },
+	{ "ASSIST_FORMATION_KEEP",										GameMessage::MSG_META_ASSIST_FORM_KEEP },
+	{ "ASSIST_PROTECT",										GameMessage::MSG_META_ASSIST_PROTECT },
+	{ "ASSIST_UNPROTECT",									GameMessage::MSG_META_ASSIST_UNPROTECT },
+	{ "ASSIST_FORMATION_CYCLE",										GameMessage::MSG_META_ASSIST_FORM_CYCLE },
+
 	{ "BEGIN_CAMERA_ROTATE_LEFT",									GameMessage::MSG_META_BEGIN_CAMERA_ROTATE_LEFT },
 	{ "END_CAMERA_ROTATE_LEFT",										GameMessage::MSG_META_END_CAMERA_ROTATE_LEFT },
 	{ "BEGIN_CAMERA_ROTATE_RIGHT",								GameMessage::MSG_META_BEGIN_CAMERA_ROTATE_RIGHT },
@@ -964,6 +976,39 @@ void MetaMap::generateMetaMap()
 			map->m_transition = DOWN;
 			map->m_modState = CTRL;
 			map->m_usableIn = COMMANDUSABLE_EVERYWHERE;
+		}
+	}
+
+
+	// Player assists: optional helpers.  The keys are code defaults, so a CommandMap.ini that does not know them keeps working.
+	{
+		struct AssistKey { GameMessage::Type msg; MappableKeyType key; MappableKeyModState mods; const wchar_t *name; const wchar_t *desc; };
+		static const AssistKey assistKeys[] =
+		{
+			{ GameMessage::MSG_META_ASSIST_FORM_NONE,   MK_0, CTRL_ALT, L"Formation: none",      L"Selected units move without a formation" },
+			{ GameMessage::MSG_META_ASSIST_FORM_LINE,   MK_1, CTRL_ALT, L"Formation: line",      L"Selected units form a line" },
+			{ GameMessage::MSG_META_ASSIST_FORM_COLUMN, MK_2, CTRL_ALT, L"Formation: column",    L"Selected units form a column" },
+			{ GameMessage::MSG_META_ASSIST_FORM_WEDGE,  MK_3, CTRL_ALT, L"Formation: wedge",     L"Selected units form a wedge" },
+			{ GameMessage::MSG_META_ASSIST_FORM_BOX,    MK_4, CTRL_ALT, L"Formation: box",       L"Selected units form a box" },
+			{ GameMessage::MSG_META_ASSIST_FORM_LOOSE,  MK_5, CTRL_ALT, L"Formation: loose",     L"Selected units spread out" },
+			{ GameMessage::MSG_META_ASSIST_FORM_KEEP,   MK_6, CTRL_ALT, L"Formation: keep shape",L"Selected units keep their current shape" },
+			{ GameMessage::MSG_META_ASSIST_FORM_CYCLE,  MK_F, ALT, L"Formation: next",      L"Pick the next formation for the selected units" },
+			{ GameMessage::MSG_META_ASSIST_PROTECT,     MK_P, ALT, L"Protect",              L"The selected units protect what you choose next" },
+			{ GameMessage::MSG_META_ASSIST_UNPROTECT,   MK_U, ALT, L"Stop protecting",      L"The selected units stop protecting" },
+		};
+		for (size_t i = 0; i < ARRAY_SIZE(assistKeys); ++i)
+		{
+			MetaMapRec *map = getMetaMapRec(assistKeys[i].msg);
+			if (map->m_key == MK_NONE)
+			{
+				map->m_key = assistKeys[i].key;
+				map->m_transition = DOWN;
+				map->m_modState = assistKeys[i].mods;
+				map->m_usableIn = COMMANDUSABLE_GAME;
+				map->m_category = CATEGORY_CONTROL;
+				map->m_description = assistKeys[i].desc;
+				map->m_displayName = assistKeys[i].name;
+			}
 		}
 	}
 

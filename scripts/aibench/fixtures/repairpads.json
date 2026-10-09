@@ -1,0 +1,35 @@
+{
+ "description": "The factory is a repair pad (RepairDockUpdate, KindOf REPAIR_PAD) and the power plant a clinic (HealContain, KindOf HEAL_PAD): damaged vehicles and infantry have somewhere to go. The infantry have a transport slot (needed to enter containers).",
+ "edits": [
+  {
+   "file": "data/ini/object.ini",
+   "find": "KindOf = STRUCTURE SELECTABLE IMMOBILE FS_WARFACTORY SCORE MP_COUNT_FOR_VICTORY CAN_SEE_THROUGH_STRUCTURE",
+   "replace": "KindOf = STRUCTURE SELECTABLE IMMOBILE FS_WARFACTORY SCORE MP_COUNT_FOR_VICTORY CAN_SEE_THROUGH_STRUCTURE REPAIR_PAD"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "    NaturalRallyPoint = X:85.0 Y:0.0 Z:0.0\n  End",
+   "replace": "    NaturalRallyPoint = X:85.0 Y:0.0 Z:0.0\n  End\n  Behavior = RepairDockUpdate ModuleTag_RepairBay\n    NumberApproachPositions = 3\n    TimeForFullHeal = 5000\n  End"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "KindOf = STRUCTURE SELECTABLE IMMOBILE FS_POWER SCORE MP_COUNT_FOR_VICTORY CAN_SEE_THROUGH_STRUCTURE",
+   "replace": "KindOf = STRUCTURE SELECTABLE IMMOBILE FS_POWER SCORE MP_COUNT_FOR_VICTORY CAN_SEE_THROUGH_STRUCTURE HEAL_PAD"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  CommandSet = IronwoodPowerCommandSet",
+   "replace": "  Behavior = HealContain ModuleTag_Clinic\n    ContainMax = 4\n    AllowInsideKindOf = INFANTRY\n    TimeForFullHeal = 6000\n  End\n  CommandSet = IronwoodPowerCommandSet"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  BuildCost = 150\n  BuildTime = 6.0",
+   "replace": "  TransportSlotCount = 1\n  BuildCost = 150\n  BuildTime = 6.0"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  BuildCost = 250\n  BuildTime = 8.0",
+   "replace": "  TransportSlotCount = 1\n  BuildCost = 250\n  BuildTime = 8.0"
+  }
+ ]
+}

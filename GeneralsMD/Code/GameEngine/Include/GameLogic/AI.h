@@ -119,6 +119,121 @@ public:
 };
 EMPTY_DTOR(AISideInfo)
 
+/**
+ * How the Expert computer player plays.  Expert is the skirmish level above Hard: it uses exactly the
+ * economy, handicaps and data of Hard, but its strategic layer (AIStrategy) is switched on.  These
+ * numbers shape that layer by skill rather than by resource bonuses: how often it looks at the map, how
+ * long it takes to react, and how often it makes a plainly suboptimal choice.  The code supplies the
+ * defaults (TAiData::TAiData); an optional "ExpertSkill" block in AIData.ini can override any field, so
+ * the shipped game data keeps working unchanged.  Easy, Normal and Hard play as in the original game.
+ */
+struct AISkillSettings
+{
+	Real m_attentionSeconds;	///< Seconds between two strategic decisions (the AI's "actions per minute").
+	Real m_reactionSeconds;		///< A change in the situation (losing a fight, a new enemy composition) must persist this long before the AI acts on it.
+	Real m_scoutSeconds;			///< Seconds between two looks at the visible enemy objects (feeds the enemy model).
+	Real m_mistakeChance;			///< 0..1, chance that a strategic choice is replaced by the next-best one.
+	Real m_counterStrength;		///< How strongly team selection favours teams that counter the observed enemy army (0 = ignore the enemy).
+	Real m_engageAdvantage;		///< Estimated strength ratio (ours/theirs) above which a retreating team may return to the fight.
+	Real m_retreatAdvantage;	///< Estimated strength ratio below which a team pulls out of a fight.
+	Real m_waveHoldSeconds;		///< An army that has stopped growing waits this long, then goes with at least 60% of the wanted size.
+	Real m_minWaveValue;			///< Least army value (cost of the living units) that makes an attack wave, whatever has been seen of the enemy.
+	Real m_waveSizeScale;			///< Scales how big an attack wave must be compared to the enemy force it expects to meet.
+	Bool m_useRetreat;				///< Pull out of losing fights, regroup and come back.
+	Bool m_useFocusFire;			///< Concentrate fire on the most valuable target in range.
+	Bool m_useSpacing;				///< Keep long range and fragile units behind the front line.
+	Bool m_expandEconomy;			///< Build supply centers at further supply sources.
+	Bool m_smartPowers;				///< Fire ready superweapons at the best known target without waiting for a script.
+
+	// ---- tactics ----
+	Bool m_useSplitFire;			///< Do not send more fire at a target than it takes to kill it; the rest picks the next target.
+	Real m_splitWindowSeconds;///< How long the damage assigned to a target counts as on its way.
+	Bool m_useThreatTargets;	///< Pick targets by the damage they can do to our units nearby: threats, then support units, then artillery.
+	Bool m_useKiting;					///< Fast ranged units step back while their weapon reloads.
+	Real m_kiteMinReloadSeconds;	///< Shortest wait between two volleys that is worth a step back.
+	Real m_kiteRangeFactor;		///< A unit not slower than its enemy kites it when its range is this many times the enemy's ...
+	Real m_kiteSpeedFactor;		///< ... or, with a range not shorter than 0.95 times the enemy's, when it is this many times faster.
+	Real m_kiteGroupRadius;		///< A kiting unit stays within this distance of its team.
+	Real m_kiteMinThreat;			///< ... and only from an enemy that would destroy it in 1/this seconds (a single enemy unit's share of the kiter's health per second).
+	Bool m_useFightCheck;			///< Weigh the fight at the objective before a wave goes, and while it is out.
+	Real m_launchAdvantage;		///< Strength of the wave against what is known at its objective (ours/theirs) needed to launch.
+	Real m_pullbackAdvantage;	///< A wave on its way to a fight it is this much weaker than (ours/theirs) pulls back.
+	Real m_launchBlockSeconds;///< A wave held back by the fight check for this long goes anyway.
+	Bool m_useMerge;					///< New teams and reinforcements gather at the rally point and join the next wave, instead of going out one by one.
+	Bool m_useSpread;					///< Keep units apart against enemies with area weapons.
+	Real m_splashRadiusThreshold;	///< Enemy weapons with a blast at least this big make the army spread out.
+	Real m_maxSpacing;				///< Largest distance kept between units to avoid splash damage.
+
+	// ---- batch 2: economic raids ----
+	Bool m_useRaids;					///< A small fast group hits seen enemy gatherers and workers away from their defences.
+	Int  m_raidUnits;					///< Most units in a raiding party.
+	Real m_raidSpeedFactor;		///< A raider is at least this many times as fast as the average unit of the army.
+	Real m_raidStartSeconds;	///< No raids before this game time.
+	Real m_raidMaxSeconds;		///< A raid ends (the party comes home) after this long.
+	Real m_raidCooldownSeconds;///< Pause between two raids.
+	Real m_raidPullbackAdvantage;///< The party pulls back when the fight around it is weaker than this (ours/theirs).
+	Real m_raidGuardShare;		///< A target guarded by armed units worth more than this share of the party's value is left alone.
+
+	// ---- batch 2: defend the workers ----
+	Bool m_useProtect;				///< Armed units near the gatherers and workers answer an attack on them, then return.
+	Real m_protectLeash;			///< The responders do not follow the fight farther than this from where they stood.
+	Real m_protectResponseRadius;	///< Only units within this distance of the attacked object answer.
+	Real m_protectCalmSeconds;///< A response ends this long after the last hit when no enemy is near.
+	Real m_protectMaxSeconds;	///< Longest time a responder stays away.
+	Int  m_protectResponders;	///< Most units sent per alarm.
+
+	// ---- batch 2: repair and heal ----
+	Bool m_useRepair;					///< Damaged vehicles go to repair pads, damaged infantry to heal pads, and dozers repair far structures.
+	Real m_repairBelow;				///< A unit hurt below this share of its health (0..1) goes for repairs.
+	Real m_repairTripSeconds;	///< Longest trip to a pad, at the unit's speed.
+	Real m_repairDozerBelow;	///< A structure hurt below this share of its health is repaired by an idle dozer when it is out of the dozers' own reach.
+
+	// ---- batch 2: avoid static defences ----
+	Bool m_useRoute;					///< Waves go around the reach of seen defences, and units that out-range defences covering the objective destroy them first.
+	Real m_routeMargin;				///< Distance added to a defence's weapon range for the area a wave stays out of.
+	Real m_routeMaxDetour;		///< A way around is accepted when it is at most this many times the straight way.
+	Real m_breachRangeFactor;	///< A unit breaches a defence when its weapon range is at least this many times the defence's.
+	Real m_breachHoldSeconds;	///< The wave waits this long at the staging point for the breachers.
+
+	// ---- base defence priority ----
+	Bool m_useBaseDefence;		///< Base defence comes before every gather/hold/merge/raid state: the teams at home answer an enemy in the base.
+	Real m_baseDefenceMargin;	///< The base zone is the base radius plus this.
+	Real m_baseDefenceMinValue;///< Value of seen armed enemies in the zone (or damage to our objects there) that counts as a threat.
+	Real m_baseDefenceMinAdvantage;///< The teams at home go out to a threat that is not hitting anything of ours only when they are worth this share of it.
+	Real m_baseDefenceClearSeconds;///< The base is clear when no threat was seen for this long; the teams then go back to their role.
+
+	// ---- terrain-aware defence ----
+	Bool m_useGeo;						///< Ways into the base from the pathfinder: defences are placed at them, the army waits on the main one.
+	Bool m_useLayout;					///< The base layout (build list) turns to face the enemy start instead of one turn for every start position.
+	Real m_geoRing;						///< The perimeter where the ways in are looked for is the base radius plus this.
+	Real m_geoChokeWidth;			///< A place on the way in where the passable ground is at most this wide is a chokepoint.
+	Real m_geoLookOut;				///< Chokepoints are looked for this far out along the way in.
+	Real m_geoReach;					///< Defence structures are placed within the base radius plus this of the base center.
+	Real m_geoRallyOut;				///< The army waits this far outside the base radius on the main way in (open ground).
+	Real m_geoRallyOffset;		///< When terrain closes the perimeter: the army waits this far from the chokepoint of the main way in (positive: outside it, on the side of the enemy).
+
+	// ---- batch 2: garrisons ----
+	Bool m_useGarrison;				///< Infantry at home garrison the structures facing an attack; units bring down enemy structures that hold garrisons.
+	Real m_garrisonThreatValue;///< Value of armed enemies in the base that makes the infantry take cover.
+	Real m_garrisonHoldSeconds;///< The garrison stays in this long after the last enemy was seen in the base.
+	Bool m_garrisonClear;			///< Units bring down enemy structures that hold garrisons.
+
+	// ---- batch 2: unit abilities ----
+	Bool m_useAbilities;			///< Units with targeted special powers use them on good targets.
+	Real m_abilityRange;			///< Targets are looked for this far from the unit.
+	Real m_abilityMinValue;		///< Least value of a target (cost of the enemy, or of the hurt friend scaled by its damage) that a power is used on.
+
+	// ---- batch 2: airborne insertion ----
+	Bool m_useAirborne;				///< A transport aircraft drops a strike squad next to a soft target behind the enemy lines.
+	Real m_airMargin;					///< Distance added to the range of a seen anti-air weapon for the area the flight stays out of.
+	Real m_airGuardShare;			///< A drop zone is safe when the armed units seen near it are worth less than this share of the squad.
+	Real m_airMinSquadValue;	///< Least value of a squad worth the flight.
+	Real m_airMaxDetour;			///< A flight path around anti-air coverage is accepted when it is at most this many times the straight line.
+	Real m_airMaxSeconds;			///< Longest flight to the drop point.
+	Real m_airAssaultSeconds;	///< The squad is on its own for this long after the drop.
+	Real m_airCooldownSeconds;///< Pause between two missions.
+};
+
 class AISideBuildList : public MemoryPoolObject
 {
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(AISideBuildList, "AISideBuildList")
@@ -229,6 +344,8 @@ public:
 	Real	m_retaliateFriendsRadius; // If we have friends within this radius, get them to help retaliate. [8/25/2003]
 
 
+	AISkillSettings m_expertSkill;	///< behaviour of the Expert level, see AISkillSettings
+
 	AISideInfo *m_sideInfo;
 
 	AISideBuildList *m_sideBuildLists;
@@ -294,6 +411,7 @@ public:
 	static void parseStructure( INI* ini, void *instance, void *store, const void *userData );					///< Parse the image part of the INI file
 	static void parseSkillSet( INI* ini, void *instance, void *store, const void *userData );					///< Parse the image part of the INI file
 	static void parseScience( INI* ini, void *instance, void *store, const void *userData );					///< Parse the image part of the INI file
+	static void parseSkillSettings( INI* ini, void *instance, void *store, const void *userData );		///< Parse the "ExpertSkill" block
 
 	UnsignedInt getNextGroupID() { return ++m_nextGroupID; }
 

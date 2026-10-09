@@ -1,0 +1,60 @@
+diff --git a/include/gamespy/gscommon.h b/include/gamespy/gscommon.h
+--- a/include/gamespy/gscommon.h
++++ b/include/gamespy/gscommon.h
+@@ -20,7 +20,7 @@
+ 
+ // Support all Linux compiler defines into one expected define
+ // See https://github.com/cpredef/predef/blob/master/OperatingSystems.md
+-#if !defined(_LINUX) && (defined(__linux__) || defined(__linux) || defined(linux))
++#if !defined(_LINUX) && (defined(__linux__) || defined(__linux) || defined(linux) || defined(__EMSCRIPTEN__))
+ #define _LINUX
+ #endif
+ 
+diff --git a/include/gamespy/gsplatform.h b/include/gamespy/gsplatform.h
+--- a/include/gamespy/gsplatform.h
++++ b/include/gamespy/gsplatform.h
+@@ -34,7 +34,7 @@
+ #endif
+ #endif
+ 
+-#if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
++#if defined(__linux__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && defined(__MACH__))
+ #define _UNIX
+ #endif
+ 
+diff --git a/src/common/gsplatformsocket.c b/src/common/gsplatformsocket.c
+--- a/src/common/gsplatformsocket.c
++++ b/src/common/gsplatformsocket.c
+@@ -15,7 +15,7 @@
+ #include "xbox/gssocketxbox.c"
+ #elif defined(_WIN32)
+ #include "win32/gssocketwin32.c"
+-#elif defined(__linux__)
++#elif defined(__linux__) || defined(__EMSCRIPTEN__)
+ #include "linux/gssocketlinux.c"
+ #elif defined(__APPLE__) && defined(__MACH__)
+ //#include "macosx/gssocketmacosx.c"
+diff --git a/src/common/gsplatformthread.c b/src/common/gsplatformthread.c
+--- a/src/common/gsplatformthread.c
++++ b/src/common/gsplatformthread.c
+@@ -12,7 +12,7 @@
+ #include "win32/gsthreadwin32.c"
+ #elif defined(__APPLE__) && defined(__MACH__)
+ #include "macosx/gsthreadmacosx.c"
+-#elif defined(__linux__)
++#elif defined(__linux__) || defined(__EMSCRIPTEN__)
+ #include "linux/gsthreadlinux.c"
+ #elif defined(_NITRO)
+ #include "nitro/gsthreadnitro.c"
+diff --git a/src/common/gsplatformutil.c b/src/common/gsplatformutil.c
+--- a/src/common/gsplatformutil.c
++++ b/src/common/gsplatformutil.c
+@@ -10,7 +10,7 @@
+ //#include "xbox/gsutilxbox.c"
+ #elif defined(_WIN32)
+ #include "win32/gsutilwin32.c"
+-#elif defined(__linux__)
++#elif defined(__linux__) || defined(__EMSCRIPTEN__)
+ #include "linux/gsutillinux.c"
+ #elif defined(__APPLE__) && defined(__MACH__)
+ #include "macosx/gsutilmacosx.c"

@@ -78,6 +78,7 @@
 #include "GameClient/GameText.h"
 
 #include "GameLogic/AI.h"
+#include "GameLogic/PlayerAssist.h"
 #include "GameLogic/AIPathfind.h"
 #include "GameLogic/AISkirmishPlayer.h"
 #include "GameLogic/ExperienceTracker.h"
@@ -888,6 +889,9 @@ void Player::initFromDict(const Dict* d)
 		if (m_ai)
 		{
 			m_ai->setAIDifficulty(difficulty);
+			Bool expertExists = false;
+			Bool expert = d->getBool(NAMEKEY("skirmishExpert"), &expertExists);
+			m_ai->setExpert(expertExists && expert);
 		}
 
 		if (!found)
@@ -1899,6 +1903,44 @@ void Player::updateTeamStates()
 	{
 		(*it)->updateState();
 	}
+}
+
+//=============================================================================
+Bool Player::getAiAttackObjective(const Coord3D *from, Real power, Coord3D *objective)
+{
+	return m_ai ? m_ai->chooseAttackObjective(from, power, objective) : false;
+}
+
+//=============================================================================
+Real Player::getAiAssignedDamage(ObjectID target)
+{
+	return m_ai ? m_ai->expertAssignedDamage(target) : 0.0f;
+}
+
+//=============================================================================
+void Player::assignAiDamage(ObjectID target, Real damage, Int flags)
+{
+	if (m_ai)
+		m_ai->expertAssignDamage(target, damage, flags);
+}
+
+//=============================================================================
+void Player::aiObjectDamaged(Object *victim, ObjectID attacker, Real amount)
+{
+	if (m_ai)
+		m_ai->expertObjectDamaged(victim, attacker, amount);
+}
+
+//=============================================================================
+Bool Player::isAiFeatureOff(Int feature)
+{
+	return m_ai ? m_ai->isFeatureOff(feature) : false;
+}
+
+//=============================================================================
+Bool Player::isExpertAIPlayer()
+{
+	return m_ai ? m_ai->isExpert() : false;
 }
 
 //=============================================================================
@@ -3718,6 +3760,10 @@ void Player::processCreateTeamGameMessage(Int hotkeyNum, const GameMessage *msg)
 			m_squads[hotkeyNum]->addObject(obj);
 		}
 	}
+
+	// player assists: the units of a new hotkey group share one formation
+	if (ThePlayerAssist && ThePlayerAssist->allowed())
+		ThePlayerAssist->onTeamCreated(m_squads[hotkeyNum]->getLiveObjects());
 }
 
 //-------------------------------------------------------------------------------------------------

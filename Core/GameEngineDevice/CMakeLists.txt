@@ -211,6 +211,38 @@ if(NOT IS_VS6_BUILD)
     )
 endif()
 
+# The WebAssembly build has no Win32 devices (DirectInput, the Win32 file
+# systems and engine), no Miles audio and no Bink video. It keeps the window
+# message driven mouse and the message box based OS display, and swaps in the
+# browser devices. Rendering is the unchanged W3D.
+if(EMSCRIPTEN)
+    list(FILTER GAMEENGINEDEVICE_SRC EXCLUDE REGEX
+        "(Win32Device/Common/Win32(BIGFile|BIGFileSystem|GameEngine|LocalFile|LocalFileSystem)\\.(h|cpp)|Win32Device/GameClient/Win32DIKeyboard\\.(h|cpp)|MilesAudioDevice/|VideoDevice/Bink/)")
+
+    list(APPEND GAMEENGINEDEVICE_SRC
+        Include/WebDevice/Common/WebGameEngine.h
+        Include/WebDevice/Audio/WebAudioBackend.h
+        Include/WebDevice/Audio/WebAudioDecoder.h
+        Include/WebDevice/Audio/WebAudioManager.h
+        Include/WebDevice/Audio/WebAudioMix.h
+        Include/WebDevice/Common/WebNullAudioManager.h
+        Include/WebDevice/GameClient/WebKeyboard.h
+        Include/WebDevice/Network/WebNetShared.h
+        Include/WebDevice/Platform/WebPlatform.h
+        Source/WebDevice/Audio/WebAudioBackend.cpp
+        Source/WebDevice/Audio/WebAudioDecoder.cpp
+        Source/WebDevice/Audio/WebAudioManager.cpp
+        Source/WebDevice/Common/WebGameEngine.cpp
+        Source/WebDevice/Common/WebNullAudioManager.cpp
+        Source/WebDevice/GameClient/WebKeyboard.cpp
+        Source/WebDevice/Network/WebNet.cpp
+        Source/WebDevice/Platform/WebKeyTable.cpp
+        Source/WebDevice/Platform/WebPlatform.cpp
+        Source/WebDevice/Platform/WebStorage.cpp
+        Source/WebDevice/Platform/WebWin32Shim.cpp
+    )
+endif()
+
 add_library(corei_gameenginedevice_private INTERFACE)
 add_library(corei_gameenginedevice_public INTERFACE)
 
@@ -225,6 +257,15 @@ target_link_libraries(corei_gameenginedevice_private INTERFACE
     corei_main
     stb
 )
+
+if(EMSCRIPTEN)
+    # MP3 decoder of the Web Audio device
+    target_link_libraries(corei_gameenginedevice_private INTERFACE deps_minimp3)
+    # The audio device's own tests (web_audio_test and friends), not part of the game build.
+    add_subdirectory(Source/WebDevice/Audio EXCLUDE_FROM_ALL)
+    # The transport level test of the browser network (web_net_test), see GeneralsMD/Code/Main/webnet/README.md.
+    add_subdirectory(Source/WebDevice/Network EXCLUDE_FROM_ALL)
+endif()
 
 target_link_libraries(corei_gameenginedevice_public INTERFACE
     corei_gameengine_public
@@ -247,4 +288,20 @@ if(RTS_BUILD_OPTION_FFMPEG)
         target_link_libraries(corei_gameenginedevice_private INTERFACE ${FFMPEG_LIBRARIES})
         target_compile_definitions(corei_gameenginedevice_public INTERFACE RTS_HAS_FFMPEG)
     endif()
+endif()
+
+# The web build plays the Bink videos with a minimal FFmpeg built by Dependencies/FFmpegWeb. The
+# reused FFmpegFile reads the container through the engine's File API; WebVideoPlayer adds the
+# playback clock and sends the sound of the videos to the Web Audio device.
+if(EMSCRIPTEN AND TARGET deps_ffmpeg_web)
+    target_sources(corei_gameenginedevice_private INTERFACE
+        Include/VideoDevice/FFmpeg/FFmpegFile.h
+        Include/VideoDevice/FFmpeg/FFmpegVideoPlayer.h
+        Include/WebDevice/Video/WebVideoPlayer.h
+        Source/VideoDevice/FFmpeg/FFmpegFile.cpp
+        Source/VideoDevice/FFmpeg/FFmpegVideoPlayer.cpp
+        Source/WebDevice/Video/WebVideoPlayer.cpp
+    )
+    target_link_libraries(corei_gameenginedevice_private INTERFACE deps_ffmpeg_web)
+    target_compile_definitions(corei_gameenginedevice_public INTERFACE RTS_HAS_FFMPEG)
 endif()

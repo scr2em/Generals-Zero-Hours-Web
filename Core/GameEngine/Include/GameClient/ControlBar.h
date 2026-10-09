@@ -828,8 +828,10 @@ protected:
 	/// show rally point at world location, a nullptr location will hide any visible rally point marker
 	void showRallyPoint( const Coord3D *loc );
 
-	/// post process step, after all commands and command sets are loaded
+public:
+	/// post process step, after all commands and command sets are loaded (public: army packages add commands after the init)
 	void postProcessCommands();
+protected:
 
 	// the following methods are for resetting data for various contexts
 	void resetCommonCommandData();	/// reset shared command data

@@ -45,12 +45,20 @@
 #include "W3DDevice/GameClient/W3DGameWindowManager.h"
 #include "W3DDevice/GameClient/W3DGameFont.h"
 #include "W3DDevice/GameClient/W3DDisplayStringManager.h"
+#ifdef __EMSCRIPTEN__
+#include "GameClient/VideoPlayer.h"
+#ifdef RTS_HAS_FFMPEG
+#include "WebDevice/Video/WebVideoPlayer.h"
+#endif
+#include "WebDevice/GameClient/WebKeyboard.h"
+#else
 #include "VideoDevice/Bink/BinkVideoPlayer.h"
 #ifdef RTS_HAS_FFMPEG
 #include "VideoDevice/FFmpeg/FFmpegVideoPlayer.h"
 #endif
 #include "Win32Device/GameClient/Win32DIKeyboard.h"
 #include "Win32Device/GameClient/Win32DIMouse.h"
+#endif
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "W3DDevice/GameClient/W3DMouse.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
@@ -111,7 +119,14 @@ protected:
 
   /// Manager for display strings
 	virtual DisplayStringManager *createDisplayStringManager() override { return NEW W3DDisplayStringManager; }
+#if defined(__EMSCRIPTEN__)
 #ifdef RTS_HAS_FFMPEG
+	// The Bink videos play through the FFmpeg of Dependencies/FFmpegWeb.
+	virtual VideoPlayerInterface *createVideoPlayer() override { return NEW WebVideoPlayer; }
+#else
+	virtual VideoPlayerInterface *createVideoPlayer() override { return NEW NullVideoPlayer; }
+#endif
+#elif defined(RTS_HAS_FFMPEG)
 	virtual VideoPlayerInterface *createVideoPlayer() { return NEW FFmpegVideoPlayer; }
 #else
 	virtual VideoPlayerInterface *createVideoPlayer() override { return NEW BinkVideoPlayer; }
@@ -126,7 +141,11 @@ protected:
 
 };
 
+#ifdef __EMSCRIPTEN__
+inline Keyboard *W3DGameClient::createKeyboard() { return NEW WebKeyboard; }
+#else
 inline Keyboard *W3DGameClient::createKeyboard() { return NEW DirectInputKeyboard; }
+#endif
 inline Mouse *W3DGameClient::createMouse()
 {
 	//return new DirectInputMouse;

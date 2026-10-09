@@ -51,6 +51,7 @@
 
 #include "GameClient/Anim2D.h"
 #include "GameClient/ControlBar.h"
+#include "GameClient/AssistUI.h"
 #include "GameClient/DisplayStringManager.h"
 #include "GameClient/Diplomacy.h"
 #include "GameClient/Eva.h"
@@ -1860,6 +1861,9 @@ void InGameUI::update()
 	//USE_PERF_TIMER(InGameUI_update)
 	Int i;
 
+	// player assist panels
+	AssistUI::update();
+
 	/// @todo make sure this code gets called even when the UI is not being drawn
 	if ( m_videoStream && m_videoBuffer )
 	{
@@ -2173,6 +2177,7 @@ void InGameUI::reset()
 {
 	m_isQuitMenuVisible = FALSE;
 	m_inputEnabled = true;
+	AssistUI::reset();
 	// reset the command bar
 	TheControlBar->reset();
 

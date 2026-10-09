@@ -29,6 +29,7 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include "Common/AIMatch.h"
 #include "Common/AudioAffect.h"
 #include "Common/AudioHandleSpecialValues.h"
 #include "Common/BuildAssistant.h"
@@ -36,6 +37,7 @@
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
+#include "Common/ArmyPackages.h"
 #include "Common/GameLOD.h"
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
@@ -84,6 +86,7 @@
 #include "GameLogic/CrateSystem.h"
 #include "GameLogic/FPUControl.h"
 #include "GameLogic/GameLogic.h"
+#include "GameLogic/PlayerAssist.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/Module/AIUpdate.h"
@@ -130,6 +133,10 @@ FILE *g_UT_commaLog=nullptr;
 #define BRUTAL_TIMING_HACK
 #include "../../GameEngineDevice/Include/W3DDevice/GameClient/Module/W3DModelDraw.h"
 extern void externalAddTree(Coord3D location, Real scale, Real angle, AsciiString name);
+#endif
+
+#ifdef __EMSCRIPTEN__
+extern "C" void WebPlatform_WaitFrame(void);	// WebDevice/Platform/WebPlatform.h
 #endif
 
 
@@ -432,6 +439,8 @@ void GameLogic::reset()
 	ThePartitionManager->reset();
 	TheTerrainLogic->reset();
 	TheAI->reset();
+	if (ThePlayerAssist)
+		ThePlayerAssist->reset();
 	TheScriptEngine->reset();
 
 	m_CRC = 0;
@@ -708,6 +717,7 @@ static void populateRandomSideAndColor( GameInfo *game )
 #define MORE_RANDOM
 #ifdef MORE_RANDOM
 	std::vector<Int> startSlots;
+	std::vector<Int> startSlotsAI;	// the same without the factions the computer may not play (see ArmyPackages)
 	for (i = 0; i < ThePlayerTemplateStore->getPlayerTemplateCount(); ++i)
 	{
 		const PlayerTemplate* ptTest = ThePlayerTemplateStore->getNthPlayerTemplate(i);
@@ -730,6 +740,10 @@ static void populateRandomSideAndColor( GameInfo *game )
 			continue;
 
 		startSlots.push_back(i);
+
+		// factions of army packages that the computer may not play
+		if (!TheArmyPackages || TheArmyPackages->canBePlayedByAI(ptTest))
+			startSlotsAI.push_back(i);
 	}
 #endif
 
@@ -742,6 +756,14 @@ static void populateRandomSideAndColor( GameInfo *game )
 
 		// clean up random factions
 		Int playerTemplateIdx = slot->getPlayerTemplate();
+
+		// a computer player never gets a faction that its army package does not offer to the computer
+		if (TheArmyPackages && slot->isAI() && playerTemplateIdx >= 0 && playerTemplateIdx < ThePlayerTemplateStore->getPlayerTemplateCount()
+			&& !TheArmyPackages->canBePlayedByAI(ThePlayerTemplateStore->getNthPlayerTemplate(playerTemplateIdx)))
+		{
+			slot->setPlayerTemplate(PLAYERTEMPLATE_RANDOM);
+			playerTemplateIdx = PLAYERTEMPLATE_RANDOM;
+		}
 		DEBUG_LOG(("Player %d has playerTemplate index %d", i, playerTemplateIdx));
 		while (playerTemplateIdx != PLAYERTEMPLATE_OBSERVER && (playerTemplateIdx < 0 || playerTemplateIdx >= ThePlayerTemplateStore->getPlayerTemplateCount()))
 		{
@@ -755,8 +777,9 @@ static void populateRandomSideAndColor( GameInfo *game )
 			{
 				GameLogicRandomValue(0, 1);	// ignore result
 			}
-			Int idxIdx = GameLogicRandomValue(0, 1000) % startSlots.size();
-			playerTemplateIdx = startSlots[idxIdx];
+			const std::vector<Int> &candidates = (slot->isAI() && !startSlotsAI.empty()) ? startSlotsAI : startSlots;
+			Int idxIdx = GameLogicRandomValue(0, 1000) % candidates.size();
+			playerTemplateIdx = candidates[idxIdx];
 #else
 			playerTemplateIdx = GameLogicRandomValue(0, ThePlayerTemplateStore->getPlayerTemplateCount()-1);
 #endif
@@ -1268,6 +1291,10 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
       // ??? Apparently this is legit? Oh well, use defaults
       m_superweaponRestriction = 0;
     }
+
+    // player assists are allowed when the game settings say so (replays carry the setting in their header)
+    if ( ThePlayerAssist )
+      ThePlayerAssist->startMatch( TheGameInfo && TheGameInfo->getPlayerAssistsAllowed() );
   }
 
 	checkForDuplicateColors( TheGameInfo );
@@ -1314,7 +1341,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	//****************************//
 
 	// Get the m_loadScreen for this kind of game
-	if(!m_loadScreen && !(TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK))
+	if(!m_loadScreen && !(TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK) && !AIMatch::isActive())
 	{
 		m_loadScreen = getLoadScreen( loadingSaveGame );
 		if(m_loadScreen)
@@ -1370,6 +1397,10 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		{
 			// Saves off any player, and resets the sides to 0 players so we can add the skirmish players.
 			TheSidesList->prepareForMP_or_Skirmish();
+
+			// The computer-playable factions of army packages have no skirmish side in the map: add theirs.
+			if (TheArmyPackages != nullptr)
+				TheArmyPackages->prepareSkirmishSides(TheSidesList);
 		}
 
 		//DEBUG_LOG(("Starting LAN game with %d players", game->getNumPlayers()));
@@ -1486,6 +1517,8 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 					case SLOT_EASY_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_EASY); break;
 					case SLOT_MED_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_NORMAL); break;
 					case SLOT_BRUTAL_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_HARD); break;
+					// Expert: everything of Hard (economy, handicaps, data), plus the strategic AI.
+					case SLOT_EXPERT_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_HARD); d.setBool(NAMEKEY("skirmishExpert"), true); break;
 					default: break;	 // no setting.
 				}
 			}
@@ -2237,6 +2270,12 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 				TheDisplay->draw();
 				setFPMode();
 				TheFramePacer->update();
+#ifdef __EMSCRIPTEN__
+				// The fade counts frames. The browser shows one frame per display frame, so pace
+				// the loop to the fps limit, as the frame pacer does on Windows.
+				while (!TheFramePacer->isFrameDue())
+					WebPlatform_WaitFrame();
+#endif
 			}
 
 		}
@@ -3770,7 +3809,8 @@ void GameLogic::update()
 		// During replay simulation, we bypass TheMessageStream and instead put the CRC message
 		// directly into TheCommandList because we don't update TheMessageStream during simulation.
 		GameMessageList *messageList = TheMessageStream;
-		if (TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK)
+		// The AI test bench does not pump TheMessageStream either.
+		if ((TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK) || AIMatch::isActive())
 			messageList = TheCommandList;
 		messageList->appendMessage(msg);
 
@@ -3883,6 +3923,10 @@ void GameLogic::update()
 	{
 		TheAI->UPDATE();
 	}
+
+	// player assists (protect links, stances ...); they do nothing unless the match allows them
+	if (ThePlayerAssist)
+		ThePlayerAssist->logicUpdate();
 
 	// production updates
 	{
@@ -4232,6 +4276,14 @@ UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 	marker = "MARKER:TheAI";
 	xferCRC->xferAsciiString(&marker);
 	xferCRC->xferSnapshot( TheAI );
+
+	// player assists: only part of the CRC when the match allows them
+	if (ThePlayerAssist && ThePlayerAssist->allowed())
+	{
+		marker = "MARKER:ThePlayerAssist";
+		xferCRC->xferAsciiString(&marker);
+		xferCRC->xferSnapshot( ThePlayerAssist );
+	}
 	if (isInGameLogicUpdate())
 	{
 		CRCGEN_LOG(("CRC after AI for frame %d is 0x%8.8X", m_frame, xferCRC->getCRC()));

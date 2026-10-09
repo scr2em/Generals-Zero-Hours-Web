@@ -161,6 +161,14 @@ if(WIN32)
     )
 endif()
 
+if(IS_WEB_BUILD)
+    # The registry goes through the Win32 registry API that WebCompat implements.
+    list(APPEND WWLIB_SRC
+        registry.cpp
+        registry.h
+    )
+endif()
+
 add_library(core_wwlib STATIC)
 set_target_properties(core_wwlib PROPERTIES OUTPUT_NAME wwlib)
 

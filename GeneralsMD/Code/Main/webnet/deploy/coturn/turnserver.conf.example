@@ -1,0 +1,47 @@
+# /etc/turnserver.conf for the Zero Hour web network server (coturn 4.5 or newer).
+# The signaling server (ZHNET_TURN_SECRET) hands every player a time-limited user name / password made from
+# static-auth-secret, so nothing is stored in coturn.
+
+listening-port=3478
+tls-listening-port=5349
+# external-ip=203.0.113.10                      # public address if the machine is behind NAT (1:1, e.g. cloud VMs)
+realm=play.example.com
+server-name=turn.example.com
+
+use-auth-secret
+static-auth-secret=change-me-same-as-ZHNET_TURN_SECRET
+fingerprint
+
+# TLS for turns: (the certificate of turn.example.com)
+cert=/etc/letsencrypt/live/turn.example.com/fullchain.pem
+pkey=/etc/letsencrypt/live/turn.example.com/privkey.pem
+no-tlsv1
+no-tlsv1_1
+
+# The relay ports; open this UDP range (and 3478 udp+tcp, 5349 tcp) in the firewall.
+min-port=49160
+max-port=49999
+
+# Players only relay to each other, never into your network. (If the machine has a private address behind a 1:1 NAT,
+# e.g. a cloud VM with 10.x.x.x and external-ip set, the players' relay addresses are inside that range: take
+# the matching denied-peer-ip line out, or add allowed-peer-ip=<that private address>.)
+no-multicast-peers
+no-cli
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.0.0.0-192.0.0.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=198.18.0.0-198.19.255.255
+
+# Abuse limits: one game needs about 100 kB/s per player.
+user-quota=12
+total-quota=1200
+max-bps=1500000
+stale-nonce=600
+
+log-file=/var/log/turnserver/turn.log
+simple-log

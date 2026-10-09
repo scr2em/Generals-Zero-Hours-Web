@@ -156,6 +156,10 @@ class GameTextManager : public GameTextInterface
 
 		virtual void					initMapStringFile( const AsciiString& filename ) override;
 
+		virtual Bool					addExtraStrings( File *file, const Char *tag, AsciiString &error ) override;
+		virtual Bool					addExtraString( const Char *label, const WideChar *text ) override;
+		virtual Bool					doesStringExist( const Char *label ) override;
+
 	protected:
 
 		Int							m_textCount;
@@ -180,6 +184,12 @@ class GameTextManager : public GameTextInterface
 		StringInfo			*m_mapStringInfo;
 		StringLookUp		*m_mapStringLUT;
 		Int							m_mapTextCount;
+
+		// strings added by army packages; they stay for the whole run (see addExtraStrings)
+		std::vector<StringInfo>		m_extraInfo;
+		StringLookUp		*m_extraLUT;
+		void						rebuildExtraLUT();
+		StringInfo			*findExtra( const Char *label );
 
 		/// m_asciiStringVec will be altered every time that getStringsWithLabelPrefix is called,
 		/// so don't simply store a pointer to it.
@@ -258,6 +268,7 @@ GameTextManager::GameTextManager()
 #endif
 	m_mapStringInfo(nullptr),
 	m_mapStringLUT(nullptr),
+	m_extraLUT(nullptr),
 	m_failed(L"***FATAL*** String Manager failed to initialize properly")
 {
 	for(Int i=0; i < MAX_UITEXT_LENGTH; i++)
@@ -380,6 +391,10 @@ void GameTextManager::deinit()
 
 	delete [] m_stringLUT;
 	m_stringLUT = nullptr;
+
+	delete [] m_extraLUT;
+	m_extraLUT = nullptr;
+	m_extraInfo.clear();
 
 	m_textCount = 0;
 
@@ -1239,6 +1254,207 @@ quit:
 }
 
 //============================================================================
+// Strings of army packages. They are kept in a separate table that is searched after
+// the main and the map tables, and that survives reset().
+//============================================================================
+
+void GameTextManager::rebuildExtraLUT()
+{
+	delete [] m_extraLUT;
+	m_extraLUT = nullptr;
+	if ( m_extraInfo.empty() )
+	{
+		return;
+	}
+
+	m_extraLUT = NEW StringLookUp[m_extraInfo.size()];
+	for ( size_t i = 0; i < m_extraInfo.size(); i++ )
+	{
+		m_extraLUT[i].info = &m_extraInfo[i];
+		m_extraLUT[i].label = &m_extraInfo[i].label;
+	}
+	qsort( m_extraLUT, m_extraInfo.size(), sizeof(StringLookUp), compareLUT );
+}
+
+StringInfo *GameTextManager::findExtra( const Char *label )
+{
+	if ( m_extraLUT == nullptr || m_extraInfo.empty() )
+	{
+		return nullptr;
+	}
+	AsciiString lb( label );
+	StringLookUp key;
+	key.info = nullptr;
+	key.label = &lb;
+	StringLookUp *hit = (StringLookUp *) bsearch( &key, (void*) m_extraLUT, m_extraInfo.size(), sizeof(StringLookUp), compareLUT );
+	return hit ? hit->info : nullptr;
+}
+
+Bool GameTextManager::doesStringExist( const Char *label )
+{
+	AsciiString lb( label );
+	StringLookUp key;
+	key.info = nullptr;
+	key.label = &lb;
+
+	if ( m_stringLUT && m_textCount && bsearch( &key, (void*) m_stringLUT, m_textCount, sizeof(StringLookUp), compareLUT ) )
+	{
+		return TRUE;
+	}
+	if ( m_mapStringLUT && m_mapTextCount && bsearch( &key, (void*) m_mapStringLUT, m_mapTextCount, sizeof(StringLookUp), compareLUT ) )
+	{
+		return TRUE;
+	}
+	return findExtra( label ) != nullptr;
+}
+
+Bool GameTextManager::addExtraString( const Char *label, const WideChar *text )
+{
+	if ( label == nullptr || *label == 0 || text == nullptr || doesStringExist( label ) )
+	{
+		return FALSE;
+	}
+
+	StringInfo info;
+	info.label = label;
+	info.text = text;
+	m_extraInfo.push_back( info );
+	rebuildExtraLUT();
+	return TRUE;
+}
+
+Bool GameTextManager::addExtraStrings( File *file, const Char *tag, AsciiString &error )
+{
+	error.clear();
+	if ( file == nullptr )
+	{
+		error = "cannot open the string file";
+		return FALSE;
+	}
+
+	// the three label prefixes a package may use
+	AsciiString prefixUnderscore, prefixColon, prefixSide;
+	prefixUnderscore.format( "%s_", tag );
+	prefixColon.format( "%s:", tag );
+	prefixSide.format( "SIDE:%s_", tag );
+
+	std::vector<StringInfo> parsed;
+	Bool ok = TRUE;
+
+	while( ok )
+	{
+		if( !readLine( m_buffer, MAX_UITEXT_LENGTH, file ))
+		{
+			break;
+		}
+
+		removeLeadingAndTrailing ( m_buffer );
+
+		if( ( *(unsigned short *)m_buffer == 0x2F2F) || !m_buffer[0])			//	0x2F2F is Hex for //
+			continue;
+
+		AsciiString label( m_buffer );
+		if ( label.startsWithNoCase( "\"" ) || label.compareNoCase( "END" ) == 0 )
+		{
+			error.format( "string file: unexpected '%s' where a label was expected", label.str() );
+			ok = FALSE;
+			break;
+		}
+		if ( !label.startsWithNoCase( prefixUnderscore ) && !label.startsWithNoCase( prefixColon ) && !label.startsWithNoCase( prefixSide ) )
+		{
+			error.format( "string label '%s' does not start with %s, %s or %s", label.str(), prefixUnderscore.str(), prefixColon.str(), prefixSide.str() );
+			ok = FALSE;
+			break;
+		}
+		if ( doesStringExist( label.str() ) )
+		{
+			error.format( "string label '%s' already exists", label.str() );
+			ok = FALSE;
+			break;
+		}
+		for ( size_t i = 0; i < parsed.size(); i++ )
+		{
+			if ( stricmp( parsed[i].label.str(), label.str() ) == 0 )
+			{
+				error.format( "string label '%s' is defined twice", label.str() );
+				ok = FALSE;
+				break;
+			}
+		}
+		if ( !ok )
+		{
+			break;
+		}
+
+		StringInfo info;
+		info.label = label;
+
+		Bool readString = FALSE;
+		while( ok )
+		{
+			if (!readLine ( m_buffer, sizeof(m_buffer)-1, file ))
+			{
+				error.format( "string file: unexpected end of file in '%s'", label.str() );
+				ok = FALSE;
+				break;
+			}
+
+			removeLeadingAndTrailing ( m_buffer );
+
+			if( m_buffer[0] == '"' )
+			{
+				Int len = strlen(m_buffer);
+				m_buffer[ len ] = '\n';
+				m_buffer[ len+1] = 0;
+				readToEndOfQuote( file, &m_buffer[1], m_buffer2, m_buffer3, MAX_UITEXT_LENGTH );
+
+				if ( readString )
+				{
+					error.format( "string label '%s' has more than one string", label.str() );
+					ok = FALSE;
+				}
+				else
+				{
+					translateCopy( m_tbuffer, m_buffer2 );
+					stripSpaces ( m_tbuffer );
+
+					UnicodeString text = UnicodeString(m_tbuffer);
+					if (TheLanguageFilter)
+						TheLanguageFilter->filterLine(text);
+
+					info.text = text;
+					info.speech = m_buffer3;
+					readString = TRUE;
+				}
+			}
+			else if ( stricmp ( m_buffer, "END" ) == 0)
+			{
+				break;
+			}
+		}
+
+		if ( ok )
+		{
+			parsed.push_back( info );
+		}
+	}
+
+	file->close();
+
+	if ( !ok )
+	{
+		return FALSE;
+	}
+
+	for ( size_t i = 0; i < parsed.size(); i++ )
+	{
+		m_extraInfo.push_back( parsed[i] );
+	}
+	rebuildExtraLUT();
+	return TRUE;
+}
+
+//============================================================================
 // *GameTextManager::fetch
 //============================================================================
 
@@ -1265,6 +1481,11 @@ UnicodeString GameTextManager::fetch( const Char *label, Bool *exists )
 	if ( lookUp == nullptr && m_mapStringLUT && m_mapTextCount )
 	{
 		lookUp = (StringLookUp *) bsearch( &key, (void*) m_mapStringLUT, m_mapTextCount, sizeof(StringLookUp), compareLUT );
+	}
+
+	if ( lookUp == nullptr && m_extraLUT && !m_extraInfo.empty() )
+	{
+		lookUp = (StringLookUp *) bsearch( &key, (void*) m_extraLUT, m_extraInfo.size(), sizeof(StringLookUp), compareLUT );
 	}
 
 	if( lookUp == nullptr )

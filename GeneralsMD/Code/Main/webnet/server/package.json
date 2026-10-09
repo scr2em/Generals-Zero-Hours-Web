@@ -1,0 +1,18 @@
+{
+  "name": "zh-webnet-server",
+  "version": "1.0.0",
+  "description": "Signaling and virtual LAN room server for the WebAssembly port of Command & Conquer Generals: Zero Hour",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "server.mjs",
+  "bin": { "zh-webnet-server": "server.mjs" },
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

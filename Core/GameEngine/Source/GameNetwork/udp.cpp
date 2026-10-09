@@ -34,6 +34,9 @@
 #include "Common/GameEngine.h"
 //#include "GameNetwork/NetworkInterface.h"
 #include "GameNetwork/udp.h"
+#ifdef __EMSCRIPTEN__
+#include "GameNetwork/WebNet.h"
+#endif
 
 
 //-------------------------------------------------------------------------
@@ -117,12 +120,23 @@ AsciiString GetWSAErrorString( Int error )
 UDP::UDP()
 {
   fd=0;
+#ifdef __EMSCRIPTEN__
+  myIP=0;
+  myPort=0;
+  m_lastError=0;
+#endif
 }
 
 UDP::~UDP()
 {
+#ifdef __EMSCRIPTEN__
+	// fd is a handle of the browser network (WebNet.h), not a socket.
+	if (fd > 0)
+		WebNet_Close(fd);
+#else
 	if (fd)
 		closesocket(fd);
+#endif
 }
 
 Int UDP::Bind(const char *Host,UnsignedShort port)
@@ -142,6 +156,30 @@ Int UDP::Bind(const char *Host,UnsignedShort port)
 
 // You must call bind, implicit binding is for sissies
 //   Well... you can get implicit binding if you pass 0 for either arg
+#ifdef __EMSCRIPTEN__
+// Browsers have no UDP: the "socket" is an endpoint in the virtual LAN of the room (WebNet.h, WebRTC data channels).
+Int UDP::Bind(UnsignedInt IP,UnsignedShort Port)
+{
+  if (fd > 0)
+  {
+    WebNet_Close(fd);
+    fd = 0;
+  }
+
+  unsigned short boundPort = 0;
+  const int handle = WebNet_Open(IP, Port, &boundPort);
+  if (handle <= 0)
+  {
+    m_lastError = -handle;    // the WSAE* codes are the errno values on this port
+    return GetStatus();
+  }
+
+  fd = handle;
+  myIP = (IP != 0) ? IP : WebNet_GetLocalIP();
+  myPort = boundPort;
+  return(OK);
+}
+#else
 Int UDP::Bind(UnsignedInt IP,UnsignedShort Port)
 {
   int retval;
@@ -154,7 +192,7 @@ Int UDP::Bind(UnsignedInt IP,UnsignedShort Port)
   addr.sin_port=Port;
   addr.sin_addr.s_addr=IP;
   fd=socket(AF_INET,SOCK_DGRAM,DEFAULT_PROTOCOL);
-  #ifdef _WIN32
+  #ifdef UDP_USE_WINSOCK
   if (fd==SOCKET_ERROR)
     fd=-1;
   #endif
@@ -163,7 +201,7 @@ Int UDP::Bind(UnsignedInt IP,UnsignedShort Port)
 
   retval=bind(fd,(struct sockaddr *)&addr,sizeof(addr));
 
-  #ifdef _WIN32
+  #ifdef UDP_USE_WINSOCK
   if (retval==SOCKET_ERROR)
 	{
     retval=-1;
@@ -190,6 +228,8 @@ Int UDP::Bind(UnsignedInt IP,UnsignedShort Port)
   return(OK);
 }
 
+#endif
+
 Int UDP::getLocalAddr(UnsignedInt &ip, UnsignedShort &port)
 {
   ip=myIP;
@@ -201,7 +241,7 @@ Int UDP::getLocalAddr(UnsignedInt &ip, UnsignedShort &port)
 // private function
 Int UDP::SetBlocking(Int block)
 {
-  #ifdef _WIN32
+  #ifdef UDP_USE_WINSOCK
    unsigned long flag=1;
    if (block)
      flag=0;
@@ -243,8 +283,19 @@ Int UDP::Write(const unsigned char *msg,UnsignedInt len,UnsignedInt IP,UnsignedS
   to.sin_family=AF_INET;
 
   ClearStatus();
+#ifdef __EMSCRIPTEN__
+  // The datagram goes to the page, which delivers it over WebRTC (broadcasts to every player of the room).
+  retval=WebNet_SendTo(fd,msg,len,IP,port);
+  if (retval<0)
+  {
+    m_lastError=-retval;
+    retval=-1;
+  }
+  (void)to;
+  return(retval);
+#else
   retval=sendto(fd,(const char *)msg,len,0,(struct sockaddr *)&to,sizeof(to));
-  #ifdef _WIN32
+  #ifdef UDP_USE_WINSOCK
   if (retval==SOCKET_ERROR)
 	{
     retval=-1;
@@ -257,17 +308,37 @@ Int UDP::Write(const unsigned char *msg,UnsignedInt len,UnsignedInt IP,UnsignedS
   #endif
 
   return(retval);
+#endif
 }
 
 Int UDP::Read(unsigned char *msg,UnsignedInt len,sockaddr_in *from)
 {
   Int retval;
+#ifdef __EMSCRIPTEN__
+  // 0 when nothing has arrived, as for a non-blocking socket.
+  unsigned ip=0;
+  unsigned short port=0;
+  retval=WebNet_RecvFrom(fd,msg,len,&ip,&port);
+  if (retval<0)
+  {
+    m_lastError=-retval;
+    return(-1);
+  }
+  if (retval>0 && from!=nullptr)
+  {
+    memset(from,0,sizeof(sockaddr_in));
+    from->sin_family=AF_INET;
+    from->sin_port=htons(port);
+    from->sin_addr.s_addr=htonl(ip);
+  }
+  return(retval);
+#else
   int    alen=sizeof(sockaddr_in);
 
   if (from!=nullptr)
   {
     retval=recvfrom(fd,(char *)msg,len,0,(struct sockaddr *)from,&alen);
-    #ifdef _WIN32
+    #ifdef UDP_USE_WINSOCK
     if (retval == SOCKET_ERROR)
 		{
 			if (WSAGetLastError() != WSAEWOULDBLOCK)
@@ -288,7 +359,7 @@ Int UDP::Read(unsigned char *msg,UnsignedInt len,sockaddr_in *from)
   else
   {
     retval=recvfrom(fd,(char *)msg,len,0,nullptr,nullptr);
-    #ifdef _WIN32
+    #ifdef UDP_USE_WINSOCK
     if (retval==SOCKET_ERROR)
 		{
 			if (WSAGetLastError() != WSAEWOULDBLOCK)
@@ -307,12 +378,13 @@ Int UDP::Read(unsigned char *msg,UnsignedInt len,sockaddr_in *from)
     #endif
   }
   return(retval);
+#endif
 }
 
 
 void UDP::ClearStatus()
 {
-  #ifndef _WIN32
+  #ifndef UDP_USE_WINSOCK
   errno=0;
   #endif
 
@@ -322,7 +394,7 @@ void UDP::ClearStatus()
 UDP::sockStat UDP::GetStatus()
 {
 	Int status = m_lastError;
- #ifdef _WIN32
+ #ifdef UDP_USE_WINSOCK
   //int status=WSAGetLastError();
   switch (status) {
     case NO_ERROR:
@@ -477,6 +549,9 @@ int UDP::Wait(Int sec,Int usec,fd_set &givenSet,fd_set &returnSet)
 
 Int UDP::SetInputBuffer(UnsignedInt bytes)
 {
+#ifdef __EMSCRIPTEN__
+   return(TRUE);    // the queues of the browser network have a fixed size
+#else
    int retval,arg=bytes;
 
    retval=setsockopt(fd,SOL_SOCKET,SO_RCVBUF,
@@ -485,12 +560,16 @@ Int UDP::SetInputBuffer(UnsignedInt bytes)
      return(TRUE);
    else
      return(FALSE);
+#endif
 }
 
 // Same note goes for the output buffer
 
 Int UDP::SetOutputBuffer(UnsignedInt bytes)
 {
+#ifdef __EMSCRIPTEN__
+   return(TRUE);
+#else
    int retval,arg=bytes;
 
    retval=setsockopt(fd,SOL_SOCKET,SO_SNDBUF,
@@ -499,31 +578,43 @@ Int UDP::SetOutputBuffer(UnsignedInt bytes)
      return(TRUE);
    else
      return(FALSE);
+#endif
 }
 
 // Get the system buffer sizes
 
 int UDP::GetInputBuffer()
 {
+#ifdef __EMSCRIPTEN__
+   return(0);
+#else
    int retval,arg=0,len=sizeof(int);
 
    retval=getsockopt(fd,SOL_SOCKET,SO_RCVBUF,
      (char *)&arg,&len);
    return(arg);
+#endif
 }
 
 
 int UDP::GetOutputBuffer()
 {
+#ifdef __EMSCRIPTEN__
+   return(0);
+#else
    int retval,arg=0,len=sizeof(int);
 
    retval=getsockopt(fd,SOL_SOCKET,SO_SNDBUF,
      (char *)&arg,&len);
    return(arg);
+#endif
 }
 
 Int UDP::AllowBroadcasts(Bool status)
 {
+#ifdef __EMSCRIPTEN__
+	return TRUE;    // a broadcast reaches every player of the room (WebNet.h)
+#else
 	int retval;
 	BOOL val = status;
 	retval = setsockopt(fd, SOL_SOCKET, SO_BROADCAST, (char *)&val, sizeof(BOOL));
@@ -531,4 +622,5 @@ Int UDP::AllowBroadcasts(Bool status)
 		return TRUE;
 	else
 		return FALSE;
+#endif
 }

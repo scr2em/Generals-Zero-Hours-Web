@@ -43,6 +43,7 @@
 #include "GameClient/Line2D.h"
 
 #include "GameLogic/AI.h"
+#include "GameLogic/PlayerAssist.h"
 #include "GameLogic/AIPathfind.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/Module/AIUpdate.h"
@@ -1603,11 +1604,18 @@ void AIGroup::groupMoveToPosition( const Coord3D *p_posIn, Bool addWaypoint, Com
 	Coord3D dest;
 	Bool tightenGroup = FALSE;
 
+	// Player assist: a formation the player picked (line, wedge ...) sets up the units' formation offsets for this move
+	Bool assistFormation = FALSE;
+	if (!addWaypoint && cmdSource == CMD_FROM_PLAYER && ThePlayerAssist)
+		assistFormation = ThePlayerAssist->prepareFormationMove( this, pos );
+
 	Bool isFormation = getMinMaxAndCenter( &min, &max, &center );
 	if (addWaypoint)
   {
     isFormation = false;
   }
+	if (assistFormation)
+		isFormation = true;
 
 
 	if (!addWaypoint && !isFormation) {
@@ -1619,7 +1627,7 @@ void AIGroup::groupMoveToPosition( const Coord3D *p_posIn, Bool addWaypoint, Com
 		recompute();
 
 	std::list<Object *>::iterator i;
-	if( !isFormation && cmdSource == CMD_FROM_PLAYER && TheGlobalData->m_groupMoveClickToGatherFactor > 0.0f )
+	if( !isFormation && !assistFormation && cmdSource == CMD_FROM_PLAYER && TheGlobalData->m_groupMoveClickToGatherFactor > 0.0f )
 	{
 		ScaleRect2D( &min, &max, TheGlobalData->m_groupMoveClickToGatherFactor );
 
@@ -2326,16 +2334,27 @@ void AIGroup::groupAttackPosition( const Coord3D *pos, Int maxShotsToFire, Comma
  */
 void AIGroup::groupAttackMoveToPosition( const Coord3D *pos, Int maxShotsToFire, CommandSourceType cmdSource )
 {
+	// Player assist: with a formation every unit goes to its own slot of the formation at the destination
+	const Bool assistFormation = cmdSource == CMD_FROM_PLAYER && ThePlayerAssist && ThePlayerAssist->prepareFormationMove( this, pos );
+
 	std::list<Object *>::iterator i;
 	for( i = m_memberList.begin(); i != m_memberList.end(); ++i )
 	{
 		AIUpdateInterface *ai = (*i)->getAIUpdateInterface();
 		if (ai)
 		{
+			Coord3D dest = *pos;
+			if (assistFormation && (*i)->getFormationID() != NO_FORMATION_ID)
+			{
+				Coord2D offset;
+				(*i)->getFormationOffset( &offset );
+				dest.x += offset.x;
+				dest.y += offset.y;
+			}
 			if ((*i)->isAbleToAttack())
-				ai->aiAttackMoveToPosition( pos, maxShotsToFire, cmdSource );
+				ai->aiAttackMoveToPosition( &dest, maxShotsToFire, cmdSource );
 			else
-				ai->aiMoveToPosition( pos, cmdSource );
+				ai->aiMoveToPosition( &dest, cmdSource );
 		}
 	}
 }

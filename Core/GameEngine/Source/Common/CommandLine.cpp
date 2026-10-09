@@ -27,6 +27,9 @@
 
 #include "Common/ArchiveFileSystem.h"
 #include "Common/CommandLine.h"
+#if RTS_ZEROHOUR
+#include "Common/AssistOptions.h"
+#endif
 #include "Common/CRCDebug.h"
 #include "Common/LocalFileSystem.h"
 #include "Common/version.h"
@@ -408,6 +411,23 @@ Int parseMapName(char *args[], int num)
 	return 1;
 }
 
+#if RTS_ZEROHOUR
+// Player assist tests: -assistTest "spec" creates units at the start of a match (see GameLogic/AssistTest.cpp),
+// -assistDebug prints what the assists decide.  Both are for the automated tests and do nothing unless given.
+Int parseAssistTest(char *args[], int num)
+{
+	if (num > 1)
+		TheAssistOptions.m_testSpec = args[1];
+	return 2;
+}
+
+Int parseAssistDebug(char *args[], int num)
+{
+	TheAssistOptions.m_debug = TRUE;
+	return 1;
+}
+#endif
+
 Int parseHeadless(char *args[], int num)
 {
 	TheWritableGlobalData->m_headless = TRUE;
@@ -419,6 +439,21 @@ Int parseHeadless(char *args[], int num)
 	// including during shutdown after TheGlobalData has been destroyed.
 	extern bool DX8Wrapper_IsWindowed;
 	DX8Wrapper_IsWindowed = false;
+
+	return 1;
+}
+
+// TheSuperHackers @feature AI test bench: -aiMatch plays a skirmish between computer players without a user
+// interface (see AIMatch.h). The options of the match (map=... players=... seed=...) are read by the match itself.
+Int parseAIMatch(char *args[], int num)
+{
+	parseHeadless(args, num);
+	TheWritableGlobalData->m_shellMapOn = FALSE;
+	TheWritableGlobalData->m_useFpsLimit = FALSE;
+
+	// Matches run next to a running game and next to each other.
+	rts::ClientInstance::setMultiInstance(TRUE);
+	rts::ClientInstance::skipPrimaryInstance();
 
 	return 1;
 }
@@ -1123,6 +1158,22 @@ Int parseMod(char *args[], Int num)
 	return 1;
 }
 
+// Army packages (docs/ARMY_PACKAGES.md): -army <path to a .zharmy file>, repeatable. The files are opened
+// and checked later, when the game data is loaded; here the paths are only collected.
+Int parseArmy(char *args[], Int num)
+{
+	if (num > 1)
+	{
+		AsciiString path = args[1];
+		if (path.isNotEmpty())
+		{
+			TheWritableGlobalData->m_armyPackages.push_back(path);
+		}
+		return 2;
+	}
+	return 1;
+}
+
 #ifdef DEBUG_LOGGING
 Int parseSetDebugLevel(char *args[], int num)
 {
@@ -1170,6 +1221,14 @@ static CommandLineParam paramsForStartup[] =
 	// This runs the game without a window, graphics, input and audio. You can combine this with -replay
 	{ "-headless", parseHeadless },
 
+	// TheSuperHackers @feature AI test bench: play a match between computer players, see AIMatch.h.
+	{ "-aiMatch", parseAIMatch },
+
+#if RTS_ZEROHOUR
+	{ "-assistTest", parseAssistTest },
+	{ "-assistDebug", parseAssistDebug },
+#endif
+
 	// TheSuperHackers @feature helmutbuhler 13/04/2025
 	// Play back a replay. Pass the filename including .rep afterwards.
 	// You can pass this multiple times to play back multiple replays.
@@ -1202,6 +1261,7 @@ static CommandLineParam paramsForEngineInit[] =
 	{ "-scriptDebug", parseScriptDebug },
 	{ "-playStats", parsePlayStats },
 	{ "-mod", parseMod },
+	{ "-army", parseArmy },
 	{ "-noshaders", parseNoShaders },
 	{ "-quickstart", parseQuickStart },
 	{ "-useWaveEditor", parseUseWaveEditor },

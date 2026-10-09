@@ -158,6 +158,14 @@ static unsigned Calculate_Processor_Speed(sint64& ticks_per_second)
 
 void CPUDetectClass::Init_Processor_Speed()
 {
+#ifdef __EMSCRIPTEN__
+	// WebAssembly has no clock rate to measure. _rdtsc() counts nanoseconds here and the
+	// processor is reported as a modern one.
+	ProcessorTicksPerSecond=1000000000;
+	InvProcessorTicksPerSecond=1.0/double(ProcessorTicksPerSecond);
+	ProcessorSpeed=3000;
+	return;
+#endif
 	if (!Has_RDTSC_Instruction()) {
 		ProcessorSpeed=0;
 		return;
@@ -920,6 +928,17 @@ void CPUDetectClass::Init_Memory()
    AvailableVirtualMemory  = mem.ullAvailVirtual;
 #endif // defined(_MSC_VER) && _MSC_VER < 1300
 
+#elif defined(__EMSCRIPTEN__)
+	MEMORYSTATUS mem;
+	mem.dwLength = sizeof(mem);
+	GlobalMemoryStatus(&mem);
+
+	TotalPhysicalMemory     = mem.dwTotalPhys;
+	AvailablePhysicalMemory = mem.dwAvailPhys;
+	TotalPageMemory         = mem.dwTotalPageFile;
+	AvailablePageMemory     = mem.dwAvailPageFile;
+	TotalVirtualMemory      = mem.dwTotalVirtual;
+	AvailableVirtualMemory  = mem.dwAvailVirtual;
 #else
 #warning FIX Init_Memory()
 #endif // WIN32
@@ -968,6 +987,16 @@ void CPUDetectClass::Init_OS()
     OSVersionPlatformId = 2;
     OSVersionExtraInfo = "";
 #endif // defined(_MSC_VER) && _MSC_VER < 1300
+#elif defined(__EMSCRIPTEN__)
+	OSVERSIONINFO os;
+	os.dwOSVersionInfoSize = sizeof(os);
+	GetVersionEx(&os);
+
+	OSVersionNumberMajor = os.dwMajorVersion;
+	OSVersionNumberMinor = os.dwMinorVersion;
+	OSVersionBuildNumber = os.dwBuildNumber;
+	OSVersionPlatformId  = os.dwPlatformId;
+	OSVersionExtraInfo   = os.szCSDVersion;
 #else
 #warning FIX Init_OS()
 #endif
@@ -1101,7 +1130,7 @@ void CPUDetectClass::Init_Compact_Log()
 {
 	StringClass work(0,true);
 
-#ifdef WIN32
+#if defined(WIN32) || defined(__EMSCRIPTEN__)
    TIME_ZONE_INFORMATION time_zone;
    GetTimeZoneInformation(&time_zone);
    COMPACTLOG(("%d\t", time_zone.Bias));  // get diff between local time and UTC

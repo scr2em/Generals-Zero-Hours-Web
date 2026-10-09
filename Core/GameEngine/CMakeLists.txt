@@ -4,6 +4,9 @@ set(GAMEENGINE_SRC
     Include/Common/AddonCompat.h
     Include/Common/ArchiveFile.h
     Include/Common/ArchiveFileSystem.h
+    Include/Common/MiniJson.h
+    Include/Common/Sha256.h
+    Include/Common/ZipArchiveFile.h
     Include/Common/AsciiString.h
     Include/Common/AudioAffect.h
     Include/Common/AudioEventInfo.h
@@ -204,6 +207,7 @@ set(GAMEENGINE_SRC
     Include/GameClient/LanguageFilter.h
     Include/GameClient/Line2D.h
     Include/GameClient/LoadScreen.h
+    Include/GameClient/AssistHooks.h
     Include/GameClient/LookAtXlat.h
     Include/GameClient/MapUtil.h
     Include/GameClient/MessageBox.h
@@ -655,6 +659,9 @@ set(GAMEENGINE_SRC
 #    Source/Common/StatsCollector.cpp
     Source/Common/System/ArchiveFile.cpp
     Source/Common/System/ArchiveFileSystem.cpp
+    Source/Common/System/MiniJson.cpp
+    Source/Common/System/Sha256.cpp
+    Source/Common/System/ZipArchiveFile.cpp
     Source/Common/System/AsciiString.cpp
 #    Source/Common/System/BuildAssistant.cpp
 #    Source/Common/System/CriticalSection.cpp

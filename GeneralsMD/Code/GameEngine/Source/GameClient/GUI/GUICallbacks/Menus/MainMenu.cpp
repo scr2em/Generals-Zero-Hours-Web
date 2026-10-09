@@ -743,7 +743,9 @@ void DoResolutionDialog()
 	resTimerString.concat(resolutionNew);
 
 
-	resAcceptMenu = TheWindowManager->gogoMessageBox( CORNER, CORNER, -1, -1,MSG_BOX_OK | MSG_BOX_CANCEL ,
+	// x and y of -1 keep the position the message box layout gives it (the middle of the screen); a fixed
+	// position (CORNER) put it in the top left of the screen, away from the Options screen it belongs to.
+	resAcceptMenu = TheWindowManager->gogoMessageBox( -1, -1, -1, -1,MSG_BOX_OK | MSG_BOX_CANCEL ,
 																									 TheGameText->fetch("GUI:Resolution"),
 																									 resTimerString, nullptr, nullptr, AcceptResolution,
 																									 DeclineResolution);

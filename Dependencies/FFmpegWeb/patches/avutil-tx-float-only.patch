@@ -1,0 +1,19 @@
+Drops the double precision and the 32 bit integer transform codelets from libavutil's av_tx table.
+The Bink audio decoders use only the single precision (float) RDFT and DCT. Without the two lists,
+tx_double.o and tx_int32.o (12.6 MB of static lookup tables, zero initialised and so filled by the
+WebAssembly module at start-up) are not linked into the game. Applied by CMakeLists.txt to the
+FFmpeg n7.1.1 sources it clones (see NOTICE.md); the rest of FFmpeg is not modified.
+
+diff --git a/libavutil/tx.c b/libavutil/tx.c
+index 0aae4c7..bed3df8 100644
+--- a/libavutil/tx.c
++++ b/libavutil/tx.c
+@@ -339,8 +339,6 @@ static const FFTXCodelet * const ff_tx_null_list[] = {
+ /* Array of all compiled codelet lists. Order is irrelevant. */
+ static const FFTXCodelet * const * const codelet_list[] = {
+     ff_tx_codelet_list_float_c,
+-    ff_tx_codelet_list_double_c,
+-    ff_tx_codelet_list_int32_c,
+     ff_tx_null_list,
+ #if HAVE_X86ASM
+     ff_tx_codelet_list_float_x86,

@@ -1,0 +1,22 @@
+{
+ "description": "The rocketeer has a targeted special power (SPECIAL_DEFECTOR style: an enemy unit changes sides), 30 s reload, NEED_TARGET_ENEMY_OBJECT.",
+ "edits": [
+  {
+   "file": "data/ini/specialpower.ini",
+   "append": "\nSpecialPower SPECIAL_IronwoodConvert\n  Enum = SPECIAL_DEFECTOR\n  ReloadTime = 30000\n  PublicTimer = No\nEnd"
+  },
+  {
+   "file": "data/ini/commandbutton.ini",
+   "append": "\nCommandButton Command_IronwoodConvert\n  Command = SPECIAL_POWER\n  SpecialPower = SPECIAL_IronwoodConvert\n  Options = NEED_TARGET_ENEMY_OBJECT\n  TextLabel = CONTROLBAR:Beacon\n  ButtonImage = SP_Rocketeer\nEnd"
+  },
+  {
+   "file": "data/ini/commandset.ini",
+   "append": "\nCommandSet IronwoodRocketeerCommandSet\n  1  = Command_AttackMove\n  2  = Command_Guard\n  3  = Command_Stop\n  4  = Command_IronwoodConvert\nEnd"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  CommandSet = IronwoodCombatCommandSet\n  Locomotor = SET_NORMAL IronwoodInfantryLocomotor\n  Prerequisites\n    Object = IronwoodBarracks\n  End\n  BuildCost = 250",
+   "replace": "  Behavior = DefectorSpecialPower ModuleTag_Convert\n    SpecialPowerTemplate = SPECIAL_IronwoodConvert\n    FatCursorRadius = 0.0\n  End\n  CommandSet = IronwoodRocketeerCommandSet\n  Locomotor = SET_NORMAL IronwoodInfantryLocomotor\n  Prerequisites\n    Object = IronwoodBarracks\n  End\n  BuildCost = 250"
+  }
+ ]
+}

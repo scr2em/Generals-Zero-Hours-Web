@@ -62,7 +62,8 @@ else()
     target_compile_options(deps_config INTERFACE ${RTS_FLAGS})
 endif()
 
-if(UNIX)
+# The web build uses the Win32 code paths on top of Dependencies/WebCompat.
+if(UNIX AND NOT EMSCRIPTEN)
     target_compile_definitions(deps_config INTERFACE _UNIX)
 endif()
 

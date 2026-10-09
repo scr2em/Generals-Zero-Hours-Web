@@ -76,6 +76,13 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 static Xfer *s_xfer = nullptr;
+static INIBlockGuard *s_blockGuard = nullptr;
+static char s_lastLine[INI_MAX_CHARS_PER_LINE + 1] = "";
+
+void INI::setBlockGuard( INIBlockGuard *guard )
+{
+	s_blockGuard = guard;
+}
 
 //-------------------------------------------------------------------------------------------------
 /** This is the table of data types we can have in INI files.  To add a new data type
@@ -220,6 +227,10 @@ UnsignedInt INI::loadFileDirectory( AsciiString fileDirName, INILoadType loadTyp
 	const Bool expectFileFound = (loadFlags & LoadFlags_ExpectFileFound) != 0;
 	if (expectFileFound && filesRead == 0)
 	{
+#ifdef __EMSCRIPTEN__
+		// There is no debugger or log file in the browser; tell the page which file is missing.
+		fprintf(stderr, "Required game file %s.ini was not found. Select your Zero Hour folder again on the start page.\n", iniDir.str());
+#endif
 		throw INI_CANT_OPEN_FILE;
 	}
 
@@ -274,6 +285,9 @@ UnsignedInt INI::loadDirectory( AsciiString dirName, INILoadType loadType, Xfer 
 	const Bool expectFileFound = (loadFlags & LoadFlags_ExpectFileFound) != 0;
 	if (expectFileFound && filesRead == 0)
 	{
+#ifdef __EMSCRIPTEN__
+		fprintf(stderr, "Required game folder %s was not found or has no INI files. Select your Zero Hour folder again on the start page.\n", dirName.str());
+#endif
 		throw INI_CANT_OPEN_FILE;
 	}
 
@@ -299,6 +313,9 @@ void INI::prepFile( AsciiString filename, INILoadType loadType )
 	{
 
 		DEBUG_CRASH(( "INI::load, cannot open file '%s'", filename.str() ));
+#ifdef __EMSCRIPTEN__
+		fprintf(stderr, "Required game file %s could not be opened.\n", filename.str());
+#endif
 		throw INI_CANT_OPEN_FILE;
 
 	}
@@ -381,6 +398,33 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
 	s_xfer = pXfer;
 	prepFile(filename, loadType);
 
+	return loadPrepared();
+}
+
+//-------------------------------------------------------------------------------------------------
+UnsignedInt INI::loadFromBuffer( AsciiString displayName, Char *buffer, Int size, INILoadType loadType, Xfer *pXfer )
+{
+	setFPMode();
+
+	if( m_readBuffer != nullptr )
+	{
+		delete[] buffer;
+		throw INI_FILE_ALREADY_OPEN;
+	}
+
+	s_xfer = pXfer;
+	m_readBufferNext = 0;
+	m_readBufferUsed = size;
+	m_readBuffer = buffer;
+	m_filename = displayName;
+	m_loadType = loadType;
+
+	return loadPrepared();
+}
+
+//-------------------------------------------------------------------------------------------------
+UnsignedInt INI::loadPrepared()
+{
 	try
 	{
 
@@ -400,6 +444,24 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
 				INIBlockParse parse = findBlockParse(token);
 				if (parse)
 				{
+					if (s_blockGuard != nullptr)
+					{
+						// the word after the block type, split the way the block parsers split it
+						AsciiString blockName;
+						{
+							AsciiString rest = currentLine;
+							AsciiString word;
+							rest.nextToken(&word, getSeps());	// the block type
+							rest.nextToken(&blockName, getSeps());
+						}
+						AsciiString guardError;
+						if (!s_blockGuard->checkBlock(token, blockName, guardError))
+						{
+							char buff[1024];
+							snprintf(buff, ARRAY_SIZE(buff), "%s (file '%s', line %d)\n", guardError.str(), m_filename.str(), getLineNum());
+							throw INIException(buff);
+						}
+					}
 					#ifdef DEBUG_CRASHING
 					static_assert(ARRAY_SIZE(m_curBlockStart) >= ARRAY_SIZE(m_buffer), "Incorrect array size");
 					strcpy(m_curBlockStart, m_buffer);
@@ -410,8 +472,16 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
 					} catch (...) {
 						DEBUG_CRASH(("Error parsing block '%s' in INI file '%s'", token, m_filename.str()) );
 						char buff[1024];
-						snprintf(buff, ARRAY_SIZE(buff), "Error parsing INI file '%s' (Line: '%s')\n",
-							m_filename.str(), currentLine.str());
+						// the line the block parser was on when it failed (a field inside the block), trimmed
+						const char *failed = s_lastLine;
+						while (*failed == ' ')
+							++failed;
+						if (strcmp(failed, currentLine.str()) == 0 || *failed == 0)
+							snprintf(buff, ARRAY_SIZE(buff), "Error parsing INI file '%s' (Line: '%s')\n",
+								m_filename.str(), currentLine.str());
+						else
+							snprintf(buff, ARRAY_SIZE(buff), "Error parsing INI file '%s' (Line: '%s'), at line %u: '%s'\n",
+								m_filename.str(), currentLine.str(), getLineNum(), failed);
 
 						throw INIException(buff);
 					}
@@ -505,6 +575,10 @@ void INI::readLine()
 
 		// increase our line count
 		m_lineNum++;
+
+		// keep the text of the line: the field parsers cut m_buffer into tokens, and an error message
+		// should show the line as it was
+		strlcpy(s_lastLine, m_buffer, ARRAY_SIZE(s_lastLine));
 
 		// check for at the max
 		if ( p == m_buffer+INI_MAX_CHARS_PER_LINE )

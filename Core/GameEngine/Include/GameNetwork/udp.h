@@ -28,7 +28,13 @@
 #include <errno.h>
 #endif
 
-#ifdef _WIN32
+// The WebAssembly build uses the Winsock flavor of the socket API: its winsock.h maps the Winsock
+// functions and error codes onto the POSIX ones, and the code below then behaves as on Windows.
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+#define UDP_USE_WINSOCK
+#endif
+
+#ifdef UDP_USE_WINSOCK
 #include <winsock.h>
 #include <io.h>
 //#define close _close

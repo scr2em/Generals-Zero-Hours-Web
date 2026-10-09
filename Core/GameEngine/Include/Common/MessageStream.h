@@ -439,6 +439,18 @@ public:
 		MSG_META_PLACE_BEACON,
 		MSG_META_REMOVE_BEACON,
 
+		// player assists (optional helpers, see GameLogic/PlayerAssist.h); the client turns these into assist commands
+		MSG_META_ASSIST_FORM_NONE,									///< formation: none (units move as the game always did)
+		MSG_META_ASSIST_FORM_LINE,									///< formation: line
+		MSG_META_ASSIST_FORM_COLUMN,								///< formation: column
+		MSG_META_ASSIST_FORM_WEDGE,									///< formation: wedge
+		MSG_META_ASSIST_FORM_BOX,										///< formation: box
+		MSG_META_ASSIST_FORM_LOOSE,									///< formation: loose
+		MSG_META_ASSIST_FORM_KEEP,									///< formation: keep the shape
+		MSG_META_ASSIST_FORM_CYCLE,									///< formation: next one
+		MSG_META_ASSIST_PROTECT,										///< protect: choose what the selected units protect
+		MSG_META_ASSIST_UNPROTECT,									///< protect: the selected units stop protecting
+
 		MSG_END_META_MESSAGES,											///< Marker to delineate "meta" messages
 
 		MSG_MOUSEOVER_DRAWABLE_HINT,								///< (drawableid) the given drawable is under the mouse, regardless of button states
@@ -604,6 +616,12 @@ public:
 		MSG_LOGIC_CRC,															///< CRC from the logic passed around in a network game :)
 		MSG_SET_MINE_CLEARING_DETAIL,								///< CRC from the logic passed around in a network game :)
 		MSG_ENABLE_RETALIATION_MODE,								///< Turn retaliation mode on or off.
+
+		// player assists (GameLogic/PlayerAssist.h).  Ignored by the logic unless the match allows them.
+		MSG_ASSIST_FORMATION,												///< (Int AssistFormation) the selected units get this formation
+		MSG_ASSIST_FORMATION_MOVE,									///< (Int formation, location a, location b, Bool attackMove) move in formation; a to b is the front line the player dragged (a == b: a click)
+		MSG_ASSIST_PROTECT,													///< (Int hotkey group or -1, Int n, n protector objectIDs, then the objectIDs to protect) the protectors guard these
+		MSG_ASSIST_UNPROTECT,												///< the selected units stop protecting
 
 		MSG_BEGIN_DEBUG_NETWORK_MESSAGES = 1900,		///< network messages that exist only in debug/internal builds. all grouped separately.
 

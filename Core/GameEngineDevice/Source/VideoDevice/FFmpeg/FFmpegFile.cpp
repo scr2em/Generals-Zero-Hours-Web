@@ -27,12 +27,14 @@
 /////////////////////////////////////////////////
 
 #include "VideoDevice/FFmpeg/FFmpegFile.h"
-#include "Common/File.h"
+#include "Common/file.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 }
+
+#include <cmath>
 
 
 FFmpegFile::FFmpegFile() {}
@@ -78,7 +80,7 @@ Bool FFmpegFile::open(File *file)
 		return false;
 	}
 
-	m_avioCtx = avio_alloc_context(buffer, avio_ctx_buffer_size, 0, file, &readPacket, nullptr, nullptr);
+	m_avioCtx = avio_alloc_context(buffer, avio_ctx_buffer_size, 0, file, &readPacket, nullptr, &seekPacket);
 	if (m_avioCtx == nullptr) {
 		DEBUG_LOG(("Failed to alloc AVIOContext"));
 		close();
@@ -170,6 +172,28 @@ int FFmpegFile::readPacket(void *opaque, uint8_t *buf, int buf_size)
 }
 
 /**
+ * Seek in the file for FFmpeg, which also asks for the size of the file.
+ */
+Int64 FFmpegFile::seekPacket(void *opaque, Int64 offset, Int whence)
+{
+	File *file = static_cast<File *>(opaque);
+
+	if (whence & AVSEEK_SIZE)
+		return file->size();
+
+	File::seekMode mode;
+	switch (whence & ~AVSEEK_FORCE) {
+		case SEEK_SET: mode = File::START; break;
+		case SEEK_CUR: mode = File::CURRENT; break;
+		case SEEK_END: mode = File::END; break;
+		default: return AVERROR(EINVAL);
+	}
+
+	const Int position = file->seek(static_cast<Int>(offset), mode);
+	return position < 0 ? AVERROR(EIO) : position;
+}
+
+/**
  * close all the open FFmpeg handles for an open file.
  */
 void FFmpegFile::close()
@@ -207,8 +231,11 @@ Bool FFmpegFile::decodePacket()
 	DEBUG_ASSERTCRASH(m_packet != nullptr, ("null packet pointer"));
 
 	int result = av_read_frame(m_fmtCtx, m_packet);
-	if (result == AVERROR_EOF)
+	if (result < 0) {
+		// The end of the file, or a file that cannot be read any further.
+		m_eof = true;
 		return false;
+	}
 
 	const int stream_idx = m_packet->stream_index;
 	DEBUG_ASSERTCRASH(m_streams.size() > stream_idx, ("stream index out of bounds"));
@@ -217,14 +244,17 @@ Bool FFmpegFile::decodePacket()
 	AVCodecContext *codec_ctx = stream.codec_ctx;
 	result = avcodec_send_packet(codec_ctx, m_packet);
 	// Check if we need more data
-	if (result == AVERROR(EAGAIN))
+	if (result == AVERROR(EAGAIN)) {
+		av_packet_unref(m_packet);
 		return true;
+	}
 
 	// Handle any other errors
 	if (result < 0) {
 		char error_buffer[1024];
 		av_strerror(result, error_buffer, sizeof(error_buffer));
 		DEBUG_LOG(("Failed 'avcodec_send_packet': %s", error_buffer));
+		av_packet_unref(m_packet);
 		return false;
 	}
 	av_packet_unref(m_packet);
@@ -250,6 +280,28 @@ Bool FFmpegFile::decodePacket()
 		}
 	}
 
+	return true;
+}
+
+Bool FFmpegFile::rewind()
+{
+	if (m_fmtCtx == nullptr)
+		return false;
+
+	// The Bink demuxer restarts at the first frame whatever the timestamp is.
+	int result = av_seek_frame(m_fmtCtx, -1, 0, AVSEEK_FLAG_BACKWARD);
+	if (result < 0) {
+		char error_buffer[1024];
+		av_strerror(result, error_buffer, sizeof(error_buffer));
+		DEBUG_LOG(("Failed 'av_seek_frame': %s", error_buffer));
+		return false;
+	}
+
+	for (const auto &stream : m_streams) {
+		if (stream.codec_ctx != nullptr)
+			avcodec_flush_buffers(stream.codec_ctx);
+	}
+	m_eof = false;
 	return true;
 }
 
@@ -282,6 +334,12 @@ const FFmpegFile::FFmpegStream *FFmpegFile::findMatch(Int type) const
 	}
 
 	return nullptr;
+}
+
+Int FFmpegFile::getAudioStreamIndex() const
+{
+	const FFmpegStream *stream = findMatch(AVMEDIA_TYPE_AUDIO);
+	return stream == nullptr ? -1 : stream->stream_idx;
 }
 
 Int FFmpegFile::getNumChannels() const
@@ -344,7 +402,8 @@ Int FFmpegFile::getNumFrames() const
 	if (m_fmtCtx == nullptr || stream == nullptr || m_fmtCtx->streams[stream->stream_idx] == nullptr)
 		return 0;
 
-	return (m_fmtCtx->duration / (double)AV_TIME_BASE) * av_q2d(m_fmtCtx->streams[stream->stream_idx]->avg_frame_rate);
+	// Rounded: the product of the rounded duration and the rate falls just below the whole number of frames.
+	return static_cast<Int>(std::llround((m_fmtCtx->duration / (double)AV_TIME_BASE) * av_q2d(m_fmtCtx->streams[stream->stream_idx]->avg_frame_rate)));
 }
 
 Int FFmpegFile::getCurrentFrame() const
@@ -362,6 +421,21 @@ Int FFmpegFile::getPixelFormat() const
 		return AV_PIX_FMT_NONE;
 
 	return stream->codec_ctx->pix_fmt;
+}
+
+void FFmpegFile::getFrameRate(Int &num, Int &den) const
+{
+	num = 0;
+	den = 1;
+	const FFmpegStream *stream = findMatch(AVMEDIA_TYPE_VIDEO);
+	if (m_fmtCtx == nullptr || stream == nullptr)
+		return;
+
+	const AVRational rate = m_fmtCtx->streams[stream->stream_idx]->avg_frame_rate;
+	if (rate.num > 0 && rate.den > 0) {
+		num = rate.num;
+		den = rate.den;
+	}
 }
 
 UnsignedInt FFmpegFile::getFrameTime() const

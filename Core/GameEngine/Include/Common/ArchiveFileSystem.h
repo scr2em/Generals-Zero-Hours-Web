@@ -80,6 +80,7 @@ class ArchiveFile;
 class ArchivedDirectoryInfo;
 class DetailedArchivedDirectoryInfo;
 class ArchivedFileInfo;
+class ZipArchiveFile;
 
 typedef std::map<AsciiString, DetailedArchivedDirectoryInfo> DetailedArchivedDirectoryInfoMap; // Archived directory name to detailed archived directory info
 typedef std::map<AsciiString, ArchivedDirectoryInfo> ArchivedDirectoryInfoMap; // Archived directory name to archived directory info
@@ -145,6 +146,22 @@ public:
 
 	void loadMods();
 
+	/// Opens a zip archive (see ZipArchiveFile) without mounting it. The caller either passes it to mountZipArchive()
+	/// or deletes it. On failure returns nullptr and fills error.
+	ZipArchiveFile* openZipArchive(const Char *path, AsciiString &error);
+
+	/// Decides which entries of a zip archive are added to the directory tree (lower case path with '/' separators).
+	typedef Bool (*ZipEntryFilter)(const AsciiString &lowerPath);
+
+	/// Adds the entries of the zip archive that pass the filter to the directory tree, behind the files already there
+	/// (the archive never shadows anything). Takes ownership of the archive when it succeeds. Refuses the archive,
+	/// changes nothing and returns FALSE when one of those entries already exists as a loose file or in another
+	/// archive; error names the first such path.
+	Bool mountZipArchive(ZipArchiveFile *zip, ZipEntryFilter filter, AsciiString &error);
+
+	/// Removes a mounted zip archive again (and deletes it).
+	void unmountZipArchive(ZipArchiveFile *zip);
+
 	ArchivedDirectoryInfo* friend_getArchivedDirectoryInfo(const Char* directory);
 
 protected:
@@ -161,6 +178,8 @@ protected:
 	ArchivedDirectoryInfoResult getArchivedDirectoryInfo(const Char* directory);
 
 	virtual void loadIntoDirectoryTree(ArchiveFile *archiveFile, Bool overwrite = FALSE);	///< load the archive file's header information and apply it to the global archive directory tree.
+
+	static void removeArchiveFromDirectory(ArchivedDirectoryInfo *dir, ArchiveFile *archive);
 
 	ArchiveFileMap m_archiveFileMap;
 	ArchivedDirectoryInfo m_rootDirectory;

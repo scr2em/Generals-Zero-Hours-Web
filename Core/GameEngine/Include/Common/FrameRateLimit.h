@@ -27,11 +27,15 @@ public:
 	FrameRateLimit();
 
 	Real wait(UnsignedInt maxFps);
+	Bool isDue(UnsignedInt maxFps) const; ///< Returns whether the time slice of the given fps limit has passed, so that wait would return at once.
 	void reset(); ///< Move the timing anchor to now, discarding any time elapsed since the last call to wait.
 
 private:
 	Int64 m_freq;
 	Int64 m_start;
+#ifdef __EMSCRIPTEN__
+	Int64 m_lastFrame; ///< When wait() was last called. m_start is the time the last frame was due.
+#endif
 };
 
 

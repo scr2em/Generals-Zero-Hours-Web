@@ -156,6 +156,19 @@ typedef void (*INIBlockParse)( INI *ini );
 typedef void (*BuildMultiIniFieldProc)(MultiIniFieldParse& p);
 
 //-------------------------------------------------------------------------------------------------
+/** Looks at every top level block before the reader parses it (see INI::setBlockGuard). Used to hold
+	* army packages to their rules: the reader's own idea of "top level" decides, not a text scan. */
+//-------------------------------------------------------------------------------------------------
+class INIBlockGuard
+{
+public:
+	virtual ~INIBlockGuard() {}
+	/// blockType is the first word of the block, name the word after it (empty when there is none).
+	/// Return FALSE and fill error to stop the load: the reader throws.
+	virtual Bool checkBlock( const char *blockType, const AsciiString &name, AsciiString &error ) = 0;
+};
+
+//-------------------------------------------------------------------------------------------------
 /** INI Reader interface */
 //-------------------------------------------------------------------------------------------------
 class INI
@@ -191,6 +204,13 @@ public:
 	// Load one specific INI file by name.
 	// Throws if the INI file is not found or is not read correctly.
 	UnsignedInt load( AsciiString filename, INILoadType loadType, Xfer *pXfer );
+
+	/// While a guard is set, every INI file that is loaded asks it about each top level block. nullptr removes it.
+	static void setBlockGuard( INIBlockGuard *guard );
+
+	/// Parses INI text that is already in memory (an army package entry). The INI takes ownership of the buffer,
+	/// which must come from new Char[size] (delete[] frees it), also when this throws. displayName is only used in messages.
+	UnsignedInt loadFromBuffer( AsciiString displayName, Char *buffer, Int size, INILoadType loadType, Xfer *pXfer );
 
 	static Bool isDeclarationOfType( AsciiString blockType, AsciiString blockName, char *bufferToCheck );
 	static Bool isEndOfBlock( char *bufferToCheck );
@@ -401,6 +421,7 @@ protected:
 	static Bool isValidINIFilename( const char *filename ); ///< is this a valid .ini filename
 
 	void prepFile( AsciiString filename, INILoadType loadType );
+	UnsignedInt loadPrepared();																	///< parses the file set up by prepFile/loadFromBuffer
 	void unPrepFile();
 
 	void readLine();

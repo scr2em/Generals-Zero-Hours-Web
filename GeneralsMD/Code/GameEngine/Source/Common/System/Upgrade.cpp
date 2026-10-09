@@ -365,6 +365,13 @@ const UpgradeTemplate *UpgradeCenter::findUpgrade( const char* name ) const
 //-------------------------------------------------------------------------------------------------
 UpgradeTemplate *UpgradeCenter::newUpgrade( const AsciiString& name )
 {
+	// every upgrade needs one bit of the upgrade mask; do not hand out a bit beyond its end (army packages can add many)
+	if( m_nextTemplateMaskBit >= UPGRADE_MAX_COUNT )
+	{
+		DEBUG_CRASH( ("Can't have over %d types of Upgrades and have a Bitfield function.", UPGRADE_MAX_COUNT) );
+		throw INI_INVALID_DATA;
+	}
+
 	UpgradeTemplate *newUpgrade = newInstance(UpgradeTemplate);
 
 	// copy data from the default upgrade

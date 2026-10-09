@@ -40,6 +40,7 @@
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
 #include "Common/INI.h"
+#include "Common/ArmyPackages.h"
 #include "Common/INIException.h"
 #include "Common/MessageStream.h"
 #include "Common/ThingFactory.h"
@@ -73,6 +74,7 @@
 
 #include "GameLogic/Armor.h"
 #include "GameLogic/AI.h"
+#include "GameLogic/PlayerAssist.h"
 #include "GameLogic/CaveSystem.h"
 #include "GameLogic/CrateSystem.h"
 #include "GameLogic/Damage.h"
@@ -262,6 +264,8 @@ GameEngine::~GameEngine()
 
 	delete TheMapCache;
 	TheMapCache = nullptr;
+
+	ArmyPackages::shutdown();
 
 //	delete TheShell;
 //	TheShell = nullptr;
@@ -609,6 +613,7 @@ void GameEngine::init()
 
 
 		initSubsystem(TheAI,"TheAI", MSGNEW("GameEngineSubsystem") AI(), &xferCRC,  "Data\\INI\\Default\\AIData", "Data\\INI\\AIData");
+		initSubsystem(ThePlayerAssist,"ThePlayerAssist", MSGNEW("GameEngineSubsystem") PlayerAssist(), nullptr);
 		initSubsystem(TheGameLogic,"TheGameLogic", createGameLogic(), nullptr);
 		initSubsystem(TheTeamFactory,"TheTeamFactory", MSGNEW("GameEngineSubsystem") TeamFactory(), nullptr);
 		initSubsystem(TheCrateSystem,"TheCrateSystem", MSGNEW("GameEngineSubsystem") CrateSystem(), &xferCRC, "Data\\INI\\Default\\Crate", "Data\\INI\\Crate");
@@ -659,6 +664,9 @@ void GameEngine::init()
 	DEBUG_LOG(("%s", Buf));////////////////////////////////////////////////////////////////////////////
 	#endif/////////////////////////////////////////////////////////////////////////////////////////////
 
+
+		// Army packages (-army): extra factions on top of the base data, loaded before the subsystems post process their data
+		ArmyPackages::load(&xferCRC);
 
 		xferCRC.close();
 		TheWritableGlobalData->m_iniCRC = xferCRC.getCRC();
@@ -937,12 +945,23 @@ extern HWND ApplicationHWnd;
  */
 void GameEngine::execute()
 {
-#if defined(RTS_DEBUG)
-	DWORD startTime = timeGetTime() / 1000;
-#endif
-
 	// pretty basic for now
 	while( !m_quitting )
+	{
+		executeFrame();
+	}
+}
+
+/** -----------------------------------------------------------------------------------------------
+ * One iteration of the main loop: computes a frame, then waits out the rest of its time slice.
+ * The web build calls this once per browser frame instead of running execute().
+ */
+void GameEngine::executeFrame()
+{
+#if defined(RTS_DEBUG)
+	static const DWORD startTime = timeGetTime() / 1000;
+#endif
+
 	{
 
 		//if (TheGlobalData->m_vTune)
@@ -982,14 +1001,30 @@ void GameEngine::execute()
 					// compute a frame
 					update();
 				}
-				catch (INIException e)
+				catch (const INIException &e)
 				{
 					// Release CRASH doesn't return, so don't worry about executing additional code.
+					// (Caught by reference: INIException has no copy constructor, a copy frees its message twice.)
 					if (e.mFailureMessage)
 						RELEASE_CRASH((e.mFailureMessage));
 					else
 						RELEASE_CRASH(("Uncaught Exception in GameEngine::update"));
 				}
+#ifdef __EMSCRIPTEN__
+				catch (const std::exception &e)
+				{
+					// Web port: say what it was, the console is all a player can send.
+					AsciiString reason;
+					reason.format("Uncaught Exception in GameEngine::update: %s", e.what());
+					RELEASE_CRASH((reason.str()));
+				}
+				catch (ErrorCode code)
+				{
+					AsciiString reason;
+					reason.format("Uncaught Exception in GameEngine::update: error code 0x%08x", (UnsignedInt)code);
+					RELEASE_CRASH((reason.str()));
+				}
+#endif
 				catch (...)
 				{
 					// try to save info off

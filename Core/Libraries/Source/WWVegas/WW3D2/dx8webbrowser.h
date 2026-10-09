@@ -33,6 +33,9 @@
 #pragma once
 
 #include <windows.h>
+#ifdef __EMSCRIPTEN__
+#include <oaidl.h>	// LPDISPATCH
+#endif
 #include "d3d8.h"
 
 // ***********************************

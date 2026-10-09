@@ -1,0 +1,10 @@
+{
+ "description": "The headquarters sees the whole map (vision and shroud clearing range 5000): the AI knows what the enemy has from the start. For behaviours that need seen targets (raids, routes ...).",
+ "edits": [
+  {
+   "file": "data/ini/object.ini",
+   "find": "  VisionRange = 220.0\n  ShroudClearingRange = 320.0\n  EnergyProduction = 0",
+   "replace": "  VisionRange = 5000.0\n  ShroudClearingRange = 5000.0\n  EnergyProduction = 0"
+  }
+ ]
+}

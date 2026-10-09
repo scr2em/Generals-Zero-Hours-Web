@@ -53,6 +53,7 @@
 #include "GameClient/ParticleSys.h"
 #include "GameClient/TerrainVisual.h"
 #include "GameLogic/GameLogic.h"
+#include "GameLogic/PlayerAssist.h"
 #include "GameLogic/GhostObject.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameLogic/ScriptEngine.h"
@@ -314,6 +315,7 @@ void GameState::init()
 	addSnapshotBlock( "CHUNK_TeamFactory",						TheTeamFactory,						SNAPSHOT_SAVELOAD );
 	addSnapshotBlock( "CHUNK_Players",								ThePlayerList,						SNAPSHOT_SAVELOAD );
 	addSnapshotBlock( "CHUNK_GameLogic",							TheGameLogic,							SNAPSHOT_SAVELOAD );
+	addSnapshotBlock( "CHUNK_PlayerAssist",						ThePlayerAssist,					SNAPSHOT_SAVELOAD );
 	addSnapshotBlock( "CHUNK_Radar",									TheRadar,									SNAPSHOT_SAVELOAD );
 	addSnapshotBlock( "CHUNK_ScriptEngine",						TheScriptEngine,					SNAPSHOT_SAVELOAD );
 	addSnapshotBlock( "CHUNK_SidesList",							TheSidesList,							SNAPSHOT_SAVELOAD );
@@ -707,6 +709,9 @@ SaveCode GameState::loadGame( AvailableGameInfo gameInfo )
 	// check for error
 	if( error == TRUE )
 	{
+#ifdef __EMSCRIPTEN__
+		fprintf( stderr, "The saved game '%s' could not be loaded\n", filepath.str() );
+#endif
 		// clear it out, again
 		if (TheGameLogic->isInGame())
 			TheGameLogic->clearGameData( FALSE );
@@ -1519,6 +1524,10 @@ void GameState::xferSaveData( Xfer *xfer, SnapshotType which )
 
 					DEBUG_CRASH(( "Error loading block '%s' in file '%s'",
 												blockInfo->blockName.str(), xfer->getIdentifier().str() ));
+#ifdef __EMSCRIPTEN__
+					// There is no debug log in the browser; the page shows what goes to stderr.
+					fprintf( stderr, "Error loading block '%s' in file '%s'\n", blockInfo->blockName.str(), xfer->getIdentifier().str() );
+#endif
 					throw;
 
 				}

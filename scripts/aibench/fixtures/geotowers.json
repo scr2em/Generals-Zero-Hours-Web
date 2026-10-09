@@ -1,0 +1,27 @@
+{
+ "description": "Three defence towers (reach 200) on the Ironwood build list, at fixed places around the base, and a build button for them in the worker's command set. The computer players build them (the skirmish build code builds the build list entries of the power kind by itself; the tower is of that kind and of the defence kind, which the terrain-aware defence moves to the ways into the base).",
+ "edits": [
+  {
+   "file": "data/ini/weapon.ini",
+   "append": "\n; Bench overlay: the gun of a defence tower (reach 200).\nWeapon IronwoodGeoTowerGun\n  PrimaryDamage = 9.0\n  PrimaryDamageRadius = 0.0\n  AttackRange = 200.0\n  DamageType = ARMOR_PIERCING\n  DeathType = NORMAL\n  WeaponSpeed = 999999.0\n  FireFX = FX_StarterCannonShot\n  ClipSize = 0\n  ClipReloadTime = 0\n  DelayBetweenShots = 700\n  AntiAirborneVehicle = No\n  AntiGround = Yes\nEnd"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "append": "\n; Bench overlay: a defence tower that the computer players put on their build list. (KindOf FS_POWER is how the skirmish\n; build code picks it up by itself: it builds the entries of the power kind of the build list in order.)\nObject IronwoodGeoTower\n  Buildable = Yes\n  Scale = 0.7\n  Side = Ironwood\n  EditorSorting = STRUCTURE\n  DisplayName = OBJECT:IronwoodPowerPlant\n  Draw = W3DModelDraw ModuleTag_Draw\n    OkToChangeModelColor = Yes\n    DefaultConditionState\n      Model = iw_power\n    End\n  End\n  KindOf = STRUCTURE SELECTABLE IMMOBILE CAN_ATTACK FS_BASE_DEFENSE FS_POWER SCORE CAN_SEE_THROUGH_STRUCTURE\n  Body = StructureBody ModuleTag_Body\n    MaxHealth = 450.0\n    InitialHealth = 450.0\n  End\n  ArmorSet\n    Conditions = None\n    Armor = IronwoodStructureArmor\n    DamageFX = None\n  End\n  WeaponSet\n    Conditions = None\n    Weapon = PRIMARY IronwoodGeoTowerGun\n  End\n  Behavior = AIUpdateInterface ModuleTag_AI\n    Turret\n      TurretTurnRate = 180\n      TurretPitchRate = 60\n      ControlledWeaponSlots = PRIMARY\n      AllowsPitch = No\n    End\n    AutoAcquireEnemiesWhenIdle = Yes\n  End\n  Behavior = DestroyDie ModuleTag_Destroy\n  End\n  Behavior = FXListDie ModuleTag_DeathFX\n    DeathFX = FX_StarterBuildingDie\n  End\n  Prerequisites\n    Object = IronwoodPowerPlant\n  End\n  BuildCost = 350\n  BuildTime = 8.0\n  VisionRange = 220.0\n  ShroudClearingRange = 260.0\n  RadarPriority = STRUCTURE\n  Geometry = CYLINDER\n  GeometryMajorRadius = 16.0\n  GeometryMinorRadius = 16.0\n  GeometryHeight = 20.0\n  GeometryIsSmall = No\nEnd"
+  },
+  {
+   "file": "data/ini/aidata.ini",
+   "find": "    Structure IronwoodFactory\n      Location = X:60 Y:-60\n      Rebuilds = 3\n      Angle = 0.0\n      InitiallyBuilt = No\n      AutomaticallyBuild = Yes\n    End\n",
+   "replace": "    Structure IronwoodFactory\n      Location = X:60 Y:-60\n      Rebuilds = 3\n      Angle = 0.0\n      InitiallyBuilt = No\n      AutomaticallyBuild = Yes\n    End\n    Structure IronwoodGeoTower\n      Location = X:150 Y:0\n      Rebuilds = 3\n      Angle = 0.0\n      InitiallyBuilt = No\n      AutomaticallyBuild = Yes\n    End\n    Structure IronwoodGeoTower\n      Location = X:0 Y:150\n      Rebuilds = 3\n      Angle = 0.0\n      InitiallyBuilt = No\n      AutomaticallyBuild = Yes\n    End\n    Structure IronwoodGeoTower\n      Location = X:-150 Y:0\n      Rebuilds = 3\n      Angle = 0.0\n      InitiallyBuilt = No\n      AutomaticallyBuild = Yes\n    End\n"
+  },
+  {
+   "file": "data/ini/commandbutton.ini",
+   "append": "\n; Bench overlay: the worker can build the tower.\nCommandButton Command_ConstructIronwoodGeoTower\n  Command = DOZER_CONSTRUCT\n  Object = IronwoodGeoTower\n  TextLabel = CONTROLBAR:ConstructIronwoodBarracks\n  ButtonImage = SP_Barracks\n  ButtonBorderType = BUILD\n  DescriptLabel = CONTROLBAR:ToolTipConstructIronwoodBarracks\nEnd"
+  },
+  {
+   "file": "data/ini/commandset.ini",
+   "find": "  3  = Command_ConstructIronwoodFactory\n  13 = Command_AttackMove",
+   "replace": "  3  = Command_ConstructIronwoodFactory\n  4  = Command_ConstructIronwoodGeoTower\n  13 = Command_AttackMove"
+  }
+ ]
+}

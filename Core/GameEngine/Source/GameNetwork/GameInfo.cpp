@@ -199,7 +199,7 @@ void GameSlot::setMapAvailability( Bool hasMap )
 
 void GameSlot::setState( SlotState state, UnicodeString name, UnsignedInt IP )
 {
-	if (!(isAI() &&  (state == SLOT_EASY_AI || state == SLOT_MED_AI || state == SLOT_BRUTAL_AI)))
+	if (!(isAI() &&  (state == SLOT_EASY_AI || state == SLOT_MED_AI || state == SLOT_BRUTAL_AI || state == SLOT_EXPERT_AI)))
 	{
 		m_color = -1;
 		m_startPos = -1;
@@ -236,6 +236,9 @@ void GameSlot::setState( SlotState state, UnicodeString name, UnsignedInt IP )
 		case SLOT_BRUTAL_AI:
 			m_name = TheGameText->fetch("GUI:HardAI");
 			break;
+		case SLOT_EXPERT_AI:
+			m_name = TheGameText->FETCH_OR_SUBSTITUTE("GUI:ExpertAI", L"Expert AI");
+			break;
 		case SLOT_CLOSED:
 		default:
 			m_name = TheGameText->fetch("GUI:Closed");
@@ -254,12 +257,12 @@ Bool GameSlot::isHuman() const
 
 Bool GameSlot::isOccupied() const
 {
-	return m_state == SLOT_PLAYER || m_state == SLOT_EASY_AI || m_state == SLOT_MED_AI || m_state == SLOT_BRUTAL_AI;
+	return m_state == SLOT_PLAYER || m_state == SLOT_EASY_AI || m_state == SLOT_MED_AI || m_state == SLOT_BRUTAL_AI || m_state == SLOT_EXPERT_AI;
 }
 
 Bool GameSlot::isAI() const
 {
-	return m_state == SLOT_EASY_AI || m_state == SLOT_MED_AI || m_state == SLOT_BRUTAL_AI;
+	return m_state == SLOT_EASY_AI || m_state == SLOT_MED_AI || m_state == SLOT_BRUTAL_AI || m_state == SLOT_EXPERT_AI;
 }
 
 Bool GameSlot::isPlayer( AsciiString userName ) const
@@ -312,6 +315,7 @@ void GameInfo::reset()
 	m_useStats = TRUE;
 	m_surrendered = FALSE;
   m_oldFactionsOnly = FALSE;
+  m_playerAssistsAllowed = FALSE;
 //	m_localIP = 0; // BGC - actually we don't want this to be reset since the m_localIP is
 										// set properly in the constructor of LANGameInfo which uses this as a base class.
 	m_mapCRC = 0;
@@ -990,9 +994,9 @@ static AsciiString buildGameInfoAsciiString(const GameInfo& game, const AsciiStr
 	optionsString.format("M=%2.2x%s;MC=%X;MS=%d;SD=%d;C=%d;", game.getMapContentsMask(), newMapName.str(),
 		game.getMapCRC(), game.getMapSize(), game.getSeed(), game.getCRCInterval());
 #else
-	optionsString.format("US=%d;M=%2.2x%s;MC=%X;MS=%d;SD=%d;C=%d;SR=%u;SC=%u;O=%c;", game.getUseStats(), game.getMapContentsMask(), newMapName.str(),
+	optionsString.format("US=%d;M=%2.2x%s;MC=%X;MS=%d;SD=%d;C=%d;SR=%u;SC=%u;O=%c;PA=%c;", game.getUseStats(), game.getMapContentsMask(), newMapName.str(),
 		game.getMapCRC(), game.getMapSize(), game.getSeed(), game.getCRCInterval(), game.getSuperweaponRestriction(),
-		game.getStartingCash().countMoney(), game.oldFactionsOnly() ? 'Y' : 'N' );
+		game.getStartingCash().countMoney(), game.oldFactionsOnly() ? 'Y' : 'N', game.getPlayerAssistsAllowed() ? 'Y' : 'N' );
 #endif
 
 	//add player info for each slot
@@ -1023,6 +1027,8 @@ static AsciiString buildGameInfoAsciiString(const GameInfo& game, const AsciiStr
 				c = 'E';
 			else if (slot->getState() == SLOT_MED_AI)
 				c = 'M';
+			else if (slot->getState() == SLOT_EXPERT_AI)
+				c = 'X';	// the level above Hard; builds that do not know it fail to parse the slot, which is fine: they cannot play it anyway
 			else
 				c = 'H';
 			str.format("C%c,%d,%d,%d,%d:", c,
@@ -1116,6 +1122,7 @@ Bool ParseAsciiStringToGameInfo(GameInfo *game, AsciiString options)
 	Int crc = 100;
 	Bool sawCRC = FALSE;
   Bool oldFactionsOnly = FALSE;
+  Bool playerAssistsAllowed = FALSE;
 	Int useStats = TRUE;
   Money startingCash = TheGlobalData->m_defaultStartingCash;
   UnsignedShort restriction = 0; // Always the default
@@ -1237,6 +1244,10 @@ Bool ParseAsciiStringToGameInfo(GameInfo *game, AsciiString options)
     {
       oldFactionsOnly = ( val.compareNoCase( "Y" ) == 0 );
       sawOldFactions = TRUE;
+    }
+    else if (key.compare("PA") == 0 )
+    {
+      playerAssistsAllowed = ( val.compareNoCase( "Y" ) == 0 );
     }
 		else if (key.getLength() == 1 && *key.str() == slotListID)
 		{
@@ -1450,6 +1461,11 @@ Bool ParseAsciiStringToGameInfo(GameInfo *game, AsciiString options)
 									//DEBUG_LOG(("ParseAsciiStringToGameInfo - Brutal AI"));
 								}
 								break;
+								case 'X':
+								{
+									newSlot[i].setState(SLOT_EXPERT_AI);
+								}
+								break;
 								default:
 								{
 									optionsOk = false;
@@ -1606,6 +1622,7 @@ Bool ParseAsciiStringToGameInfo(GameInfo *game, AsciiString options)
 		game->setSuperweaponRestriction(restriction);
 		game->setStartingCash(startingCash);
 		game->setOldFactionsOnly(oldFactionsOnly);
+		game->setPlayerAssistsAllowed(playerAssistsAllowed);
 
 		return true;
 	}

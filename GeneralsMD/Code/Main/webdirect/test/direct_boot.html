@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direct mode test</title>
+<style>body{font:14px system-ui;margin:16px} canvas{background:#000;display:block;width:800px;height:600px} pre{max-height:240px;overflow:auto}</style>
+</head>
+<body>
+<!-- Test page of the read in place mode: pick a folder (<input webkitdirectory> stands in for
+     showDirectoryPicker, which headless Chromium cannot drive), the page opens it with
+     direct-source.js and boots a build (?script=web_direct_test.js or z_generals.js). Also a manual
+     demo: with ?picker=real the "Choose folder" button uses showDirectoryPicker and remembers it. -->
+<p>
+	<input type="file" id="folder" webkitdirectory multiple>
+	<button id="choose">Choose folder (showDirectoryPicker)</button>
+	<button id="saved" hidden>Use the saved folder</button>
+	<span id="status"></span>
+</p>
+<canvas id="canvas" width="800" height="600"></canvas>
+<pre id="log"></pre>
+<script type="module">
+import * as direct from './direct-source.js';
+import * as importer from './importer.js';
+
+const params = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+const log = (t) => { $('log').textContent += t + '\n'; };
+const script = params.get('script') || 'web_direct_test.js';
+const tClick = {};
+
+function boot(install) {
+	const args = ['-xres', '800', '-yres', '600', ...params.getAll('arg')];
+	window.Module = {
+		canvas: $('canvas'),
+		arguments: args,
+		print: (t) => { console.log(t); log(t); },
+		printErr: (t) => { console.warn(t); log(t); },
+		setStatus: () => {},
+		onExit: (code) => { window.__exitCode = code; log('Exited with code ' + code); },
+		postRun: [() => { window.__postRun = Date.now(); }],
+	};
+	if (install) install.attach(window.Module);
+	window.__bootAt = Date.now();
+	const s = document.createElement('script');
+	s.src = script;
+	document.body.appendChild(s);
+}
+
+async function open(input) {
+	const t0 = performance.now();
+	const install = await direct.openInstall(input, {
+		onProgress: (p) => { $('status').textContent = p.phase + ' ' + p.done + '/' + p.total; },
+		cacheBytes: Number(params.get('cache')) || undefined,
+		blockSize: Number(params.get('block')) || undefined,
+	});
+	window.__openMs = performance.now() - t0;
+	window.__install = install;
+	$('status').textContent = 'Zero Hour: ' + install.game.files + ' files, ' + install.game.bytes + ' bytes' +
+		(install.generals ? '; Generals: ' + install.generals.files + ' files' : '') + ' (opened in ' + Math.round(window.__openMs) + ' ms)';
+	log(install.warnings.join('\n'));
+	boot(install);
+}
+
+// ?mode=opfs: the existing copy mode, for comparison (copies the folder into OPFS, then boots without direct mode).
+async function copyAndBoot(files, thenBoot = true) {
+	const t0 = performance.now();
+	const source = importer.sourceFromFileList(files);
+	const found = importer.detectInstall(source);
+	for (const [key, prefix] of [['game', found.game], ['generals', found.base]]) {
+		if (!prefix) continue;
+		await importer.clearTarget(key);
+		const plan = importer.planImport(importer.subSource(source, prefix), key);
+		await importer.runImport(plan, { onProgress: (p) => { $('status').textContent = 'copy ' + p.done + '/' + p.total; } });
+	}
+	window.__copyMs = performance.now() - t0;
+	$('status').textContent = 'copied in ' + Math.round(window.__copyMs) + ' ms';
+	if (thenBoot) boot(null);
+}
+
+// ?mode=handle: stands in for showDirectoryPicker + IndexedDB. The folder is copied into OPFS, the OPFS root
+// directory handle (a FileSystemDirectoryHandle, like the picker's) is saved with saveFolders(); after a
+// reload (?mode=saved) the "Use the saved folder" button reopens it: queryAccess, requestAccess, handle walk,
+// getFile() for each file, attach, boot.
+async function saveOpfs(files) {
+	await copyAndBoot(files, false);
+	await direct.saveFolders([{ name: 'opfs', handle: await navigator.storage.getDirectory() }]);
+	window.__saved = true;
+}
+
+$('folder').onchange = (e) => (params.get('mode') === 'opfs' ? copyAndBoot(e.target.files) : params.get('mode') === 'handle' ? saveOpfs(e.target.files) : open(e.target.files)).catch((err) => { window.__error = String(err); log('ERROR ' + err); });
+$('choose').onclick = () => direct.prepareDirect({}).then((i) => { boot(i); }).catch((err) => { window.__error = String(err); log('ERROR ' + err); });
+
+direct.loadFolders().then((saved) => {
+	if (!saved.length) return;
+	$('saved').hidden = false;
+	direct.queryAccess(saved).then((a) => { window.__access = a; });
+	$('saved').onclick = () => direct.prepareDirect({ folders: saved, onProgress: (p) => { $('status').textContent = p.phase + ' ' + p.done + '/' + p.total; } }).then((i) => { window.__install = i; window.__openMs = performance.now() - window.__t0; boot(i); }).catch((err) => log('ERROR ' + err));
+});
+window.__t0 = performance.now();
+window.__ready = true;
+if (params.get('nofolder')) boot(null);   // boot without picking anything (OPFS data must exist)
+</script>
+</body>
+</html>

@@ -42,6 +42,7 @@ set(GAMEENGINE_SRC
 #    Include/Common/GameAudio.h
 #    Include/Common/GameCommon.h
 #    Include/Common/GameDefines.h
+    Include/Common/ArmyPackages.h
     Include/Common/GameEngine.h
     Include/Common/GameLOD.h
 #    Include/Common/GameMemory.h
@@ -92,6 +93,7 @@ set(GAMEENGINE_SRC
 #    Include/Common/Radar.h
 #    Include/Common/RAMFile.h
 #    Include/Common/RandomValue.h
+    Include/Common/AIMatch.h
     Include/Common/Recorder.h
 #    Include/Common/ReplaySimulation.h
     Include/Common/Registry.h
@@ -234,6 +236,13 @@ set(GAMEENGINE_SRC
 #    Include/GameLogic/AIPathfind.h
     Include/GameLogic/AIPlayer.h
     Include/GameLogic/AISkirmishPlayer.h
+    Include/GameLogic/AIProtect.h
+    Include/GameLogic/AIRoute.h
+    Include/GameLogic/AIStrategy.h
+    Include/GameLogic/PlayerAssist.h
+    Include/GameLogic/Protect.h
+    Include/GameClient/AssistUI.h
+    Include/Common/AssistOptions.h
     Include/GameLogic/AIStateMachine.h
     Include/GameLogic/AITNGuard.h
     Include/GameLogic/Armor.h
@@ -565,6 +574,7 @@ set(GAMEENGINE_SRC
 #    Source/Common/DamageFX.cpp
 #    Source/Common/Dict.cpp
 #    Source/Common/DiscreteCircle.cpp
+    Source/Common/ArmyPackages.cpp
     Source/Common/GameEngine.cpp
     Source/Common/GameLOD.cpp
     Source/Common/GameMain.cpp
@@ -605,6 +615,7 @@ set(GAMEENGINE_SRC
     Source/Common/PartitionSolver.cpp
 #    Source/Common/PerfTimer.cpp
 #    Source/Common/RandomValue.cpp
+    Source/Common/AIMatch.cpp
     Source/Common/Recorder.cpp
 #    Source/Common/ReplaySimulation.cpp
 #    Source/Common/RTS/AcademyStats.cpp
@@ -830,6 +841,26 @@ set(GAMEENGINE_SRC
 #    Source/GameLogic/AI/AIPathfind.cpp
     Source/GameLogic/AI/AIPlayer.cpp
     Source/GameLogic/AI/AISkirmishPlayer.cpp
+    Source/GameLogic/AI/AIStrategy.cpp
+    Source/GameLogic/AI/AITactics.cpp
+    Source/GameLogic/AI/AIBaseDefence.cpp
+    Source/GameLogic/AI/AIGeo.cpp
+    Source/GameLogic/AI/AIAbility.cpp
+    Source/GameLogic/AI/AIAirborne.cpp
+    Source/GameLogic/AI/AIGarrison.cpp
+    Source/GameLogic/AI/AIProtect.cpp
+    Source/GameLogic/AI/AIRaid.cpp
+    Source/GameLogic/AI/AIRoute.cpp
+    Source/GameLogic/AI/AIRepair.cpp
+    Source/GameLogic/AI/AICombatModel.cpp
+    Source/GameLogic/PlayerAssist.cpp
+    Source/GameLogic/Protect.cpp
+    Source/GameLogic/AssistTest.cpp
+    Source/GameClient/AssistUI.cpp
+    Source/GameClient/AssistUIProtect.cpp
+    Source/Common/AssistOptions.cpp
+    Source/GameLogic/AssistFormation.cpp
+    Source/GameLogic/AI/AIEnemyModel.cpp
     Source/GameLogic/AI/AIStates.cpp
     Source/GameLogic/AI/AITNGuard.cpp
     Source/GameLogic/AI/Squad.cpp

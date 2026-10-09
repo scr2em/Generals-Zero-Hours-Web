@@ -27,7 +27,7 @@
 #define STRICT
 #endif
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
 #include <windows.h>
 #include <mmsystem.h>
 #else

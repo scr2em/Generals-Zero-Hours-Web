@@ -37,6 +37,8 @@
 #include "Common/XferCRC.h"
 
 #include "GameLogic/AI.h"
+#include "GameLogic/AIPlayer.h"
+#include "GameLogic/AIStrategy.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameLogic/Module/AIUpdate.h"
 #include "GameLogic/Module/ContainModule.h"
@@ -44,6 +46,7 @@
 #include "GameLogic/SidesList.h"
 #include "GameLogic/AIPathfind.h"
 #include "GameLogic/Weapon.h"
+#include "GameLogic/Module/BodyModule.h"
 
 extern void addIcon(const Coord3D *pos, Real width, Int numFramesDuration, RGBColor color);
 
@@ -174,6 +177,9 @@ static const FieldParse TheAIFieldParseTable[] =
 
 	{ "SideInfo",			AI::parseSideInfo,			nullptr, 0 },
 
+	// Optional (the code has defaults): how the Expert level plays.
+	{ "ExpertSkill",	AI::parseSkillSettings,	nullptr, 0 },
+
 
 	{ "SkirmishBuildList",			AI::parseSkirmishBuildList,			nullptr, 0 },
 
@@ -235,6 +241,99 @@ void AI::parseSideInfo(INI *ini, void *instance, void* /*store*/, const void* /*
 	resourceInfo->m_side = side;
 	ini->initFromINI(resourceInfo, myFieldParse);
 
+}
+
+void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const void* /*userData*/)
+{
+	static const FieldParse myFieldParse[] =
+		{
+			{ "AttentionSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_attentionSeconds ) },
+			{ "ReactionSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_reactionSeconds ) },
+			{ "ScoutSeconds",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_scoutSeconds ) },
+			{ "MistakeChance",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_mistakeChance ) },
+			{ "CounterStrength",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_counterStrength ) },
+			{ "EngageAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_engageAdvantage ) },
+			{ "RetreatAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_retreatAdvantage ) },
+			{ "WaveHoldSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveHoldSeconds ) },
+			{ "MinWaveValue",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_minWaveValue ) },
+			{ "WaveSizeScale",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveSizeScale ) },
+			{ "Retreat",							INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRetreat ) },
+			{ "FocusFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useFocusFire ) },
+			{ "KeepBackline",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpacing ) },
+			{ "ExpandEconomy",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_expandEconomy ) },
+			{ "SmartPowers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_smartPowers ) },
+			{ "SplitFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSplitFire ) },
+			{ "SplitWindowSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splitWindowSeconds ) },
+			{ "ThreatTargets",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useThreatTargets ) },
+			{ "Kiting",								INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useKiting ) },
+			{ "KiteMinReloadSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteMinReloadSeconds ) },
+			{ "KiteRangeFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteRangeFactor ) },
+			{ "KiteSpeedFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteSpeedFactor ) },
+			{ "KiteGroupRadius",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteGroupRadius ) },
+			{ "KiteMinThreat",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteMinThreat ) },
+			{ "FightCheck",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useFightCheck ) },
+			{ "LaunchAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchAdvantage ) },
+			{ "PullbackAdvantage",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_pullbackAdvantage ) },
+			{ "LaunchBlockSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchBlockSeconds ) },
+			{ "MergeReinforcements",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useMerge ) },
+			{ "SpreadVsSplash",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpread ) },
+			{ "SplashRadiusThreshold",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splashRadiusThreshold ) },
+			{ "MaxSpacing",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_maxSpacing ) },
+			{ "RaidEconomy",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRaids ) },
+			{ "RaidUnits",						INI::parseInt,		nullptr, offsetof( AISkillSettings, m_raidUnits ) },
+			{ "RaidSpeedFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidSpeedFactor ) },
+			{ "RaidStartSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidStartSeconds ) },
+			{ "RaidMaxSeconds",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidMaxSeconds ) },
+			{ "RaidCooldownSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidCooldownSeconds ) },
+			{ "RaidPullbackAdvantage",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidPullbackAdvantage ) },
+			{ "RaidGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidGuardShare ) },
+			{ "ProtectWorkers",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useProtect ) },
+			{ "ProtectLeashRadius",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectLeash ) },
+			{ "ProtectResponseRadius",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectResponseRadius ) },
+			{ "ProtectCalmSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectCalmSeconds ) },
+			{ "ProtectMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectMaxSeconds ) },
+			{ "ProtectResponders",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_protectResponders ) },
+			{ "RepairAndHeal",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRepair ) },
+			{ "RepairBelow",					INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairBelow ) },
+			{ "RepairTripSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_repairTripSeconds ) },
+			{ "RepairDozerBelow",			INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairDozerBelow ) },
+			{ "AvoidDefences",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRoute ) },
+			{ "RouteMargin",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_routeMargin ) },
+			{ "RouteMaxDetour",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_routeMaxDetour ) },
+			{ "BreachRangeFactor",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachRangeFactor ) },
+			{ "BreachHoldSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachHoldSeconds ) },
+			{ "BaseDefencePriority",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useBaseDefence ) },
+			{ "BaseDefenceMargin",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_baseDefenceMargin ) },
+			{ "BaseDefenceMinValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_baseDefenceMinValue ) },
+			{ "BaseDefenceMinAdvantage",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceMinAdvantage ) },
+			{ "BaseDefenceClearSeconds",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceClearSeconds ) },
+			{ "TerrainDefence",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useGeo ) },
+			{ "OrientLayout",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useLayout ) },
+			{ "GeoRing",							INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRing ) },
+			{ "GeoChokeWidth",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoChokeWidth ) },
+			{ "GeoLookOut",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoLookOut ) },
+			{ "GeoReach",							INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoReach ) },
+			{ "GeoRallyOut",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOut ) },
+			{ "GeoRallyOffset",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOffset ) },
+			{ "UseGarrisons",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useGarrison ) },
+			{ "GarrisonThreatValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonThreatValue ) },
+			{ "GarrisonHoldSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonHoldSeconds ) },
+			{ "GarrisonClear",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_garrisonClear ) },
+			{ "UnitAbilities",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAbilities ) },
+			{ "AbilityRange",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityRange ) },
+			{ "AbilityMinValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityMinValue ) },
+			{ "AirborneInsertion",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAirborne ) },
+			{ "AirMargin",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMargin ) },
+			{ "AirGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airGuardShare ) },
+			{ "AirMinSquadValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMinSquadValue ) },
+			{ "AirMaxDetour",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMaxDetour ) },
+			{ "AirMaxSeconds",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMaxSeconds ) },
+			{ "AirAssaultSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airAssaultSeconds ) },
+			{ "AirCooldownSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airCooldownSeconds ) },
+			{ nullptr,								nullptr,					nullptr, 0 }
+		};
+
+	ini->initFromINI(&((TAiData*)instance)->m_expertSkill, myFieldParse);
 }
 
 void AI::parseSkillSet(INI *ini, void *instance, void* store, const void* /*userData*/)
@@ -319,6 +418,7 @@ void AI::init()
  */
 void AI::reset()
 {
+	AICombatModel::reset();
 	m_pathfinder->reset();
 	while (m_aiData && m_aiData->m_next) {
 		TAiData *cur = m_aiData;
@@ -594,6 +694,190 @@ static void priorityFunc(Object *obj, void *userData)
 
 //-----------------------------------------------------------------------------
 /**
+ * Target selection of the Expert computer player.  Among the few nearest candidates it prefers
+ *  - what can hurt our units around here most (threat first), then healers and repairers (support),
+ *    then what outranges us (artillery and the like) when it is within reach,
+ *  - what can be finished off, what is within reach, what is near,
+ *  - and, with split fire, not what other units have already assigned enough damage to.
+ * Units that stand together make the same choice, so they share their targets.
+ * Never used for human players or the other difficulties.
+ */
+static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter **filters )
+{
+	SimpleObjectIterator *iter = ThePartitionManager->iterateObjectsInRange(me, range, FROM_BOUNDINGSPHERE_2D, filters, ITER_SORTED_NEAR_TO_FAR);
+	MemoryPoolObjectHolder holder(iter);
+	const AICombatFigures *mine = AICombatModel::figures(me->getTemplate());
+	if (mine == nullptr)
+		return iter->first();
+
+	Player *owner = me->getControllingPlayer();
+	const AISkillSettings &skill = TheAI->getAiData()->m_expertSkill;
+	const Bool split = skill.m_useSplitFire && !owner->isAiFeatureOff(AIPlayer::AIF_SPLIT);
+	const Bool threatFirst = skill.m_useThreatTargets && !owner->isAiFeatureOff(AIPlayer::AIF_THREAT);
+
+	// Our units around here: what a target can do to them is what makes it dangerous.
+	enum { MAX_MATES = 8 };
+	const AICombatFigures *mates[MAX_MATES];
+	Int numMates = 0;
+	Real mateCost = 0.0f;
+	if (threatFirst)
+	{
+		PartitionFilterAlive alive;
+		PartitionFilterRelationship friends(me, PartitionFilterRelationship::ALLOW_ALLIES);
+		PartitionFilter *mateFilters[] = { &friends, &alive, nullptr };
+		SimpleObjectIterator *mateIter = ThePartitionManager->iterateObjectsInRange(me->getPosition(), 150.0f, FROM_CENTER_2D, mateFilters);
+		MemoryPoolObjectHolder mateHolder(mateIter);
+		for (Object *m = mateIter->first(); m && numMates < MAX_MATES; m = mateIter->next())
+		{
+			const AICombatFigures *mf = AICombatModel::figures(m->getTemplate());
+			if (mf == nullptr || !mf->m_armed || mf->m_structure)
+				continue;
+			mates[numMates++] = mf;
+			mateCost += mf->m_cost;
+		}
+	}
+
+	// Three picks are tracked to measure what each rule changes: the original formula (A), with the threat
+	// rules (B), and with split fire as well (C, the result).
+	Object *best = nullptr, *bestB = nullptr, *bestA = nullptr;
+	Real bestScore = 0.0f, bestScoreB = 0.0f, bestScoreA = 0.0f;
+	Int bestKind = 0;
+	Int examined = 0;
+	for (Object *e = iter->first(); e && examined < 8; e = iter->next(), ++examined)
+	{
+		const AICombatFigures *f = AICombatModel::figures(e->getTemplate());
+		if (f == nullptr)
+			return iter->first();
+
+		const Real dist = sqrtf(ThePartitionManager->getDistanceSquared(me, e, FROM_BOUNDINGSPHERE_2D));
+		Real health = 1.0f;
+		BodyModuleInterface *body = e->getBodyModule();
+		if (body && body->getMaxHealth() > 0.0f)
+			health = body->getHealth() / body->getMaxHealth();
+
+		// What does not depend on the kind of rules.
+		Real common = 40.0f * (1.0f - health);																	// finish what is hurt
+		const Real dps = AICombatModel::damagePerSecond(mine, f);
+		if (dps > 0.0f)
+			common += 25.0f / (1.0f + (health * f->m_maxHealth / dps) / 3.0f);		// quick kills
+		if (dist <= mine->m_range)
+			common += 20.0f;																											// in reach right now
+		common -= 40.0f * (dist >= range ? 1.0f : dist / range);								// near is better
+
+		// The original rule: it can hurt this unit: first.
+		Real scoreA = common;
+		const Real threat = AICombatModel::killRate(f, mine);
+		if (threat > 0.0f)
+			scoreA += 60.0f + (threat * 600.0f > 30.0f ? 30.0f : threat * 600.0f);
+		else if (f->m_armed)
+			scoreA += 25.0f;
+		else if (!f->m_structure)
+			scoreA += 15.0f;
+		else
+			scoreA += 5.0f;
+
+		Real scoreB = scoreA;
+		Int kind = 0;
+		if (threatFirst)
+		{
+			// Threat: the share of the value of our units around here that it destroys every second.
+			Real rate = 0.0f;
+			if (numMates > 0)
+			{
+				for (Int i = 0; i < numMates; ++i)
+					rate += mates[i]->m_cost * AICombatModel::killRate(f, mates[i]);
+				rate /= (mateCost > 0.0f ? mateCost : 1.0f);
+			}
+			else
+			{
+				rate = threat;
+			}
+
+			scoreB = common;
+			if (rate > 0.0f)
+			{
+				scoreB += 55.0f + 40.0f * rate / (rate + 0.04f);
+				if (f->m_supportLevel >= 2)
+					scoreB += 8.0f;			// armed and mending the others: a priority among the threats
+			}
+			else if (f->m_supportLevel >= 2)
+			{
+				scoreB += 48.0f;		// healers and repairers keep the others going
+				kind = 1;
+			}
+			else if (f->m_armed)
+				scoreB += 25.0f;
+			else if (f->m_supportLevel == 1)
+				scoreB += 30.0f;		// workers
+			else if (!f->m_structure)
+				scoreB += 15.0f;
+			else
+				scoreB += 5.0f;
+
+			// What outranges us hurts from where we cannot answer: when it is within reach, take it.
+			if (f->m_armed && !f->m_structure && f->m_range >= 1.35f * mine->m_range && dist <= mine->m_range + 10.0f)
+			{
+				scoreB += 12.0f;
+				kind = 2;
+			}
+		}
+
+		if (bestA == nullptr || scoreA > bestScoreA)
+		{
+			bestA = e;
+			bestScoreA = scoreA;
+		}
+		if (bestB == nullptr || scoreB > bestScoreB)
+		{
+			bestB = e;
+			bestScoreB = scoreB;
+		}
+
+		// Split fire: damage that other units have already assigned to the target counts against it, so
+		// that once enough is on its way to kill it the rest of the group takes the next target.
+		Real score = scoreB;
+		if (split && body)
+		{
+			const Real assigned = owner->getAiAssignedDamage(e->getID());
+			if (assigned > 0.0f)
+			{
+				const Real ratio = assigned / (body->getHealth() * 1.05f + 1.0f);
+				score -= ratio >= 1.0f ? 100.0f : 40.0f * ratio * ratio;
+			}
+		}
+
+		if (best == nullptr || score > bestScore)
+		{
+			best = e;
+			bestScore = score;
+			bestKind = kind;
+		}
+	}
+
+	if (best)
+	{
+		Int flags = 0;
+		if (best != bestB)
+			flags |= AIPlayer::PICK_SPLIT;
+		if (bestB != bestA)
+			flags |= AIPlayer::PICK_THREAT;
+		if (bestKind == 1)
+			flags |= AIPlayer::PICK_SUPPORT;
+		else if (bestKind == 2)
+			flags |= AIPlayer::PICK_LONGRANGE;
+		Real assign = 0.0f;
+		if (split)
+		{
+			const Real d = AICombatModel::damagePerSecond(mine, AICombatModel::figures(best->getTemplate()));
+			assign = d * skill.m_splitWindowSeconds;
+		}
+		owner->assignAiDamage(best->getID(), assign, flags);
+	}
+	return best;
+}
+
+//-----------------------------------------------------------------------------
+/**
  * Return the closest enemy, according to the qualifiers.
  */
 Object *AI::findClosestEnemy( const Object *me, Real range, UnsignedInt qualifiers,
@@ -686,7 +970,12 @@ Object *AI::findClosestEnemy( const Object *me, Real range, UnsignedInt qualifie
 
 	if (info == nullptr || info == TheScriptEngine->getDefaultAttackInfo())
 	{
-		// No additional attack info, so just return the closest one.
+		// No additional attack info.  The Expert computer player picks among the nearest by threat and health.
+		if (range <= 900.0f && me->getControllingPlayer() && me->getControllingPlayer()->isExpertAIPlayer() &&
+				TheAI->getAiData()->m_expertSkill.m_useFocusFire &&
+				!me->getControllingPlayer()->isAiFeatureOff(AIPlayer::AIF_FOCUS))
+			return pickTacticalTarget(me, range, filters);
+		// Otherwise just return the closest one.
 		Object* o = ThePartitionManager->getClosestObject( me, range, FROM_BOUNDINGSPHERE_2D, filters );
 		return o;
 	}
@@ -956,6 +1245,94 @@ m_aiCrushesInfantry(true),
 m_maxRetaliateDistance(210.0f),
 m_retaliateFriendsRadius(120.0f)
 {
+	// Defaults of the Expert level.  Its decisions are as quick as a good player's, but not perfect:
+	// it needs a moment to react, and now and then takes the second best option, which also makes it
+	// less predictable.  Tuned with the AI test bench against the original Hard AI; the aim is a clear
+	// edge, not an opponent nobody can beat.
+	AISkillSettings &ex = m_expertSkill;
+	ex.m_attentionSeconds = 1.0f;
+	ex.m_reactionSeconds = 1.0f;
+	ex.m_scoutSeconds = 2.0f;
+	ex.m_mistakeChance = 0.05f;
+	ex.m_counterStrength = 1.0f;
+	ex.m_engageAdvantage = 1.3f;
+	ex.m_retreatAdvantage = 0.65f;
+	ex.m_waveHoldSeconds = 40.0f;
+	ex.m_minWaveValue = 2000.0f;
+	ex.m_waveSizeScale = 1.0f;
+	ex.m_useRetreat = true;
+	ex.m_useFocusFire = true;
+	ex.m_useSpacing = true;
+	ex.m_expandEconomy = true;
+	ex.m_smartPowers = true;
+	ex.m_useSplitFire = true;
+	ex.m_splitWindowSeconds = 2.0f;
+	ex.m_useThreatTargets = true;
+	ex.m_useKiting = false;	// measured on the starter content: no gain (see docs/AI_PLAN.md); "Kiting = Yes" in ExpertSkill turns it on
+	ex.m_kiteMinReloadSeconds = 0.7f;
+	ex.m_kiteRangeFactor = 1.1f;
+	ex.m_kiteSpeedFactor = 1.3f;
+	ex.m_kiteGroupRadius = 400.0f;
+	ex.m_kiteMinThreat = 0.04f;
+	ex.m_useFightCheck = true;
+	ex.m_launchAdvantage = 0.8f;
+	ex.m_pullbackAdvantage = 0.5f;
+	ex.m_launchBlockSeconds = 120.0f;
+	ex.m_useMerge = true;
+	ex.m_useSpread = true;
+	ex.m_splashRadiusThreshold = 20.0f;
+	ex.m_maxSpacing = 70.0f;
+	ex.m_useRaids = true;
+	ex.m_raidUnits = 3;
+	ex.m_raidSpeedFactor = 1.25f;
+	ex.m_raidStartSeconds = 120.0f;
+	ex.m_raidMaxSeconds = 75.0f;
+	ex.m_raidCooldownSeconds = 30.0f;
+	ex.m_raidPullbackAdvantage = 0.9f;
+	ex.m_raidGuardShare = 0.3f;
+	ex.m_useProtect = true;
+	ex.m_protectLeash = 450.0f;
+	ex.m_protectResponseRadius = 500.0f;
+	ex.m_protectCalmSeconds = 6.0f;
+	ex.m_protectMaxSeconds = 75.0f;
+	ex.m_protectResponders = 4;
+	ex.m_useRepair = true;
+	ex.m_repairBelow = 0.55f;
+	ex.m_repairTripSeconds = 30.0f;
+	ex.m_repairDozerBelow = 0.85f;
+	ex.m_useRoute = true;
+	ex.m_routeMargin = 60.0f;
+	ex.m_routeMaxDetour = 1.8f;
+	ex.m_breachRangeFactor = 1.12f;
+	ex.m_breachHoldSeconds = 80.0f;
+	ex.m_useBaseDefence = true;
+	ex.m_baseDefenceMargin = 120.0f;
+	ex.m_baseDefenceMinValue = 150.0f;
+	ex.m_baseDefenceMinAdvantage = 0.6f;
+	ex.m_baseDefenceClearSeconds = 5.0f;
+	ex.m_useGeo = true;
+	ex.m_useLayout = true;
+	ex.m_geoRing = 60.0f;
+	ex.m_geoChokeWidth = 200.0f;
+	ex.m_geoLookOut = 450.0f;
+	ex.m_geoReach = 300.0f;
+	ex.m_geoRallyOut = 140.0f;
+	ex.m_geoRallyOffset = 90.0f;
+	ex.m_useGarrison = true;
+	ex.m_garrisonThreatValue = 300.0f;
+	ex.m_garrisonHoldSeconds = 8.0f;
+	ex.m_garrisonClear = true;
+	ex.m_useAbilities = true;
+	ex.m_abilityRange = 400.0f;
+	ex.m_abilityMinValue = 150.0f;
+	ex.m_useAirborne = false;
+	ex.m_airMargin = 50.0f;
+	ex.m_airGuardShare = 0.8f;
+	ex.m_airMinSquadValue = 350.0f;
+	ex.m_airMaxDetour = 2.2f;
+	ex.m_airMaxSeconds = 100.0f;
+	ex.m_airAssaultSeconds = 90.0f;
+	ex.m_airCooldownSeconds = 45.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -985,6 +1362,93 @@ void TAiData::crc( Xfer *xfer )
 	xfer->xferReal( &m_skirmishBaseDefenseExtraDistance );
 	xfer->xferReal( &m_repulsedDistance );
 	xfer->xferBool( &m_enableRepulsors );
+	{
+		// The Expert settings steer the simulation, so every client must agree on them.
+		AISkillSettings &sk = m_expertSkill;
+		xfer->xferReal( &sk.m_attentionSeconds );
+		xfer->xferReal( &sk.m_reactionSeconds );
+		xfer->xferReal( &sk.m_scoutSeconds );
+		xfer->xferReal( &sk.m_mistakeChance );
+		xfer->xferReal( &sk.m_counterStrength );
+		xfer->xferReal( &sk.m_engageAdvantage );
+		xfer->xferReal( &sk.m_retreatAdvantage );
+		xfer->xferReal( &sk.m_waveHoldSeconds );
+		xfer->xferReal( &sk.m_minWaveValue );
+		xfer->xferReal( &sk.m_waveSizeScale );
+		xfer->xferBool( &sk.m_useRetreat );
+		xfer->xferBool( &sk.m_useFocusFire );
+		xfer->xferBool( &sk.m_useSpacing );
+		xfer->xferBool( &sk.m_expandEconomy );
+		xfer->xferBool( &sk.m_smartPowers );
+		xfer->xferBool( &sk.m_useSplitFire );
+		xfer->xferReal( &sk.m_splitWindowSeconds );
+		xfer->xferBool( &sk.m_useThreatTargets );
+		xfer->xferBool( &sk.m_useKiting );
+		xfer->xferReal( &sk.m_kiteMinReloadSeconds );
+		xfer->xferReal( &sk.m_kiteRangeFactor );
+		xfer->xferReal( &sk.m_kiteSpeedFactor );
+		xfer->xferReal( &sk.m_kiteGroupRadius );
+		xfer->xferReal( &sk.m_kiteMinThreat );
+		xfer->xferBool( &sk.m_useFightCheck );
+		xfer->xferReal( &sk.m_launchAdvantage );
+		xfer->xferReal( &sk.m_pullbackAdvantage );
+		xfer->xferReal( &sk.m_launchBlockSeconds );
+		xfer->xferBool( &sk.m_useMerge );
+		xfer->xferBool( &sk.m_useSpread );
+		xfer->xferReal( &sk.m_splashRadiusThreshold );
+		xfer->xferReal( &sk.m_maxSpacing );
+		xfer->xferBool( &sk.m_useRaids );
+		xfer->xferInt( &sk.m_raidUnits );
+		xfer->xferReal( &sk.m_raidSpeedFactor );
+		xfer->xferReal( &sk.m_raidStartSeconds );
+		xfer->xferReal( &sk.m_raidMaxSeconds );
+		xfer->xferReal( &sk.m_raidCooldownSeconds );
+		xfer->xferReal( &sk.m_raidPullbackAdvantage );
+		xfer->xferReal( &sk.m_raidGuardShare );
+		xfer->xferBool( &sk.m_useProtect );
+		xfer->xferReal( &sk.m_protectLeash );
+		xfer->xferReal( &sk.m_protectResponseRadius );
+		xfer->xferReal( &sk.m_protectCalmSeconds );
+		xfer->xferReal( &sk.m_protectMaxSeconds );
+		xfer->xferInt( &sk.m_protectResponders );
+		xfer->xferBool( &sk.m_useRepair );
+		xfer->xferReal( &sk.m_repairBelow );
+		xfer->xferReal( &sk.m_repairTripSeconds );
+		xfer->xferReal( &sk.m_repairDozerBelow );
+		xfer->xferBool( &sk.m_useRoute );
+		xfer->xferReal( &sk.m_routeMargin );
+		xfer->xferReal( &sk.m_routeMaxDetour );
+		xfer->xferReal( &sk.m_breachRangeFactor );
+		xfer->xferReal( &sk.m_breachHoldSeconds );
+		xfer->xferBool( &sk.m_useBaseDefence );
+		xfer->xferReal( &sk.m_baseDefenceMargin );
+		xfer->xferReal( &sk.m_baseDefenceMinValue );
+		xfer->xferReal( &sk.m_baseDefenceMinAdvantage );
+		xfer->xferReal( &sk.m_baseDefenceClearSeconds );
+		xfer->xferBool( &sk.m_useGeo );
+		xfer->xferBool( &sk.m_useLayout );
+		xfer->xferReal( &sk.m_geoRing );
+		xfer->xferReal( &sk.m_geoChokeWidth );
+		xfer->xferReal( &sk.m_geoLookOut );
+		xfer->xferReal( &sk.m_geoReach );
+		xfer->xferReal( &sk.m_geoRallyOut );
+		xfer->xferReal( &sk.m_geoRallyOffset );
+		xfer->xferBool( &sk.m_useGarrison );
+		xfer->xferReal( &sk.m_garrisonThreatValue );
+		xfer->xferReal( &sk.m_garrisonHoldSeconds );
+		xfer->xferBool( &sk.m_garrisonClear );
+		xfer->xferBool( &sk.m_useAbilities );
+		xfer->xferReal( &sk.m_abilityRange );
+		xfer->xferReal( &sk.m_abilityMinValue );
+		xfer->xferBool( &sk.m_useAirborne );
+		xfer->xferReal( &sk.m_airMargin );
+		xfer->xferReal( &sk.m_airGuardShare );
+		xfer->xferReal( &sk.m_airMinSquadValue );
+		xfer->xferReal( &sk.m_airMaxDetour );
+		xfer->xferReal( &sk.m_airMaxSeconds );
+		xfer->xferReal( &sk.m_airAssaultSeconds );
+		xfer->xferReal( &sk.m_airCooldownSeconds );
+	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 
 }

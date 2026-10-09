@@ -84,7 +84,10 @@ m_dozerQueuedForRepair(false),
 m_supplySourceAttackCheckFrame(0),
 m_attackedSupplyCenter(INVALID_ID),
 m_teamSeconds(10),
-m_curWarehouseID(INVALID_ID)
+m_curWarehouseID(INVALID_ID),
+m_expert(false),
+m_featureOn(0),
+m_featureOff(0)
 {
 	m_frameLastBuildingBuilt = TheGameLogic->getFrame();
 	p->setCanBuildUnits(false); // turn off ai production by default.
@@ -213,7 +216,7 @@ void AIPlayer::checkForSupplyCenter( BuildListInfo *info, Object *bldg )
 		}
 		info->setSupplyBuilding(true);
 		info->setCurrentGatherers(-1);
-		info->setDesiredGatherers(desiredGatherers+1); // get a freebie with the supply depots.
+		info->setDesiredGatherers(desiredGatherers+1+extraGatherers()); // get a freebie with the supply depots.
 	}
 }
 
@@ -1683,6 +1686,42 @@ Bool AIPlayer::selectTeamToReinforce( Int minPriority )
 }
 
 // ------------------------------------------------------------------------------------------------
+/** Pick one of the teams that can be built now: a random one among those with the highest production priority. */
+// ------------------------------------------------------------------------------------------------
+TeamPrototype *AIPlayer::pickTeamPrototype( const std::list<TeamPrototype *> &candidates, Int hiPri )
+{
+	// collect all teams that are possible to build, and are at the highest priority
+	Player::PlayerTeamList candidateList;
+	Int count = 0;
+	Player::PlayerTeamList::const_iterator t;
+	for (t = candidates.begin(); t != candidates.end(); ++t)
+	{
+		if ((*t)->getTemplateInfo()->m_productionPriority == hiPri)
+		{
+			candidateList.push_back( (*t) );
+			count++;
+		}
+	}
+
+	// pick a random team from the hi-priority set
+	Int which = GameLogicRandomValue( 0, count-1 );
+
+	TeamPrototype *teamProto = nullptr;
+	Int i = 0;
+	for (t = candidateList.begin(); t != candidateList.end(); ++t)
+	{
+		if (i == which)
+		{
+			teamProto = (*t);
+			break;
+		}
+
+		i++;
+	}
+	return teamProto;
+}
+
+// ------------------------------------------------------------------------------------------------
 /** Determine the next team to build.  Return true if one was selected. */
 // ------------------------------------------------------------------------------------------------
 Bool AIPlayer::selectTeamToBuild()
@@ -1720,33 +1759,7 @@ Bool AIPlayer::selectTeamToBuild()
 		TheScriptEngine->AppendDebugMessage("**AI** Selecting team to build", false);
 	}
 
-	// collect all teams that are possible to build, and are at the highest priority
-	Player::PlayerTeamList candidateList;
-	Int count = 0;
-	for (t = candidateList1.begin(); t != candidateList1.end(); ++t)
-	{
-		if ((*t)->getTemplateInfo()->m_productionPriority == hiPri)
-		{
-			candidateList.push_back( (*t) );
-			count++;
-		}
-	}
-
-	// pick a random team from the hi-priority set
-	Int which = GameLogicRandomValue( 0, count-1 );
-
-	TeamPrototype *teamProto = nullptr;
-	Int i = 0;
-	for (t = candidateList.begin(); t != candidateList.end(); ++t)
-	{
-		if (i == which)
-		{
-			teamProto = (*t);
-			break;
-		}
-
-		i++;
-	}
+	TeamPrototype *teamProto = pickTeamPrototype(candidateList1, hiPri);
 	if (teamProto) {
 		if (!teamProto->getTemplateInfo()->m_hasHomeLocation && !isSkirmishAI()) {
 			AsciiString teamStr = "Error : team '";
@@ -3348,7 +3361,7 @@ void AIPlayer::xfer( Xfer *xfer )
 {
 
 	// version
-	XferVersion currentVersion = 1;
+	XferVersion currentVersion = 2;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -3508,6 +3521,10 @@ void AIPlayer::xfer( Xfer *xfer )
 	xfer->xferBool( &m_dozerQueuedForRepair );
 	xfer->xferBool( &m_dozerIsRepairing );
 	xfer->xferInt( &m_bridgeTimer );
+
+	// 2: the Expert flag
+	if( version >= 2 )
+		xfer->xferBool( &m_expert );
 
 }
 

@@ -48,6 +48,8 @@
 #include "PreRTS.h"
 #include "Common/ArchiveFile.h"
 #include "Common/ArchiveFileSystem.h"
+#include "Common/ZipArchiveFile.h"
+#include "Common/LocalFileSystem.h"
 #include "Common/AsciiString.h"
 #include "Common/PerfTimer.h"
 
@@ -208,6 +210,116 @@ void ArchiveFileSystem::loadIntoDirectoryTree(ArchiveFile *archiveFile, Bool ove
 
 		it++;
 	}
+}
+
+//------------------------------------------------------------------------------------------------
+ZipArchiveFile* ArchiveFileSystem::openZipArchive(const Char *path, AsciiString &error)
+{
+	return ZipArchiveFile::open(path, error);
+}
+
+//------------------------------------------------------------------------------------------------
+Bool ArchiveFileSystem::mountZipArchive(ZipArchiveFile *zip, ZipEntryFilter filter, AsciiString &error)
+{
+	error.clear();
+	if (zip == nullptr)
+	{
+		error = "no archive";
+		return FALSE;
+	}
+
+	const std::vector<ZipArchiveFile::Entry> &entries = zip->getEntries();
+	size_t i;
+
+	// first pass: nothing may exist yet (loose file or archive). The probes bypass the FileSystem's existence cache on purpose.
+	for (i = 0; i < entries.size(); ++i)
+	{
+		const AsciiString &path = entries[i].m_name;
+		if (filter != nullptr && !filter(path))
+			continue;
+		if ((TheLocalFileSystem != nullptr && TheLocalFileSystem->doesFileExist(path.str())) || doesFileExist(path.str()))
+		{
+			error.format("file '%s' already exists in the game data or in another package", entries[i].m_originalName.str());
+			return FALSE;
+		}
+	}
+
+	// second pass: add. Same walk as loadIntoDirectoryTree, appended behind existing entries.
+	for (i = 0; i < entries.size(); ++i)
+	{
+		if (filter != nullptr && !filter(entries[i].m_name))
+			continue;
+
+		ArchivedDirectoryInfo *dirInfo = &m_rootDirectory;
+		AsciiString path;
+		AsciiString token;
+		AsciiString tokenizer = entries[i].m_name;
+		tokenizer.nextToken(&token, "\\/");
+
+		while (!tokenizer.isEmpty())
+		{
+			path.concat(token);
+			path.concat('\\');
+
+			ArchivedDirectoryInfoMap::iterator tempiter = dirInfo->m_directories.find(token);
+			if (tempiter == dirInfo->m_directories.end())
+			{
+				dirInfo = &(dirInfo->m_directories[token]);
+				dirInfo->m_path = path;
+				dirInfo->m_directoryName = token;
+			}
+			else
+			{
+				dirInfo = &tempiter->second;
+			}
+
+			tokenizer.nextToken(&token, "\\/");
+		}
+
+		dirInfo->m_files.insert(dirInfo->m_files.end(), std::make_pair(token, static_cast<ArchiveFile *>(zip)));
+	}
+
+	m_archiveFileMap[zip->getName()] = zip;
+	return TRUE;
+}
+
+//------------------------------------------------------------------------------------------------
+void ArchiveFileSystem::removeArchiveFromDirectory(ArchivedDirectoryInfo *dir, ArchiveFile *archive)
+{
+	for (ArchivedDirectoryInfoMap::iterator it = dir->m_directories.begin(); it != dir->m_directories.end(); ++it)
+	{
+		removeArchiveFromDirectory(&it->second, archive);
+	}
+
+	ArchivedFileLocationMap::iterator fit = dir->m_files.begin();
+	while (fit != dir->m_files.end())
+	{
+		if (fit->second == archive)
+		{
+			ArchivedFileLocationMap::iterator victim = fit;
+			++fit;
+			dir->m_files.erase(victim);
+		}
+		else
+		{
+			++fit;
+		}
+	}
+}
+
+//------------------------------------------------------------------------------------------------
+void ArchiveFileSystem::unmountZipArchive(ZipArchiveFile *zip)
+{
+	if (zip == nullptr)
+		return;
+
+	removeArchiveFromDirectory(&m_rootDirectory, zip);
+
+	ArchiveFileMap::iterator it = m_archiveFileMap.find(zip->getName());
+	if (it != m_archiveFileMap.end() && it->second == zip)
+		m_archiveFileMap.erase(it);
+
+	delete zip;
 }
 
 void ArchiveFileSystem::loadMods()

@@ -1,0 +1,2266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zero Hour for the Web</title>
+<link rel="icon" href="data:,">
+<meta name="color-scheme" content="dark light">
+<style>
+	:root {
+		--bg: #0e1116;
+		--surface: #161b22;
+		--surface-2: #1d242d;
+		--border: #2b3440;
+		--text: #e6edf3;
+		--muted: #8b98a8;
+		--accent: #d4a017;
+		--accent-text: #14100a;
+		--good: #3fb950;
+		--bad: #f85149;
+		--warn: #d29922;
+		--radius: 10px;
+	}
+	@media (prefers-color-scheme: light) {
+		:root:not([data-theme="dark"]) {
+			--bg: #f3f5f7;
+			--surface: #ffffff;
+			--surface-2: #eef1f4;
+			--border: #d3dae2;
+			--text: #1b232c;
+			--muted: #5b6876;
+			--accent: #b8860b;
+			--accent-text: #ffffff;
+			--good: #1a7f37;
+			--bad: #cf222e;
+			--warn: #9a6700;
+		}
+	}
+	* { box-sizing: border-box; }
+	html, body { height: 100%; margin: 0; }
+	body {
+		background: var(--bg);
+		color: var(--text);
+		font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	}
+	[hidden] { display: none !important; }
+
+	/* ---- setup ---- */
+	#setup {
+		min-height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 24px 16px;
+	}
+	.card {
+		width: 100%;
+		max-width: 620px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		padding: 28px;
+	}
+	h1 { margin: 0; font-size: 22px; letter-spacing: 0.2px; }
+	.subtitle { margin: 2px 0 20px; color: var(--muted); font-size: 13px; }
+	.notice {
+		margin: 0 0 16px;
+		padding: 10px 12px;
+		border: 1px solid var(--border);
+		border-left: 3px solid var(--bad);
+		border-radius: 6px;
+		background: var(--surface-2);
+		font-size: 13px;
+	}
+	.choice {
+		margin: 0 0 14px;
+		padding: 14px 16px 4px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: var(--surface-2);
+	}
+	.choice > h2 { margin: 0; font-size: 16px; }
+	.choice > p { margin: 4px 0 6px; color: var(--muted); font-size: 13px; }
+	.choice .row:first-of-type { border-top: none; }
+	.choice.active { border-color: var(--accent); }
+	.badge {
+		display: inline-block;
+		margin-left: 8px;
+		padding: 1px 8px;
+		border-radius: 10px;
+		border: 1px solid var(--border);
+		color: var(--muted);
+		font-size: 11px;
+		font-weight: 600;
+		vertical-align: middle;
+	}
+	.row.secondary { opacity: .92; }
+	button.secondary { background: transparent; }
+	.optional-line { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
+	.optional-line button.link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
+	.optional-line button.link:disabled { opacity: .5; cursor: default; }
+	.placeholder-note {
+		margin: 8px 0 6px;
+		padding: 8px 10px;
+		border-left: 3px solid var(--accent);
+		background: var(--surface);
+		border-radius: 4px;
+		font-size: 12px;
+		color: var(--muted);
+	}
+	#play-mode { color: var(--muted); font-size: 12px; }
+	#mode-badge {
+		align-self: center;
+		padding: 4px 10px;
+		border-radius: 12px;
+		background: rgba(22, 27, 34, 0.85);
+		color: #e6edf3;
+		font-size: 12px;
+	}
+	.row {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 4px 12px;
+		align-items: center;
+		padding: 12px 0;
+		border-top: 1px solid var(--border);
+	}
+	.row .name { font-weight: 600; }
+	.row .state { color: var(--muted); font-size: 13px; grid-column: 1; }
+	.row .state.ok { color: var(--good); }
+	.row .state.err { color: var(--bad); }
+	.row button { grid-column: 2; grid-row: 1 / span 2; }
+	button, select {
+		font: inherit;
+		color: var(--text);
+		background: var(--surface-2);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 8px 14px;
+		cursor: pointer;
+	}
+	button:hover:not(:disabled) { border-color: var(--muted); }
+	button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	button:disabled { opacity: 0.5; cursor: default; }
+	button.primary {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--accent-text);
+		font-weight: 700;
+		padding: 10px 28px;
+	}
+	.progress { margin: 12px 0 4px; }
+	.bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+	.bar > div { height: 100%; width: 0; background: var(--accent); transition: width 0.1s linear; }
+	.progress-text { margin-top: 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		align-items: center;
+		margin-top: 18px;
+		padding-top: 18px;
+		border-top: 1px solid var(--border);
+	}
+	.actions .spacer { flex: 1; }
+	label.inline { color: var(--muted); font-size: 13px; display: inline-flex; gap: 8px; align-items: center; }
+	.fine { margin: 16px 0 0; color: var(--muted); font-size: 12px; }
+	.link { background: none; border: none; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
+
+
+	/* ---- armies (extra factions from .zharmy packages) ---- */
+	#choice-armies code { font-size: 12px; }
+	.army-bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
+	.army-bar .count { flex: 1; min-width: 8em; color: var(--muted); }
+	.army-bar input[type="search"] {
+		font: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+		border-radius: 8px; padding: 4px 10px; width: 11em; min-width: 0;
+	}
+	.army-bar input[type="search"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	.army-bar button.link { color: var(--muted); }
+	.army-list { list-style: none; margin: 0 0 10px; padding: 0; max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+	.army { padding: 8px 12px; border-top: 1px solid var(--border); }
+	.army:first-child { border-top: none; }
+	.army-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+	.army-head label { display: flex; flex: 1; min-width: 12em; gap: 8px; align-items: baseline; cursor: pointer; overflow-wrap: anywhere; }
+	.army-head input { flex: none; align-self: center; width: 16px; height: 16px; accent-color: var(--accent); }
+	.army-head input:disabled, .army.off .army-name { cursor: default; }
+	.army.off .army-name { color: var(--muted); }
+	.army-name { font-weight: 600; }
+	.army-ver, .army-tag { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+	.army-tag { border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; }
+	.pill { flex: none; font-size: 12px; font-weight: 600; border: 1px solid currentColor; border-radius: 10px; padding: 0 8px; }
+	.pill.ready { color: var(--good); }
+	.pill.needs { color: var(--warn); }
+	.pill.bad { color: var(--bad); }
+	.pill.wait { color: var(--muted); }
+	.army-meta { margin: 2px 0 0 24px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+	.army-reason { margin: 2px 0 0 24px; font-size: 12px; overflow-wrap: anywhere; }
+	.army-reason.needs { color: var(--warn); }
+	.army-reason.bad { color: var(--bad); }
+	.army details { margin: 4px 0 0 24px; font-size: 12px; color: var(--muted); }
+	.army summary { cursor: pointer; }
+	.army details p { margin: 4px 0; overflow-wrap: anywhere; }
+	.army details pre { margin: 4px 0; max-height: 180px; overflow: auto; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+	#army-btn.bad { border-color: var(--bad); }
+	.army-actions { display: flex; gap: 12px; margin: 4px 0 0 24px; font-size: 12px; }
+	.army-actions button.link { color: var(--muted); }
+	/* ---- importing armies from a mod ---- */
+	.import-panel { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 13px; }
+	.import-panel header { display: flex; align-items: baseline; gap: 12px; }
+	.import-panel h3 { flex: 1; margin: 0 0 6px; font-size: 14px; }
+	.import-panel h4 { margin: 8px 0 4px; font-size: 13px; }
+	.import-panel p { margin: 4px 0 8px; color: var(--muted); }
+	.import-panel .state { color: var(--muted); font-size: 12px; }
+	.import-panel ul { list-style: none; margin: 4px 0 8px; padding: 0; }
+	.imp-archives, .imp-list { max-height: 300px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
+	.imp-archives li { padding: 4px 10px; border-top: 1px solid var(--border); }
+	.imp-archives li:first-child, .imp-list > li:first-child { border-top: none; }
+	.imp-archives label { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; cursor: pointer; overflow-wrap: anywhere; }
+	.imp-archives input, .imp-army-head input { flex: none; width: 16px; height: 16px; accent-color: var(--accent); align-self: center; }
+	.imp-meta { color: var(--muted); font-size: 12px; }
+	.imp-army, .imp-none { padding: 8px 10px; border-top: 1px solid var(--border); }
+	.imp-army-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+	.imp-army-head label { display: flex; flex: 1; min-width: 12em; gap: 8px; align-items: baseline; cursor: pointer; }
+	.imp-army details { margin: 4px 0 0 24px; font-size: 12px; color: var(--muted); }
+	.imp-army summary, .import-panel details > summary { cursor: pointer; }
+	.imp-fields { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0; }
+	.import-panel input[type="text"] { font: inherit; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+	.import-panel input[aria-invalid="true"] { border-color: var(--bad); }
+	.import-panel .imp-modline { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 4px 0; color: var(--muted); }
+	.imp-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 8px 0 4px; }
+	#imp-run-list li { padding: 2px 0; overflow-wrap: anywhere; }
+	#imp-log { margin: 6px 0; max-height: 160px; overflow: auto; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+	#imp-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+	#imp-table th, #imp-table td { padding: 3px 6px; border-top: 1px solid var(--border); text-align: left; }
+	#imp-table td.num, #imp-table th:not(:first-child):not(:last-child) { text-align: right; }
+	#imp-table td.ok { color: var(--good); font-weight: 600; }
+	#imp-table td.err { color: var(--bad); font-weight: 600; }
+	#imp-reports details { margin: 4px 0; font-size: 12px; color: var(--muted); }
+	#imp-reports pre { margin: 4px 0; max-height: 220px; overflow: auto; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+	.imp-error-text, #imp-error { color: var(--bad); overflow-wrap: anywhere; }
+	#imp-error { margin: 8px 0 0; }
+	#army-panel {
+		position: fixed; top: 44px; right: 8px; z-index: 6; width: min(380px, calc(100vw - 16px)); max-height: 60vh; overflow: auto;
+		padding: 10px 12px; border-radius: 8px; background: rgba(22, 27, 34, 0.96); color: #e6edf3; font-size: 13px; border: 1px solid #2b3440;
+	}
+	#army-panel h3 { margin: 0 0 6px; font-size: 14px; }
+	#army-panel ul { list-style: none; margin: 0; padding: 0; }
+	#army-panel li { padding: 4px 0; border-top: 1px solid #2b3440; overflow-wrap: anywhere; }
+	#army-panel li:first-child { border-top: none; }
+	#army-panel .st { font-weight: 600; }
+	#army-panel .st.loaded { color: #3fb950; }
+	#army-panel .st.skipped { color: #d29922; }
+	#army-panel .st.failed { color: #f85149; }
+	#army-panel .why, #army-panel .fac { display: block; color: #8b98a8; font-size: 12px; }
+
+	/* ---- multiplayer room ---- */
+	.netform { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; padding: 12px 0 4px; border-top: 1px solid var(--border); }
+	.netform label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+	.netform input, .netinvite input {
+		font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+		border-radius: 8px; padding: 7px 10px; min-width: 0;
+	}
+	.netform input:focus-visible, .netinvite input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	#net-room { width: 9em; text-transform: uppercase; letter-spacing: 1px; }
+	#net-name { width: 11em; }
+	#state-net { margin: 6px 0 10px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+	#state-net.ok { color: var(--good); }
+	#state-net.err { color: var(--bad); }
+	.netinvite { display: flex; gap: 8px; align-items: center; margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+	.netinvite input { flex: 1; font-size: 12px; }
+	#net-badge {
+		align-self: center; padding: 4px 10px; border-radius: 12px;
+		background: rgba(22, 27, 34, 0.85); color: #e6edf3; font-size: 12px;
+	}
+
+	/* ---- stage ---- */
+	#stage {
+		position: fixed;
+		inset: 0;
+		background: #000;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+	}
+	#canvas {
+		display: block;
+		background: #000;
+		outline: none;
+		/* sized from script to keep the game's aspect ratio */
+		width: 800px;
+		height: 600px;
+	}
+	#toolbar {
+		position: fixed;
+		top: 8px;
+		right: 8px;
+		display: flex;
+		gap: 6px;
+		opacity: 0;
+		transition: opacity 0.2s;
+	}
+	#toolbar:hover, #toolbar:focus-within, body.show-toolbar #toolbar { opacity: 1; }
+	#toolbar button { background: rgba(22, 27, 34, 0.85); color: #e6edf3; padding: 6px 10px; font-size: 13px; }
+	#loading {
+		position: fixed;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #8b98a8;
+		pointer-events: none;
+	}
+
+	/* ---- errors ---- */
+	#errors {
+		position: fixed;
+		left: 12px;
+		right: 12px;
+		bottom: 12px;
+		max-height: 40vh;
+		display: flex;
+		flex-direction: column;
+		background: var(--surface);
+		border: 1px solid var(--bad);
+		border-radius: var(--radius);
+		z-index: 10;
+	}
+	#errors header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+	#errors header strong { flex: 1; color: var(--bad); }
+	#errors pre {
+		margin: 0;
+		padding: 10px 12px;
+		overflow: auto;
+		font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+
+	/* ---- the game has ended ---- */
+	#ended {
+		position: fixed;
+		inset: 0;
+		z-index: 8;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 16px;
+		background: rgba(8, 10, 14, 0.88);
+	}
+	#ended .card { max-width: 480px; text-align: center; }
+	#ended h2 { margin: 0 0 6px; font-size: 20px; }
+	#ended p { margin: 0 0 18px; color: var(--muted); overflow-wrap: anywhere; }
+	#ended .buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+
+	/* ---- files of the player (screenshots, replays, saved games) ---- */
+	#files {
+		position: fixed;
+		inset: 0;
+		z-index: 9;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 16px;
+		background: rgba(8, 10, 14, 0.7);
+	}
+	#files .card { max-width: 640px; max-height: 90vh; display: flex; flex-direction: column; padding: 20px; }
+	#files header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+	#files header h2 { flex: 1; margin: 0; font-size: 18px; }
+	#files-list { overflow: auto; min-height: 60px; }
+	#files-list h3 { margin: 14px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+	.file-row { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; align-items: center; padding: 6px 0; border-top: 1px solid var(--border); font-size: 13px; }
+	.file-row .meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+	.file-row a, .file-row button { font-size: 12px; padding: 4px 10px; border-radius: 6px; }
+	.file-row a { color: var(--text); background: var(--surface-2); border: 1px solid var(--border); text-decoration: none; }
+	.file-row a:hover { border-color: var(--muted); }
+	#files-empty { color: var(--muted); }
+
+	/* ---- small messages over the game ---- */
+	#toast {
+		position: fixed;
+		left: 50%;
+		bottom: 24px;
+		transform: translateX(-50%);
+		max-width: min(90vw, 560px);
+		padding: 8px 14px;
+		border-radius: 8px;
+		background: rgba(22, 27, 34, 0.92);
+		color: #e6edf3;
+		font-size: 13px;
+		z-index: 7;
+		pointer-events: none;
+	}
+	#errors-hint { margin: 0; padding: 8px 12px 0; font-size: 13px; }
+	.hint { color: var(--muted); font-size: 12px; }
+	.fine .link { margin-left: 12px; }
+</style>
+</head>
+<body>
+
+<main id="setup">
+	<div class="card">
+		<h1>Command &amp; Conquer Generals: Zero Hour</h1>
+		<p class="subtitle">WebAssembly port &mdash; two ways to play</p>
+
+		<div id="env-notice" class="notice" hidden></div>
+
+		<section class="choice" id="choice-install" aria-labelledby="install-title">
+			<h2 id="install-title">Use my Zero Hour installation</h2>
+			<p id="install-desc">Bring your own copy of the game. Select your Zero Hour folder, or the folder above it that holds your games
+				(for example your Steam, EA app or Ultimate Collection library): the page finds what it needs.
+				<span id="desc-direct">The game reads the files straight from that folder: nothing is copied, so the game files take no
+				browser storage. Chrome asks you to allow access to the folder again on each visit.</span>
+				<span id="desc-copy" hidden>The files are copied once into this browser&rsquo;s private storage.</span></p>
+			<div class="row" id="row-game">
+				<div class="name">Zero Hour</div>
+				<button type="button" id="pick-game">Select folder&hellip;</button>
+				<div class="state" id="state-game">Checking&hellip;</div>
+			</div>
+			<p class="optional-line" id="row-other" hidden>
+				<button type="button" id="pick-other" class="link">Choose a different folder</button>
+			</p>
+			<p class="optional-line" id="row-generals" hidden>
+				<span id="state-generals"></span>
+				<button type="button" id="pick-generals" class="link">Add the original Generals files (optional, improves missing art)</button>
+			</p>
+			<p class="optional-line" id="row-copy">
+				<label class="inline"><input type="checkbox" id="copy-mode">
+					Copy the files into this browser&rsquo;s storage instead (needs about 2&nbsp;GB of space; no permission prompts afterwards)</label>
+			</p>
+		</section>
+
+		<section class="choice" id="choice-starter" aria-labelledby="starter-title">
+			<h2 id="starter-title">Play with free starter content <span class="badge">no game files needed</span></h2>
+			<p>A small original placeholder game that ships with this port: one made-up faction, a few units and
+				buildings, and one two-player skirmish map against the computer.</p>
+			<div class="placeholder-note" id="starter-note">
+				This is <strong>not</strong> Command &amp; Conquer. It is an original stand-in game
+				(code and art are free software, GPL-3.0-or-later) so the engine can be tried without owning anything.
+			</div>
+			<div class="row" id="row-starter">
+				<div class="name">Starter content</div>
+				<button type="button" id="download-starter">Download starter content</button>
+				<div class="state" id="state-starter">Checking&hellip;</div>
+			</div>
+		</section>
+
+		<section class="choice" id="choice-armies" aria-labelledby="armies-title">
+			<h2 id="armies-title">Armies <span class="badge">optional</span></h2>
+			<p id="armies-desc">Extra armies for skirmish games. Make them from a mod you own (right here in the browser), or keep them as <code>.zharmy</code> files
+				in a folder and choose that folder. The game reads the ticked ones; nothing is uploaded.</p>
+			<div class="row" id="row-import">
+				<div class="name">Armies from a mod</div>
+				<button type="button" id="import-open" aria-expanded="false" aria-controls="army-import">Import armies from a mod&hellip;</button>
+				<div class="state" id="state-import">Turns the armies of a mod you own into armies this game can use. The mod is only read.</div>
+			</div>
+			<section class="import-panel" id="army-import" hidden aria-labelledby="imp-title">
+				<header><h3 id="imp-title">Import armies from a mod</h3><button type="button" class="link" id="imp-close">Close</button></header>
+				<div id="imp-pick">
+					<p>Choose the folder of the mod: either the mod&rsquo;s own folder, or your Zero Hour folder if the mod is installed in it.
+						The files are only read. Nothing is changed or uploaded.</p>
+					<p id="imp-game-note"></p>
+					<button type="button" id="imp-choose">Choose mod folder&hellip;</button>
+					<span class="state" id="imp-pick-state" aria-live="polite"></span>
+				</div>
+				<div id="imp-files" hidden>
+					<h4 id="imp-files-title">Which files belong to the mod?</h4>
+					<p id="imp-files-text"></p>
+					<ul class="imp-archives" id="imp-archives"></ul>
+					<details id="imp-advanced">
+						<summary>More options</summary>
+						<p><label class="inline"><input type="checkbox" id="imp-selfcontained">
+							Make armies that do not need your Zero Hour files (the files get bigger)</label></p>
+					</details>
+					<div class="imp-actions">
+						<button type="button" class="primary" id="imp-look">Look for armies</button>
+						<span class="state" id="imp-look-hint"></span>
+					</div>
+				</div>
+				<div id="imp-armies" hidden>
+					<h4>Armies found in this mod</h4>
+					<div class="imp-modline"><label for="imp-modname">Name of the mod</label><input type="text" id="imp-modname" maxlength="60"></div>
+					<ul class="imp-list" id="imp-army-list"></ul>
+					<p id="imp-armies-note"></p>
+					<div class="imp-actions">
+						<button type="button" class="primary" id="imp-go">Import</button>
+						<button type="button" class="link" id="imp-retail" hidden>Untick the armies that come with Zero Hour</button>
+						<button type="button" class="link" id="imp-back">Choose a different folder</button>
+					</div>
+				</div>
+				<div id="imp-run" hidden>
+					<div class="progress"><div class="bar"><div id="imp-bar"></div></div><div class="progress-text" id="imp-run-text" aria-live="polite"></div></div>
+					<ul id="imp-run-list"></ul>
+					<pre id="imp-log" aria-label="What the converter is doing"></pre>
+					<button type="button" id="imp-cancel">Stop</button>
+				</div>
+				<div id="imp-result" hidden>
+					<h4>Done</h4>
+					<p id="imp-result-text" aria-live="polite"></p>
+					<table id="imp-table"></table>
+					<div id="imp-reports"></div>
+					<div class="imp-actions"><button type="button" id="imp-more">Import from another mod</button></div>
+				</div>
+				<p id="imp-error" hidden role="alert"></p>
+			</section>
+			<div class="row" id="row-armies">
+				<div class="name">Armies folder</div>
+				<button type="button" id="pick-armies">Choose armies folder&hellip;</button>
+				<div class="state" id="state-armies" aria-live="polite">No folder chosen. You can play without one.</div>
+			</div>
+			<p class="optional-line" id="armies-tools" hidden>
+				<span id="armies-refresh-part"><button type="button" class="link" id="armies-refresh">Look again</button> &middot; </span>
+				<button type="button" class="link" id="armies-forget">Forget folder</button>
+			</p>
+			<div id="armies-box" hidden>
+				<div class="army-bar">
+					<input type="search" id="armies-filter" placeholder="Filter by name" aria-label="Filter armies by name" hidden>
+					<span class="count" id="armies-count" aria-live="polite"></span>
+					<button type="button" class="link" id="armies-all">Tick all that are ready</button>
+					<button type="button" class="link" id="armies-none">Untick all</button>
+				</div>
+				<ul class="army-list" id="armies-list"></ul>
+			</div>
+		</section>
+
+		<section class="choice" id="choice-net" aria-labelledby="net-title">
+			<h2 id="net-title">Play with friends <span class="badge">LAN over the internet</span></h2>
+			<p>Everyone who joins the same room is on one virtual LAN. In the game, open Multiplayer &rarr; Network to see each
+				other&rsquo;s games, chat and play. Send your friends the invite link once you are in.</p>
+			<div class="netform">
+				<label>Room code<input id="net-room" maxlength="16" placeholder="e.g. K7M2Q" autocomplete="off" spellcheck="false"></label>
+				<label>Your name<input id="net-name" maxlength="24" placeholder="Player" autocomplete="nickname"></label>
+				<button type="button" id="net-join">Join room</button>
+				<button type="button" id="net-create" class="secondary">New room</button>
+				<button type="button" id="net-leave" class="secondary" hidden>Leave</button>
+			</div>
+			<div id="state-net" aria-live="polite">Not connected</div>
+			<div class="netinvite" id="net-invite" hidden>
+				<span>Invite link</span><input id="net-link" readonly aria-label="Invite link">
+				<button type="button" id="net-copy">Copy</button>
+			</div>
+		</section>
+
+		<div class="progress" id="progress" hidden>
+			<div class="bar"><div id="bar"></div></div>
+			<div class="progress-text" id="progress-text"></div>
+		</div>
+
+		<div class="actions">
+<label class="inline">Resolution
+					<select id="resolution" aria-describedby="res-hint">
+						<option value="auto" selected>As set in the game&rsquo;s Options</option>
+						<option value="fit">Fit this window</option>
+						<option value="fitsharp">Fit this window, sharp (every screen pixel)</option>
+						<option value="800x600">800 &times; 600</option>
+						<option value="1024x768">1024 &times; 768</option>
+						<option value="1280x720">1280 &times; 720</option>
+						<option value="1600x900">1600 &times; 900</option>
+						<option value="1920x1080">1920 &times; 1080</option>
+					</select>
+				</label>
+			<span class="spacer"></span>
+			<span class="state" id="play-mode" aria-live="polite"></span>
+			<button type="button" id="play" class="primary" disabled>Play</button>
+		</div>
+
+		<p class="hint" id="res-hint"></p>
+
+		<p class="fine">
+				Your own game files never leave your computer: the game reads them from your folder (or, with the copy option, from a copy in
+			this browser&rsquo;s private storage). The free starter content is downloaded from this site instead and needs none of them.
+			<button type="button" class="link" id="clear">Remove imported files</button>
+			<button type="button" class="link" id="open-files">Saved games, replays and screenshots&hellip;</button>
+		</p>
+		<p class="hint">In the game: Esc opens the game menu. F11 toggles fullscreen, which also gives the game every key (hold Esc to leave it). Ctrl+R reloads the page.</p>
+		<input type="file" id="folder-input" webkitdirectory multiple hidden>
+		<input type="file" id="armies-input" webkitdirectory multiple hidden>
+		<input type="file" id="import-input" webkitdirectory multiple hidden>
+	</div>
+</main>
+
+<div id="stage" hidden>
+	<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+	<div id="loading">Loading&hellip;</div>
+	<div id="toolbar">
+		<span id="mode-badge" hidden>Free starter content &middot; original placeholder game</span>
+		<span id="net-badge" hidden></span>
+		<button type="button" id="army-btn" title="Which armies the game loaded" aria-expanded="false" aria-controls="army-panel" hidden>Armies</button>
+		<button type="button" id="screenshot" title="Take a screenshot (the game&rsquo;s screenshot key does the same)">Screenshot</button>
+			<button type="button" id="shots" title="Download screenshots, replays and saved games">Files</button>
+			<button type="button" id="fullscreen" title="Toggle fullscreen (F11). Fullscreen gives the game all keys; hold Esc to leave it.">Fullscreen</button>
+			<button type="button" id="quit" title="Quit the game (asks the game to quit; press again to leave at once)">Exit</button>
+		</div>
+		<div id="toast" role="status" aria-live="polite" hidden></div>
+		<section id="army-panel" hidden aria-label="Armies">
+			<h3>Armies</h3>
+			<ul id="army-list"></ul>
+		</section>
+	</div>
+
+	<section id="ended" hidden aria-live="assertive">
+		<div class="card">
+			<h2 id="ended-title">The game has ended</h2>
+			<p id="ended-text"></p>
+			<div class="buttons">
+				<button type="button" id="play-again-without" class="primary" hidden>Play again without it</button>
+				<button type="button" id="play-again" class="primary">Play again</button>
+				<button type="button" id="back-to-start">Back to the start page</button>
+				<button type="button" id="ended-files">Screenshots and saves&hellip;</button>
+				<button type="button" id="ended-details" hidden>Show details</button>
+				<button type="button" id="ended-continue" hidden title="Only if the picture still moves: one part of the game failed, the rest may be running">Keep playing anyway</button>
+			</div>
+		</div>
+	</section>
+
+	<section id="files" hidden role="dialog" aria-modal="true" aria-labelledby="files-title">
+		<div class="card">
+			<header>
+				<h2 id="files-title">Saved games, replays and screenshots</h2>
+				<button type="button" id="files-refresh">Refresh</button>
+				<button type="button" id="files-close">Close</button>
+			</header>
+			<p class="hint">These live in this browser (Origin Private File System). Download what you want to keep.</p>
+			<div id="files-list"></div>
+		</div>
+	</section>
+
+<section id="errors" hidden>
+	<header>
+		<strong id="errors-title">Something went wrong</strong>
+		<button type="button" id="errors-copy">Copy</button>
+		<button type="button" id="errors-close">Close</button>
+	</header>
+<p id="errors-hint" hidden></p>
+	<pre id="errors-log"></pre>
+</section>
+
+<!-- Emscripten puts the script tag of the game here; it is started by the Play button. -->
+<template id="game-script">{{{ SCRIPT }}}</template>
+
+<script src="zhcursor.js"></script>
+<script src="zhnet.js"></script>
+<script type="module">
+import * as importer from './importer.js';
+import * as direct from './direct-source.js';
+import * as armies from './armies.js';
+import * as armyLib from './armylibrary.js';
+import * as armyImport from './armyimport.js';
+import { initArmyImport } from './armyimport-ui.js';
+
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+
+// ---------------------------------------------------------------------------------------------
+// Log and error panel
+// ---------------------------------------------------------------------------------------------
+
+const logLines = [];
+function pushLog(line, isError) {
+	logLines.push(line);
+	if (logLines.length > 400) logLines.shift();
+	if (isError) {
+		showErrors();
+	}
+}
+// ---- problems that the player can do something about ------------------------------------------------
+
+const PROBLEMS = [
+	{ re: /out of memory|Cannot enlarge memory|bad_alloc|\(OOM\)/i, title: 'The game ran out of memory',
+		hint: 'The browser would not give the game more memory. Close other tabs and programs, lower the detail level or the resolution in the game’s Options, and play again.' },
+	{ re: /renderer could not start|could not (create|get) (a )?(WebGL|GL) context|WebGL context (was )?lost|CONTEXT_LOST/i, title: 'The graphics could not start',
+		hint: 'The game needs WebGL 2. Check that hardware acceleration is on (chrome://settings/system) and that the graphics driver is up to date (chrome://gpu shows what Chrome found).' },
+	{ re: /WebAssembly\.Suspending|promising|JSPI/i, title: 'This browser is too old',
+		hint: 'The game needs WebAssembly JavaScript Promise Integration. Use Chrome 137 or newer.' },
+	{ re: /QuotaExceededError|quota/i, title: 'The browser’s storage is full',
+		hint: 'Saved games and options cannot be written. Free some disk space on this computer, or remove old saves and replays (“Saved games, replays and screenshots”), and play again.' },
+	{ re: /Lost access to your game folder|NotAllowedError|SecurityError/i, title: 'The game lost access to your folder',
+		hint: 'Chrome took back the permission to read your Zero Hour folder, or the folder was moved. Play again and allow access when asked, or choose the folder again on the start page.' },
+	{ re: /NotReadableError|file changed or moved|NotFoundError/i, title: 'A game file could not be read',
+		hint: 'The file changed or moved on disk after the folder was opened (or an external drive went away). Choose the folder again on the start page.' },
+	{ re: /Required game (file|folder) .* not found|Could not open the game files|Could not enter/i, title: 'Game files are missing',
+		hint: 'Select your Zero Hour folder again on the start page.' },
+	{ re: /game data has a file the game cannot read|Uncaught Exception during initialization/i, title: 'The game data could not be read',
+		hint: 'A file the game needs is missing or damaged (the log below says which). Select your Zero Hour folder again on the start page.' },
+];
+let problem = null;
+
+function noteProblem(text) {
+	if (problem) return;
+	for (const p of PROBLEMS) {
+		if (p.re.test(text)) { problem = p; return; }
+	}
+}
+
+function showErrors(title) {
+	// What went wrong in words the player can act on, when the log says it (the log below stays for the details).
+	$('errors-title').textContent = title || (problem ? problem.title : 'Something went wrong');
+	$('errors-hint').hidden = !problem;
+	$('errors-hint').textContent = problem ? problem.hint : '';
+	$('errors').hidden = false;
+	$('errors-log').textContent = logLines.join('\n');
+	$('errors-log').scrollTop = $('errors-log').scrollHeight;
+}
+$('errors-close').onclick = () => { $('errors').hidden = true; };
+$('errors-copy').onclick = () => navigator.clipboard && navigator.clipboard.writeText(logLines.join('\n'));
+window.addEventListener('error', (e) => { pushLog('Error: ' + e.message, true); });
+window.addEventListener('unhandledrejection', (e) => { pushLog('Unhandled: ' + (e.reason && e.reason.stack || e.reason), true); });
+
+// ---------------------------------------------------------------------------------------------
+// Environment
+// ---------------------------------------------------------------------------------------------
+
+const env = importer.checkEnvironment();
+// A separate canvas: the game's own canvas is handed to the engine thread and cannot be tried here.
+function webgl2Available() {
+	try {
+		const gl = document.createElement('canvas').getContext('webgl2');
+		if (!gl) return false;
+		const lose = gl.getExtension('WEBGL_lose_context');
+		if (lose) lose.loseContext();
+		return true;
+	} catch (e) {
+		return false;
+	}
+}
+function describeEnvironment() {
+	const problems = [];
+	if (!env.secureContext) problems.push('This page must be served over HTTPS (or from localhost).');
+	if (!env.crossOriginIsolated) problems.push('This page is not cross-origin isolated (COOP/COEP headers missing), which the game needs for threads. Serve it with serve.py.');
+	if (!env.opfs) problems.push('This browser has no Origin Private File System.');
+	if (!env.offscreenCanvas) problems.push('This browser cannot render WebGL from a worker (OffscreenCanvas).');
+	else if (!webgl2Available()) problems.push('WebGL 2 is not available in this browser, which the game\u2019s renderer needs. Turn on hardware acceleration (chrome://settings/system) and check chrome://gpu.');
+	// The engine thread suspends to let the browser show loading screens (JSPI, shipped in Chrome 137).
+	if (typeof WebAssembly === 'undefined' || typeof WebAssembly.Suspending !== 'function' || typeof WebAssembly.promising !== 'function') problems.push('This browser has no WebAssembly JavaScript Promise Integration, which the game needs. Use Chrome 137 or newer.');
+	return problems;
+}
+
+// Hosts that cannot send COOP/COEP headers get them from a service worker.
+if (!env.crossOriginIsolated && env.secureContext && 'serviceWorker' in navigator && !params.has('nosw')) {
+	navigator.serviceWorker.register('./coi-serviceworker.js').then((reg) => {
+		if (reg.active && !navigator.serviceWorker.controller) {
+			location.reload();
+		} else {
+			reg.addEventListener('updatefound', () => location.reload());
+		}
+	}).catch(() => {});
+}
+
+const problems = describeEnvironment();
+if (problems.length) {
+	$('env-notice').hidden = false;
+	$('env-notice').textContent = problems.join(' ');
+}
+
+// ---------------------------------------------------------------------------------------------
+// Game data
+// ---------------------------------------------------------------------------------------------
+
+let status = {};
+let busy = false;
+
+// How an own install is put in place: read in place from the player's folder ('direct', the default; Chrome) or copied into
+// OPFS ('copy'). ?copy=1 and the checkbox choose the copy; browsers without a folder picker can only copy.
+const directAvailable = env.directoryPicker || params.has('picker');
+let copyMode = params.has('copy') || !directAvailable;
+try { if (!params.has('copy') && localStorage.getItem('zh-copy-mode') === '1') copyMode = true; } catch (e) { /* ignore */ }
+let needsAccess = false;     // an install read in place was chosen on an earlier visit and its folder is not open yet
+let savedFolders = [];       // the remembered folder handles
+let autoReopenTried = false;
+
+function setState(key, text, kind) {
+	const el = $('state-' + key);
+	el.textContent = text;
+	el.className = 'state' + (kind ? ' ' + kind : '');
+}
+
+// 'starter', 'install' or null: what is in the browser's game/ folder right now.
+function currentMode() {
+	if (status.game && status.game.kind === 'starter') return 'starter';
+	if (status.game) return 'install'; // the original Generals files are an optional extra
+	return null;
+}
+
+const isDirect = (m) => !!m && m.mode === 'direct';
+
+async function refreshStatus() {
+	status = await importer.getStatus();
+	try { savedFolders = await direct.loadFolders(); } catch (e) { savedFolders = []; }
+	const starter = status.game && status.game.kind === 'starter' ? status.game : null;
+	const own = status.game && status.game.kind !== 'starter' ? status.game : null;
+	needsAccess = isDirect(own) && !direct.isOpen('game');
+	const folderName = (m) => m && m.source ? '\u201c' + m.source + '\u201d' : 'the folder';
+	if (needsAccess) {
+		setState('game', savedFolders.length
+			? 'Your folder ' + folderName(own) + ' is remembered \u00b7 allow access to play (nothing is copied)'
+			: 'Choose the folder ' + folderName(own) + ' again to play (nothing is copied)', '');
+	} else {
+		setState('game', own ? 'Ready \u00b7 ' + own.files.toLocaleString() + ' files \u00b7 ' + importer.formatBytes(own.bytes) +
+			(isDirect(own) ? ' \u00b7 read from ' + folderName(own) + ', not copied' : '')
+			: starter ? 'Not imported (the starter content is installed instead)' : 'Not imported yet', own ? 'ok' : '');
+	}
+	$('pick-game').textContent = needsAccess && savedFolders.length ? 'Allow access' : 'Select folder\u2026';
+	$('row-other').hidden = !(needsAccess && savedFolders.length);
+	// The original Generals files are an unobtrusive extra offered after a Zero Hour import (Play never waits for them).
+	const base = status.generals && status.generals.kind !== 'starter' ? status.generals : null;
+	$('row-generals').hidden = !own || needsAccess;
+	$('state-generals').textContent = base ? 'Original Generals files added \u00b7 ' + base.files.toLocaleString() + ' files \u00b7 ' + importer.formatBytes(base.bytes) +
+		(isDirect(base) ? ' (read in place)' : '') + '. ' : '';
+	$('state-generals').className = 'state' + (base ? ' ok' : '');
+	$('pick-generals').textContent = base ? 'Add them again' : 'Add the original Generals files (optional, improves missing art)';
+	$('desc-direct').hidden = copyMode;
+	$('desc-copy').hidden = !copyMode;
+	$('copy-mode').checked = copyMode;
+	$('row-copy').hidden = !directAvailable;
+	if (starter) {
+		setState('starter', 'Ready · ' + starter.files.toLocaleString() + ' files · ' + importer.formatBytes(starter.bytes) +
+			(starter.packVersion ? ' · version ' + starter.packVersion : ''), 'ok');
+		$('download-starter').textContent = 'Download again';
+	} else {
+		setState('starter', 'Not downloaded yet');
+		$('download-starter').textContent = 'Download starter content';
+	}
+	const mode = currentMode();
+	$('choice-starter').classList.toggle('active', mode === 'starter');
+	$('choice-install').classList.toggle('active', mode === 'install');
+	$('play-mode').textContent = mode === 'starter' ? 'Will play: free starter content (placeholder game)'
+		: needsAccess ? 'Allow access to your folder to play'
+		: mode === 'install' ? 'Will play: your Zero Hour installation' : '';
+	renderArmies();
+	updateButtons();
+	if (importUi) importUi.refresh();
+	// Chrome can keep the permission between visits; then there is nothing to click.
+	if (needsAccess && savedFolders.length && !autoReopenTried) {
+		autoReopenTried = true;
+		if (await direct.queryAccess(savedFolders) === 'granted') reopenSaved().catch((e) => pushLog('Reopen: ' + e, false));
+	}
+}
+
+function updateButtons() {
+	const ready = currentMode() !== null && !needsAccess && problems.length === 0;
+	$('play').disabled = busy || !ready || army.importing;
+	$('pick-game').disabled = busy || !env.opfs;
+	$('pick-other').disabled = busy;
+	$('copy-mode').disabled = busy;
+	$('pick-generals').disabled = busy || !env.opfs;
+	$('download-starter').disabled = busy || !env.opfs;
+	$('clear').disabled = busy;
+	$('pick-armies').disabled = busy || army.busy || army.scanning || army.importing;
+}
+
+function showProgress(p) {
+	$('progress').hidden = false;
+	const pct = p.bytesTotal ? (100 * p.bytesDone / p.bytesTotal) : 100;
+	$('bar').style.width = pct.toFixed(1) + '%';
+	$('progress-text').textContent =
+		importer.formatBytes(p.bytesDone) + ' of ' + importer.formatBytes(p.bytesTotal) +
+		' · file ' + Math.min(p.done + 1, p.total).toLocaleString() + ' of ' + p.total.toLocaleString() +
+		(p.path ? ' · ' + p.path : '');
+}
+
+async function pickSource() {
+	if (!params.has('picker') && env.directoryPicker) {
+		return importer.pickDirectory();
+	}
+	// Fallback: <input webkitdirectory>
+	return new Promise((resolve, reject) => {
+		const input = $('folder-input');
+		input.value = '';
+		input.onchange = () => {
+			if (input.files && input.files.length) resolve(importer.sourceFromFileList(input.files));
+			else reject(new DOMException('No folder selected', 'AbortError'));
+		};
+		input.oncancel = () => reject(new DOMException('No folder selected', 'AbortError'));
+		input.click();
+	});
+}
+
+// Copies one planned target; throws a message string for problems the user can act on.
+async function importPlan(plan, key, target, totalBytes = plan.bytes) {
+	if (!plan.looksRight) {
+		throw 'That does not look like the ' + target.label + ' folder (' + target.signature[0].toUpperCase() + ' not found).';
+	}
+	const inPlace = plan.mode === 'direct';
+	if (!inPlace) {
+		const { quota, usage } = await importer.storageEstimate();
+		if (quota && quota - usage < totalBytes) {
+			throw importer.quotaMessage(totalBytes, quota - usage);
+		}
+		await importer.requestPersistence();
+	}
+	const other = key === 'game' ? 'generals' : 'game';
+	if (status.game && status.game.kind === 'starter') {
+		// The starter content lives in game/ too; it can be downloaded again at any time.
+		await importer.clearTarget('game');
+		await importer.clearTarget('generals');
+		status = await importer.getStatus();
+	} else if (key === 'game' && status.game && (status.game.mode === 'direct') !== inPlace) {
+		// Switching between reading in place and the copy: what the old way left (a copy in browser storage, or the
+		// remembered folder) is removed, so there is never a mix of the two.
+		await importer.clearTarget('game');
+		await importer.clearTarget('generals');
+		direct.closeOpen();
+		status = await importer.getStatus();
+	} else if (status[other] && (status[other].mode === 'direct') !== inPlace) {
+		await importer.clearTarget(other);
+		direct.closeOpen(other);
+		status = await importer.getStatus();
+	}
+	if (!inPlace) direct.closeOpen(key);
+	setState(key, (inPlace ? 'Opening ' : 'Copying ') + plan.files.length.toLocaleString() + ' files\u2026');
+	await importer.runImport(plan, { onProgress: showProgress, forceWorker: params.get('writer') === 'worker' });
+	status = await importer.getStatus();
+}
+
+// "Select folder" for Zero Hour: the picked folder is Zero Hour itself or holds it (and perhaps the original game, too:
+// then those files are added silently). key 'generals' is the optional second pick for the original game's files.
+// Remembers the picked folder for the next visit (Chrome keeps the handle in IndexedDB; the permission is asked again).
+// A pick that came from <input webkitdirectory> has no handle and cannot be remembered.
+async function rememberFolders(role, source, includedBase) {
+	try {
+		await direct.rememberFolder(role, source.handle || null);
+		if (role === 'game' && includedBase) await direct.rememberFolder('generals', null);
+	} catch (e) {
+		pushLog('The folder could not be remembered for the next visit: ' + (e && e.message || e), false);
+	}
+}
+
+// The folders remembered from an earlier visit, opened again (after requestAccess, or when Chrome kept the permission).
+async function reopenSaved() {
+	if (busy) return;
+	const folders = await direct.loadFolders();
+	for (const role of ['game', 'generals']) {
+		const folder = folders.find((f) => f.role === role);
+		if (!folder) continue;
+		const source = await importer.sourceFromDirectoryHandle(folder.handle);
+		await pickAndImport(role, source);
+	}
+}
+
+async function allowAccess() {
+	if (busy || savedFolders.length === 0) return;
+	// requestPermission needs the click's user gesture: nothing is awaited before it.
+	const granted = await direct.requestAccess(savedFolders);
+	if (granted !== 'granted') {
+		setState('game', 'Access to the folder was not given. Click \u201cAllow access\u201d and choose Allow, or choose the folder again.', 'err');
+		$('row-other').hidden = false;
+		return;
+	}
+	await reopenSaved();
+}
+
+// How a pick of this target is put in place: 'direct' (read in place) or 'copy'. The optional original Generals files
+// follow the way the Zero Hour files were put in place.
+function modeFor(key) {
+	if (key === 'generals' && status.game && status.game.kind !== 'starter') return status.game.mode === 'direct' ? 'direct' : 'copy';
+	return copyMode ? 'copy' : 'direct';
+}
+
+// preset: a source from a remembered folder (no picker); otherwise the picker is shown.
+async function pickAndImport(key, preset = null) {
+	if (busy) return;
+	let problem = null;
+	let problemKey = key;
+	busy = true;
+	updateButtons();
+	const noQuiet = (e) => { if (typeof e === 'string') { problem = e; return true; } throw e; };
+	try {
+		const source = preset || await pickSource();
+		if (!source) return;
+		setState(key, 'Reading folder\u2026');
+		const mode = preset ? 'direct' : modeFor(key);
+		const found = importer.detectInstall(source);
+		if (key === 'game') {
+			if (!found.game) {
+				problem = 'That folder does not look like Zero Hour, and none of its subfolders does either (INIZH.big not found).';
+				return;
+			}
+			const gamePlan = importer.planImport(importer.subSource(source, found.game), 'game', { includeVideos: mode === 'direct' });
+			// Identical archives (Music.big is in both installs) are copied once, from Zero Hour. Read in place there is nothing to save.
+			const basePlan = found.base
+				? importer.planImport(importer.subSource(source, found.base), 'generals', { includeVideos: mode === 'direct', skip: mode === 'copy' ? gamePlan.manifestExtra.bigs : undefined })
+				: null;
+			gamePlan.mode = mode;
+			if (basePlan) basePlan.mode = mode;
+			const total = gamePlan.bytes + (basePlan ? basePlan.bytes : 0);
+			try {
+				await importPlan(gamePlan, 'game', importer.TARGETS.game, total);
+			} catch (e) { if (noQuiet(e)) return; }
+			if (basePlan) {
+				problemKey = 'generals';
+				try {
+					await importPlan(basePlan, 'generals', importer.TARGETS.generals);
+				} catch (e) { if (noQuiet(e)) return; }
+			}
+			if (mode === 'direct' && !preset) await rememberFolders('game', source, !!basePlan);
+		} else {
+			// The optional second pick: the folder of the original game (or one above it).
+			const sub = found.base ? importer.subSource(source, found.base) : source;
+			const own = status.game && status.game.bigs || [];
+			try {
+				const plan = importer.planImport(sub, 'generals', { includeVideos: mode === 'direct', skip: mode === 'copy' ? own : undefined });
+				plan.mode = mode;
+				await importPlan(plan, 'generals', importer.TARGETS.generals);
+				if (mode === 'direct' && !preset) await rememberFolders('generals', source, false);
+			} catch (e) {
+				if (typeof e === 'string' && /does not look like/.test(e)) { problem = 'That does not look like the original Generals folder (INI.big not found).'; return; }
+				if (noQuiet(e)) return;
+			}
+		}
+	} catch (e) {
+		if (!(e && e.name === 'AbortError')) {
+			problem = 'Import failed: ' + (e && e.message || e);
+			pushLog('Import failed: ' + (e && e.stack || e), false);
+		}
+	} finally {
+		busy = false;
+		$('progress').hidden = true;
+		await refreshStatus();
+		if (problem) {
+			setState(problemKey, problem, 'err');
+			if (problemKey === 'generals') $('row-generals').hidden = false;
+		}
+	}
+}
+
+
+let downloadAbort = null;
+async function downloadStarterContent() {
+	if (busy) return;
+	const own = status.game && status.game.kind !== 'starter';
+	if (own && !confirm('This replaces the game files you imported into this browser with the free starter content ' +
+		'(your original files on disk are not touched). Continue?')) {
+		return;
+	}
+	busy = true;
+	let problem = null;
+	updateButtons();
+	downloadAbort = new AbortController();
+	try {
+		await importer.requestPersistence();
+		setState('starter', 'Downloading\u2026');
+		await importer.downloadStarter({
+			signal: downloadAbort.signal,
+			onProgress: (p) => showProgress(p),
+			forceWorker: params.get('writer') === 'worker',
+		});
+	} catch (e) {
+		if (!(e && e.name === 'AbortError')) {
+			problem = e && e.message || String(e);
+			pushLog('Starter download failed: ' + (e && e.stack || e), false);
+		}
+	} finally {
+		busy = false;
+		downloadAbort = null;
+		$('progress').hidden = true;
+		await refreshStatus();
+		if (problem) setState('starter', problem, 'err');
+	}
+}
+$('download-starter').onclick = downloadStarterContent;
+
+$('pick-game').onclick = () => (needsAccess && savedFolders.length ? allowAccess() : pickAndImport('game'));
+$('pick-other').onclick = () => pickAndImport('game');
+$('copy-mode').onchange = () => {
+	copyMode = $('copy-mode').checked;
+	try { localStorage.setItem('zh-copy-mode', copyMode ? '1' : '0'); } catch (e) { /* ignore */ }
+	refreshStatus();
+};
+$('pick-generals').onclick = () => pickAndImport('generals');
+$('clear').onclick = async () => {
+	if (busy || !confirm('Remove the imported game files (or the starter content) from this browser? Saved games and options are kept.')) return;
+	for (const key of Object.keys(importer.TARGETS)) await importer.clearTarget(key);
+	direct.closeOpen();
+	await direct.forgetFolders();
+	await refreshStatus();
+};
+
+// ---------------------------------------------------------------------------------------------
+// Armies: extra factions from .zharmy packages in a folder (docs/ARMY_PACKAGES.md)
+// ---------------------------------------------------------------------------------------------
+// The folder is read in place, like the game folder: the page lists the packages (only the ZIP directory and the manifest of
+// each are read, armies.js), and on Play the File objects of the ticked ones are handed to the engine, which serves them at
+// /armies (direct-source.js setArmyFiles / WebStorage.cpp) and gets "-army /armies/<file>" for each.
+
+let importUi = null;   // the import panel (armyimport-ui.js), set below
+const army = {
+	folder: null,        // { name, handle|null }: the folder that is listed now (a pick through <input> has no handle)
+	remembered: null,    // { name, handle } kept in IndexedDB from an earlier visit
+	needsAccess: false,  // remembered, but Chrome has to be asked for read permission first
+	packages: [],        // what is listed: the imported armies, then the ones of the folder (armies.scanPackages() records)
+	folderPackages: [],  // the records of the armies folder
+	libraryPackages: [], // the records of the armies imported in this browser (armylibrary.js)
+	scanning: false,
+	busy: false,
+	message: '',         // a problem to show in the state line
+	filter: '',
+	opened: 0,           // counts the listings (tests)
+	importing: false,    // a mod is being converted (the import panel)
+};
+let checked = armies.loadChecked();   // ids of the ticked packages, remembered in this browser
+
+const NEEDS = { zerohour: 'the Zero Hour game files', starter: 'the free starter content' };
+const WORKS = { zerohour: 'your Zero Hour files', starter: 'the free starter content' };
+const words = (list, map) => list.map((r) => map[r] || r).join(' or ');
+
+// The base game data a package would run on right now: 'starter', 'zerohour' or null (nothing chosen yet).
+function armyRuleset() {
+	const mode = currentMode();
+	return mode === 'starter' ? 'starter' : mode === 'install' ? 'zerohour' : null;
+}
+
+// { kind: 'ready' | 'needs' | 'bad' | 'wait', text, why }
+function armyStatus(rec) {
+	if (!rec.ok) return { kind: 'bad', text: 'Invalid', why: rec.error };
+	const a = armies.availability(rec.manifest, armyRuleset());
+	if (a.ok) return { kind: 'ready', text: 'Ready', why: '' };
+	if (a.unknown) return { kind: 'wait', text: 'Choose your game first', why: 'Works with ' + words(a.needs, WORKS) + '. Choose the game data above to check.' };
+	return { kind: 'needs', text: 'Needs ' + words(a.needs, NEEDS), why: 'This army works with ' + words(a.needs, WORKS) + ', which is not what you will play with now.' };
+}
+
+const selectedArmies = () => army.packages.filter((r) => armyStatus(r).kind === 'ready' && checked.has(r.manifest.id));
+
+// What the list shows: the armies imported in this browser first, then the ones of the armies folder. An imported army wins
+// when a folder has the same package (same id or tag); the served names (/armies/...) stay unique.
+function mergePackages() {
+	const all = army.libraryPackages.concat(army.folderPackages);
+	armies.resolveServed(all);
+	armies.markDuplicates(all);
+	army.packages = all;
+}
+
+function renderLibraryState() {
+	const n = army.libraryPackages.length;
+	const el = $('state-import');
+	el.className = 'state' + (n ? ' ok' : '');
+	el.textContent = n ? n + (n === 1 ? ' army' : ' armies') + ' imported in this browser (kept here until you delete them). The mod is only read.'
+		: 'Turns the armies of a mod you own into armies this game can use. The mod is only read.';
+}
+
+// The armies imported in this browser (OPFS armies-library/), listed like the ones of a folder.
+async function loadLibrary() {
+	try {
+		const items = await armyLib.listItems();
+		army.libraryPackages = await armies.scanPackages(items);
+	} catch (e) {
+		army.libraryPackages = [];
+		pushLog('The imported armies could not be listed: ' + (e && e.message || e), false);
+	}
+	mergePackages();
+	renderLibraryState();
+	renderArmies();
+	updateButtons();
+}
+
+async function deleteImported(rec) {
+	if (army.busy || busy) return;
+	const name = rec.manifest ? rec.manifest.name : rec.path;
+	if (!confirm('Delete “' + name + '” from this browser? You can import it again from the mod.')) return;
+	try {
+		await armyLib.remove(rec.handle ? rec.handle.name : rec.path.split('/').pop());
+		if (rec.manifest) checked.delete(rec.manifest.id);
+		armies.saveChecked(checked);
+	} catch (e) {
+		army.message = 'Could not delete “' + name + '”: ' + (e && e.message || e);
+	}
+	await loadLibrary();
+}
+
+function setArmyMessage(text) {
+	army.message = text;
+	renderArmies();
+}
+
+function factionLine(f) {
+	return f.displayName + ' (' + (f.ai ? 'AI' : 'humans only') + ')';
+}
+
+function armyRow(rec) {
+	const st = armyStatus(rec);
+	const li = document.createElement('li');
+	li.className = 'army ' + st.kind + (st.kind === 'ready' ? '' : ' off');
+	const m = rec.manifest;
+	const head = document.createElement('div');
+	head.className = 'army-head';
+	const label = document.createElement('label');
+	const box = document.createElement('input');
+	box.type = 'checkbox';
+	box.disabled = st.kind !== 'ready';
+	box.checked = !box.disabled && checked.has(m.id);
+	const title = document.createElement('span');
+	title.className = 'army-name';
+	title.textContent = m ? m.name : rec.path;
+	label.append(box, title);
+	if (m) {
+		const v = document.createElement('span');
+		v.className = 'army-ver';
+		v.textContent = 'v' + m.version;
+		const t = document.createElement('span');
+		t.className = 'army-tag';
+		t.textContent = m.tag;
+		t.title = 'Tag: the prefix of everything this army adds to the game';
+		label.append(v, t);
+		if (rec.library) {
+			const mine = document.createElement('span');
+			mine.className = 'army-tag';
+			mine.textContent = 'imported';
+			label.append(mine);
+		}
+		box.id = 'army-' + m.id;
+		box.setAttribute('data-army', m.id);
+		box.onchange = () => {
+			if (box.checked) checked.add(m.id); else checked.delete(m.id);
+			armies.saveChecked(checked);
+			renderArmyCount();
+			updateButtons();
+		};
+	} else {
+		box.setAttribute('aria-label', rec.path + ' is not usable');
+	}
+	const pill = document.createElement('span');
+	pill.className = 'pill ' + st.kind;
+	pill.textContent = st.text;
+	head.append(label, pill);
+	li.append(head);
+
+	const meta = document.createElement('div');
+	meta.className = 'army-meta';
+	const bits = [];
+	if (m) {
+		bits.push(m.factions.map(factionLine).join(' · '));
+		if (m.source && m.source.mod) bits.push('from ' + m.source.mod + (m.source.modVersion ? ' ' + m.source.modVersion : ''));
+	}
+	bits.push(importer.formatBytes(rec.size));
+	bits.push(rec.library ? 'imported in this browser' : rec.path);
+	meta.textContent = bits.join(' · ');
+	li.append(meta);
+	if (rec.library) {
+		const act = document.createElement('div');
+		act.className = 'army-actions';
+		const file = rec.handle ? rec.handle.name : rec.path.split('/').pop();
+		const dl = document.createElement('button');
+		dl.type = 'button';
+		dl.className = 'link';
+		dl.textContent = 'Download .zharmy';
+		dl.setAttribute('data-download', file);
+		dl.onclick = () => armyLib.download(file).catch((e) => toast('Could not download: ' + (e && e.message || e), 6000));
+		const del = document.createElement('button');
+		del.type = 'button';
+		del.className = 'link';
+		del.textContent = 'Delete';
+		del.setAttribute('data-delete', file);
+		del.onclick = () => deleteImported(rec);
+		act.append(dl, del);
+		li.append(act);
+	}
+
+	if (st.why) {
+		const why = document.createElement('div');
+		why.className = 'army-reason ' + st.kind;
+		why.textContent = st.why;
+		li.append(why);
+	}
+	if (m) {
+		const d = document.createElement('details');
+		const sum = document.createElement('summary');
+		sum.textContent = 'Details and license';
+		d.append(sum);
+		const line = (label, text) => {
+			if (!text) return;
+			const p = document.createElement('p');
+			p.textContent = label + ': ' + text;
+			d.append(p);
+		};
+		line('Works with', m.requires.length ? words(m.requires, WORKS) : 'any game data');
+		line('About', typeof m.description === 'string' ? m.description : '');
+		line('By', Array.isArray(m.authors) ? m.authors.filter((a) => typeof a === 'string').join(', ') : '');
+		if (m.source && m.source.url && typeof m.source.url === 'string') line('Source', m.source.url);
+		line('License', typeof m.license === 'string' ? m.license : '');
+		if (rec.license) {
+			const pre = document.createElement('pre');
+			pre.textContent = rec.license;
+			d.append(pre);
+		}
+		if (rec.readme) {
+			const sum2 = document.createElement('p');
+			sum2.textContent = 'Readme:';
+			const pre = document.createElement('pre');
+			pre.textContent = rec.readme;
+			d.append(sum2, pre);
+		}
+		li.append(d);
+	}
+	return li;
+}
+
+function renderArmyCount() {
+	const ready = army.packages.filter((r) => armyStatus(r).kind === 'ready').length;
+	$('armies-count').textContent = selectedArmies().length + ' ticked · ' + ready + ' ready · ' + army.packages.length + ' found';
+	$('armies-all').hidden = $('armies-none').hidden = ready === 0;
+}
+
+function renderArmies() {
+	const has = army.folder !== null;
+	const stateEl = $('state-armies');
+	const folderName = (f) => '“' + f.name + '”';
+	let text, kind = '';
+	if (army.scanning) {
+		text = army.message || 'Reading armies…';
+	} else if (army.message) {
+		text = army.message;
+		kind = 'err';
+	} else if (army.needsAccess && army.remembered) {
+		text = 'Your folder ' + folderName(army.remembered) + ' is remembered · allow access to list its armies';
+	} else if (has) {
+		const n = army.folderPackages.length;
+		text = folderName(army.folder) + ' · ' + (n === 0 ? 'no .zharmy files found' : n + (n === 1 ? ' army' : ' armies') + ' found') +
+			(army.folderPackages.truncated ? ' (only the first ' + armies.MAX_PACKAGES + ' are listed)' : '') + ' · read in place, not copied';
+		kind = n ? 'ok' : '';
+	} else {
+		text = 'No folder chosen. You can play without one.';
+	}
+	stateEl.textContent = text;
+	stateEl.className = 'state' + (kind ? ' ' + kind : '');
+	$('pick-armies').textContent = army.needsAccess && army.remembered ? 'Allow access' : has ? 'Choose a different folder…' : 'Choose armies folder…';
+	$('armies-tools').hidden = !(has || army.remembered);
+	$('armies-refresh-part').hidden = !(has && army.folder.handle);
+	const q = army.filter.trim().toLowerCase();
+	const list = $('armies-list');
+	const show = army.packages.length > 0;
+	$('armies-box').hidden = !show;
+	$('armies-filter').hidden = army.packages.length <= 8;
+	list.textContent = '';
+	if (show) {
+		const frag = document.createDocumentFragment();
+		let shown = 0;
+		// Usable armies first, the ones that cannot be used (and why) below.
+		const rank = { ready: 0, wait: 1, needs: 2, bad: 3 };
+		const ordered = army.packages.map((rec, i) => [rank[armyStatus(rec).kind], i, rec]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+		for (const rec of ordered) {
+			const hay = (rec.path + ' ' + (rec.manifest ? rec.manifest.name + ' ' + rec.manifest.id + ' ' + rec.manifest.tag : '')).toLowerCase();
+			if (q && !hay.includes(q)) continue;
+			frag.append(armyRow(rec));
+			shown++;
+		}
+		if (!shown) {
+			const none = document.createElement('li');
+			none.className = 'army';
+			none.textContent = 'No army matches “' + army.filter + '”.';
+			frag.append(none);
+		}
+		list.append(frag);
+		renderArmyCount();
+	}
+	$('pick-armies').disabled = army.busy || army.scanning || busy;
+	$('armies-forget').disabled = army.busy;
+	$('armies-refresh').disabled = army.busy;
+}
+
+// Lists the packages of a folder handle (permission is already there). A folder that cannot be read any more leaves the page
+// asking for access again.
+async function openArmiesHandle(handle, { remember = false } = {}) {
+	army.busy = true;
+	army.scanning = true;
+	army.message = '';
+	army.folder = { name: handle.name, handle };
+	army.folderPackages = [];
+	mergePackages();
+	renderArmies();
+	try {
+		const items = await armies.listPackageFiles(handle);
+		army.folderPackages = await armies.scanPackages(items, { onProgress: (done, total) => { $('state-armies').textContent = 'Reading armies… ' + done + ' of ' + total; } });
+		mergePackages();
+		army.needsAccess = false;
+		army.opened++;
+		if (remember) {
+			try { await direct.rememberArmiesFolder(handle); } catch (e) { pushLog('The armies folder could not be remembered for the next visit: ' + (e && e.message || e), false); }
+		}
+		army.remembered = { name: handle.name, handle };
+	} catch (e) {
+		army.folder = null;
+		army.folderPackages = [];
+		mergePackages();
+		if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
+			army.needsAccess = !!army.remembered;
+			army.message = 'Chrome needs your permission to read the armies folder again.';
+		} else {
+			army.message = 'Cannot read the armies folder: ' + (e && e.message || e);
+		}
+	} finally {
+		army.scanning = false;
+		army.busy = false;
+		renderArmies();
+		updateButtons();
+	}
+}
+
+async function pickFolderFiles(input) {
+	return new Promise((resolve, reject) => {
+		input.value = '';
+		input.onchange = () => (input.files && input.files.length ? resolve(input.files) : reject(new DOMException('No folder selected', 'AbortError')));
+		input.oncancel = () => reject(new DOMException('No folder selected', 'AbortError'));
+		input.click();
+	});
+}
+
+async function pickArmies() {
+	if (army.busy || busy) return;
+	if (army.needsAccess && army.remembered) { await allowArmies(); return; }
+	army.busy = true;
+	renderArmies();
+	let handle = null;
+	try {
+		if (env.directoryPicker && !params.has('picker')) {
+			handle = await window.showDirectoryPicker({ id: 'zh-armies', mode: 'read' });
+		} else {
+			const files = await pickFolderFiles($('armies-input'));
+			const items = armies.listPackageFilesFromFileList(files);
+			const name = ((files[0].webkitRelativePath || '').split('/')[0]) || 'the folder';
+			army.busy = false;
+			army.scanning = true;
+			army.message = '';
+			army.folder = { name, handle: null };
+			army.folderPackages = [];
+			mergePackages();
+			renderArmies();
+			army.folderPackages = await armies.scanPackages(items, { onProgress: (done, total) => { $('state-armies').textContent = 'Reading armies… ' + done + ' of ' + total; } });
+			mergePackages();
+			army.opened++;
+			// A folder from <input> has no handle to remember; what was remembered before no longer matches.
+			army.remembered = null;
+			army.needsAccess = false;
+			await direct.forgetArmiesFolder();
+			army.scanning = false;
+			renderArmies();
+			updateButtons();
+			return;
+		}
+	} catch (e) {
+		army.busy = false;
+		army.scanning = false;
+		if (!(e && e.name === 'AbortError')) army.message = 'Cannot read that folder: ' + (e && e.message || e);
+		renderArmies();
+		return;
+	}
+	army.busy = false;
+	await openArmiesHandle(handle, { remember: true });
+}
+
+// Click handler of "Allow access": requestPermission needs the click's user gesture, so nothing is awaited before it.
+async function allowArmies() {
+	if (!army.remembered) return false;
+	const granted = await direct.requestAccess([army.remembered]);
+	if (granted !== 'granted') {
+		army.message = 'Access to the armies folder was not given. Click “Allow access” and choose Allow, or choose the folder again.';
+		renderArmies();
+		return false;
+	}
+	await openArmiesHandle(army.remembered.handle);
+	return !army.needsAccess;
+}
+
+async function forgetArmies() {
+	if (army.busy) return;
+	army.folder = null;
+	army.remembered = null;
+	army.needsAccess = false;
+	army.folderPackages = [];
+	mergePackages();
+	army.message = '';
+	army.filter = '';
+	$('armies-filter').value = '';
+	await direct.forgetArmiesFolder();
+	renderArmies();
+	updateButtons();
+}
+
+// The remembered folder of an earlier visit: listed at once when Chrome kept the permission, else "Allow access".
+async function initArmies() {
+	await loadLibrary();
+	try {
+		army.remembered = await direct.loadArmiesFolder();
+	} catch (e) {
+		army.remembered = null;
+	}
+	if (!army.remembered) { renderArmies(); return; }
+	army.needsAccess = true;
+	renderArmies();
+	if (await direct.queryAccess([army.remembered]) === 'granted') await openArmiesHandle(army.remembered.handle);
+}
+
+$('pick-armies').onclick = () => pickArmies();
+$('armies-forget').onclick = () => forgetArmies();
+$('armies-refresh').onclick = async () => { if (army.folder && army.folder.handle && !army.busy) await openArmiesHandle(army.folder.handle); };
+$('armies-filter').oninput = () => { army.filter = $('armies-filter').value; renderArmies(); };
+$('armies-all').onclick = () => {
+	for (const r of army.packages) if (armyStatus(r).kind === 'ready') checked.add(r.manifest.id);
+	armies.saveChecked(checked);
+	renderArmies();
+	updateButtons();
+};
+$('armies-none').onclick = () => {
+	for (const r of army.packages) if (r.manifest) checked.delete(r.manifest.id);
+	armies.saveChecked(checked);
+	renderArmies();
+	updateButtons();
+};
+
+// "Import armies from a mod…": converts a mod in the browser (armyimport-ui.js) into packages of the library.
+importUi = initArmyImport({
+	$, params, directoryPicker: env.directoryPicker, formatBytes: importer.formatBytes, log: (t) => pushLog(t, false),
+	game: () => (needsAccess ? 'access' : currentMode()),
+	// The Zero Hour files the launcher has: the ones it reads in place, or its copy in the browser's storage.
+	gameFiles: async () => (isDirect(status.game) ? direct.openFiles('game') : armyImport.opfsInstallFiles('game')),
+	existing: () => {
+		const tagOwners = new Map();
+		const ids = new Set();
+		for (const r of army.packages) {
+			if (!r.manifest) continue;
+			tagOwners.set(String(r.manifest.tag).toUpperCase(), r.manifest.id);
+			if (r.library) ids.add(r.manifest.id);
+		}
+		return { tagOwners, ids };
+	},
+	onImported: async (ids) => {
+		await loadLibrary();
+		for (const id of ids) checked.add(id);
+		armies.saveChecked(checked);
+		renderArmies();
+		updateButtons();
+	},
+	onBusy: (on) => { army.importing = !!on; updateButtons(); renderArmies(); },
+});
+
+// The ticked, usable packages as the engine gets them: File objects (read again from the folder now, so the engine sees the
+// files as they are at this moment) and the path below /armies. Packages that cannot be opened any more are left out.
+async function prepareArmies() {
+	const files = [];
+	const left = [];
+	for (const rec of selectedArmies()) {
+		try {
+			files.push({ rec, id: rec.manifest.id, name: rec.served, file: await rec.getFile() });
+		} catch (e) {
+			left.push(rec.manifest.name);
+			pushLog('Army ' + rec.path + ' could not be opened: ' + (e && e.message || e), false);
+		}
+	}
+	return { files, left };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Multiplayer room (webnet/client/zhnet.js): a virtual LAN over WebRTC, see webnet/README.md
+// ---------------------------------------------------------------------------------------------
+
+const net = window.zhNet;
+let netBusy = false;
+
+function setNetState(text, kind) {
+	$('state-net').textContent = text;
+	$('state-net').className = kind || '';
+}
+
+function roomLink(code) {
+	const url = new URL(location.href);
+	url.search = '';
+	url.hash = '';
+	url.searchParams.set('room', code);
+	if (params.get('signal')) url.searchParams.set('signal', params.get('signal'));
+	return url.toString();
+}
+
+function renderNet() {
+	if (!net) { $('choice-net').hidden = true; return; }
+	const st = net.state;
+	const online = st.status === 'online';
+	const connecting = st.status === 'connecting';
+	$('net-join').hidden = online;
+	$('net-create').hidden = online;
+	$('net-leave').hidden = !online;
+	$('net-join').disabled = $('net-create').disabled = connecting || netBusy;
+	$('net-room').disabled = $('net-name').disabled = online || connecting;
+	$('net-invite').hidden = !online;
+	if (online) {
+		const others = st.peers.map((p) => p.name + (p.mode === 'p2p' ? '' : ' (via the server)')).join(', ');
+		setNetState('Room ' + st.room + ' \u00b7 you are ' + st.self.ip + ' as \u201c' + st.self.name + '\u201d \u00b7 ' +
+			(st.peers.length ? st.peers.length + (st.peers.length === 1 ? ' other player: ' : ' other players: ') + others : 'nobody else is here yet'), 'ok');
+		$('net-room').value = st.room;
+		$('net-link').value = roomLink(st.room);
+		$('net-badge').hidden = false;
+		$('net-badge').textContent = 'Room ' + st.room + ' \u00b7 ' + (st.peers.length + 1) + (st.peers.length ? ' players' : ' player');
+		if (st.error) setNetState(st.error, 'err');
+	} else if (connecting) {
+		setNetState('Connecting\u2026', '');
+	} else if (st.status === 'failed') {
+		setNetState(st.error || 'Could not join the room', 'err');
+		$('net-badge').hidden = true;
+	} else {
+		setNetState('Not connected', '');
+		$('net-badge').hidden = true;
+	}
+}
+
+async function joinRoom(code) {
+	if (!net || netBusy) return;
+	netBusy = true;
+	renderNet();
+	const name = $('net-name').value.trim();
+	try { localStorage.setItem('zh-net-name', name); } catch (e) { /* ignore */ }
+	try {
+		const st = await net.join(code, { name, server: params.get('signal') || undefined });
+		const link = new URL(location.href);
+		link.searchParams.set('room', st.room);
+		history.replaceState(null, '', link);
+	} catch (e) {
+		pushLog('Room: ' + (e && e.message || e), false);
+	} finally {
+		netBusy = false;
+		renderNet();
+	}
+}
+
+if (net) {
+	net.on('change', renderNet);
+	try { $('net-name').value = params.get('name') || localStorage.getItem('zh-net-name') || ''; } catch (e) { /* ignore */ }
+	if (params.get('room')) $('net-room').value = params.get('room').toUpperCase();
+	$('net-name').oninput = () => net.setName($('net-name').value.trim());
+	$('net-join').onclick = () => joinRoom($('net-room').value.trim());
+	$('net-room').onkeydown = (e) => { if (e.key === 'Enter') joinRoom($('net-room').value.trim()); };
+	$('net-create').onclick = () => joinRoom('');
+	$('net-leave').onclick = () => {
+		net.leave();
+		const link = new URL(location.href);
+		link.searchParams.delete('room');
+		history.replaceState(null, '', link);
+	};
+	$('net-copy').onclick = () => navigator.clipboard && navigator.clipboard.writeText($('net-link').value);
+	net.setName($('net-name').value.trim());
+	renderNet();
+	// A shared invite link (?room=CODE) joins at once: no click is needed for that.
+	if (params.get('room')) joinRoom($('net-room').value.trim());
+} else {
+	$('choice-net').hidden = true;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Running the game
+// ---------------------------------------------------------------------------------------------
+
+const canvas = $('canvas');
+let clientSize = { width: 800, height: 600 };
+let gameRunning = false;   // the engine was started and has not ended
+let gameEnded = false;
+let launchSize = null;     // the size the game started with
+
+function toast(text, ms = 4000) {
+	const el = $('toast');
+	el.textContent = text;
+	el.hidden = false;
+	clearTimeout(toast.timer);
+	toast.timer = setTimeout(() => { el.hidden = true; }, ms);
+}
+
+// The canvas keeps the game's aspect ratio inside the window (black bars around it), so a window of any shape
+// shows the whole picture. A canvas pixel is shown on exactly one screen pixel when the size allows it (the
+// "sharp" setting, a Retina display): the browser does not smooth that.
+function layoutCanvas() {
+	const stage = $('stage');
+	if (stage.hidden) return;
+	const dpr = window.devicePixelRatio || 1;
+	let scale = Math.min(stage.clientWidth / clientSize.width, stage.clientHeight / clientSize.height);
+	if (Math.abs(scale * dpr - 1) < 0.03) scale = 1 / dpr;
+	canvas.style.width = Math.max(1, Math.floor(clientSize.width * scale * dpr) / dpr) + 'px';
+	canvas.style.height = Math.max(1, Math.floor(clientSize.height * scale * dpr) / dpr) + 'px';
+}
+window.addEventListener('resize', layoutCanvas);
+window.addEventListener('zh-clientsize', (e) => {
+	clientSize = e.detail;
+	layoutCanvas();
+	// The player changed the resolution in the game's Options (the game saved it): from now on the game's setting is the one
+	// to use, not the size picked on this page. (Not during start-up, where the renderer settles on its size.)
+	if (gameRunning && window.__zhFirstFrameAt && launchSize && (e.detail.width !== launchSize[0] || e.detail.height !== launchSize[1])) {
+		launchSize = [e.detail.width, e.detail.height];
+		try { localStorage.setItem('zh-resolution', 'auto'); } catch (err) { /* ignore */ }
+	}
+});
+// The display's pixel density changes when the window moves to another screen (or the page is zoomed).
+(function watchPixelRatio() {
+	const query = matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)');
+	query.addEventListener('change', () => { layoutCanvas(); watchPixelRatio(); }, { once: true });
+}());
+
+// Fullscreen of the stage, with Keyboard Lock where Chrome has it: Escape, Ctrl+digits, Alt combinations and the like then
+// reach the game instead of the browser (hold Escape to leave fullscreen in that state).
+async function toggleFullscreen() {
+	if (document.fullscreenElement) {
+		await document.exitFullscreen();
+		return;
+	}
+	await $('stage').requestFullscreen({ navigationUI: 'hide' });
+	if (navigator.keyboard && navigator.keyboard.lock) {
+		navigator.keyboard.lock().then(() => toast('Fullscreen: the game gets all keys. Hold Esc or press F11 to leave.', 5000)).catch(() => {});
+	}
+}
+function tellEngine(name, ...args) {
+	try {
+		if (window.Module && typeof window.Module[name] === 'function') window.Module[name](...args);
+	} catch (e) { /* the engine is not running */ }
+}
+document.addEventListener('fullscreenchange', () => {
+	const fullscreen = !!document.fullscreenElement;
+	if (!fullscreen && navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
+	layoutCanvas();
+});
+$('fullscreen').onclick = () => { toggleFullscreen().catch((e) => pushLog('Fullscreen: ' + e.message, false)); canvas.focus(); };
+// F11 is the page's: the browser's own fullscreen would not let it lock the keyboard.
+window.addEventListener('keydown', (e) => {
+	if (e.code === 'F11' && !$('stage').hidden) {
+		e.preventDefault();
+		if (!e.repeat) toggleFullscreen().catch((err) => pushLog('Fullscreen: ' + err.message, false));
+	}
+}, true);
+
+// ---- leaving the game -------------------------------------------------------------------------------
+
+// Asks the game to quit like the close button of a window does: the game shows its quit menu (or quits at once from
+// the menus). A second click leaves at once.
+let quitAsked = 0;
+$('quit').onclick = () => {
+	if (!gameRunning) { goBack(false); return; }
+	if (quitAsked && Date.now() - quitAsked < 10000) { goBack(false); return; }
+	quitAsked = Date.now();
+	tellEngine('_WebPlatform_RequestClose');
+	toast('Asked the game to quit. Click Exit again to leave at once (an unsaved match is lost).', 6000);
+	canvas.focus();
+};
+
+// Reloads the page (the engine cannot be started twice in one page): to the start page, or with the game started again.
+function goBack(autoPlay) {
+	gameRunning = false;
+	try {
+		if (autoPlay) sessionStorage.setItem('zh-autoplay', '1');
+		else sessionStorage.removeItem('zh-autoplay');
+	} catch (e) { /* ignore */ }
+	location.reload();
+}
+$('play-again').onclick = () => goBack(true);
+// The army that stopped the game is unticked (by the id the player knows it by), then the game starts again.
+$('play-again-without').onclick = () => {
+	for (const e of armyFailures()) {
+		if (e.rec) checked.delete(e.rec.manifest.id);
+		checked.delete(e.id);
+	}
+	armies.saveChecked(checked);
+	goBack(true);
+};
+$('back-to-start').onclick = () => goBack(false);
+$('ended-details').onclick = () => showErrors();
+$('ended-continue').onclick = () => {
+	gameEnded = false;
+	gameRunning = true;
+	crashTimer = 0;
+	$('ended').hidden = true;
+	$('errors').hidden = true;
+	$('toolbar').style.display = '';
+	canvas.focus();
+};
+$('ended-files').onclick = () => openFiles();
+
+// A running game is not left by accident (Ctrl+R, a closed tab): the browser asks first.
+window.addEventListener('beforeunload', (e) => {
+	if (gameRunning) {
+		e.preventDefault();
+		e.returnValue = '';
+	}
+});
+
+// The game has ended (it quit, crashed, or ran out of memory): say so, and offer to play again.
+function endGame(info) {
+	if (gameEnded) return;
+	gameEnded = true;
+	gameRunning = false;
+	if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+	const failedArmies = armyFailures();
+	const clean = info.code === 0 && !problem && !info.crashed && failedArmies.length === 0;
+	$('ended-title').textContent = clean ? 'The game has ended' : (problem ? problem.title : 'The game stopped unexpectedly');
+	$('ended-text').textContent = clean
+		? 'You can play again right away, or go back to the start page to change the game files or the resolution.'
+		: (problem ? problem.hint : 'The game ended with an error' + (info.code ? ' (code ' + info.code + ')' : '') + '. Details are in the log; "Play again" starts it again.');
+	$('ended-details').hidden = clean;
+	$('play-again-without').hidden = failedArmies.length === 0;
+	$('play-again').classList.toggle('primary', failedArmies.length === 0);
+	$('ended-continue').hidden = !info.soft;
+	$('ended').hidden = false;
+	$('toolbar').style.display = 'none';
+	if (!clean) showErrors();
+	$('play-again').focus();
+}
+
+// ---- the armies of this run: what the engine says about each package ---------------------------------
+
+// Set when the game starts with packages: { entries: [{ id, name, path, rec, status, reason, factions }], extra: [...], seen, startedAt }.
+// status: 'pending' | 'loaded' | 'skipped' | 'failed'. The answer comes from the log lines `ZHARMY: <id> loaded|skipped|failed: <reason>`
+// (at once) and from /userdata/ArmyReport.json (the factions, too).
+let armyRun = null;
+let armyFailTimer = 0;
+const baseName = (p) => String(p || '').split('/').pop().toLowerCase();
+
+function armyEntryFor(r) {
+	if (!armyRun) return null;
+	const low = (x) => String(x || '').toLowerCase();
+	const list = armyRun.entries;
+	return list.find((e) => r.path && low(r.path) === low(e.path))
+		|| list.find((e) => low(e.id) === low(r.id))
+		|| list.find((e) => r.path && baseName(r.path) === baseName(e.path))
+		|| list.find((e) => baseName(e.path) === low(r.id))
+		|| list.find((e) => baseName(e.path).replace(/\.zharmy$/, '') === low(r.id))
+		|| null;
+}
+
+// One answer of the engine { id, status, reason, path?, factions?, name? }.
+function noteArmyResult(r) {
+	if (!armyRun || !['loaded', 'skipped', 'failed'].includes(r.status)) return;
+	let entry = armyEntryFor(r);
+	if (!entry) {
+		entry = armyRun.extra.find((e) => e.id === r.id);
+		if (!entry) armyRun.extra.push(entry = { id: r.id, name: r.name || r.id, path: r.path || '', rec: null, status: 'pending', reason: '', factions: [] });
+	}
+	// A failure is final: the game stops with it, whatever a report says that was read around the same time.
+	if (entry.status === 'failed' && r.status !== 'failed') return;
+	entry.status = r.status;
+	entry.reason = r.reason || entry.reason || '';
+	if (Array.isArray(r.factions) && r.factions.length) entry.factions = r.factions;
+	if (r.name && !entry.rec) entry.name = r.name;
+	if (r.status === 'failed') noteArmyFailure(entry);
+	renderArmyRun();
+	tellArmyResult();
+}
+
+function noteArmyLine(text) {
+	if (!armyRun) return;
+	const r = armies.parseArmyLogLine(text);
+	if (r) noteArmyResult(r);
+}
+
+// A package that fails stops the game (the engine writes the report and ends); the page shows which one and offers to start again
+// without it. If the engine does not end by itself within a moment, the page ends the run.
+function noteArmyFailure(entry) {
+	problem = {
+		title: 'An army could not be loaded',
+		hint: armyFailureText(),
+	};
+	if (!armyFailTimer) armyFailTimer = setTimeout(() => endGame({ code: 1, crashed: true }), 3000);
+}
+
+const armyEntries = () => (armyRun ? armyRun.entries.concat(armyRun.extra) : []);
+function armyFailures() { return armyEntries().filter((e) => e.status === 'failed'); }
+
+function armyFailureText() {
+	const failed = armyFailures();
+	return failed.map((e) => '\u201c' + e.name + '\u201d' + (e.reason ? ' (' + e.reason + ')' : '')).join(', ') +
+		' could not be loaded, so the game stopped instead of starting with half an army. \u201cPlay again without it\u201d unticks ' +
+		(failed.length === 1 ? 'it' : 'them') + ' and starts the game again.';
+}
+
+function applyArmyReport(report) {
+	if (!report || !Array.isArray(report.packages)) return;
+	armyRun.seen = true;
+	for (const p of report.packages) {
+		noteArmyResult({
+			id: String(p.id || ''), status: p.status, reason: String(p.reason || ''), path: String(p.path || ''),
+			factions: Array.isArray(p.factions) ? p.factions.map((f) => ({ displayName: String(f.displayName || ''), ai: !!f.ai })) : [],
+			name: typeof p.name === 'string' ? p.name : '',
+		});
+	}
+	renderArmyRun();
+}
+
+function renderArmyRun() {
+	const list = armyEntries();
+	const btn = $('army-btn');
+	btn.hidden = list.length === 0;
+	if (!list.length) return;
+	const count = (st) => list.filter((e) => e.status === st).length;
+	const parts = [];
+	if (count('loaded')) parts.push(count('loaded') + ' loaded');
+	if (count('skipped')) parts.push(count('skipped') + ' skipped');
+	if (count('failed')) parts.push(count('failed') + ' failed');
+	if (count('pending')) parts.push(count('pending') + ' loading');
+	btn.textContent = 'Armies: ' + parts.join(', ');
+	btn.classList.toggle('bad', count('failed') > 0 || count('skipped') > 0);
+	const ul = $('army-list');
+	ul.textContent = '';
+	for (const e of list) {
+		const li = document.createElement('li');
+		const name = document.createElement('span');
+		name.textContent = e.name + ' ';
+		const st = document.createElement('span');
+		st.className = 'st ' + e.status;
+		st.textContent = { pending: 'loading\u2026', loaded: 'loaded', skipped: 'skipped', failed: 'failed' }[e.status];
+		li.append(name, st);
+		if (e.reason) {
+			const why = document.createElement('span');
+			why.className = 'why';
+			why.textContent = e.reason;
+			li.append(why);
+		}
+		const facs = e.factions && e.factions.length ? e.factions : (e.rec ? e.rec.manifest.factions : []);
+		if (facs.length) {
+			const fac = document.createElement('span');
+			fac.className = 'fac';
+			fac.textContent = (e.status === 'loaded' ? 'In the skirmish list: ' : 'Factions: ') + facs.map(factionLine).join(', ');
+			li.append(fac);
+		}
+		ul.append(li);
+	}
+}
+
+// Said once, when the engine has answered for every package.
+let armyToldOnce = false;
+function tellArmyResult() {
+	if (armyToldOnce || !armyRun) return;
+	const list = armyEntries();
+	if (!list.length || list.some((e) => e.status === 'pending')) return;
+	armyToldOnce = true;
+	const bad = list.filter((e) => e.status !== 'loaded');
+	const ok = list.filter((e) => e.status === 'loaded');
+	if (bad.length) {
+		toast(bad.map((e) => '\u201c' + e.name + '\u201d ' + e.status + (e.reason ? ': ' + e.reason : '')).join(' \u00b7 ') +
+			(ok.length ? ' \u00b7 ' + ok.length + ' loaded' : ''), 9000);
+	} else {
+		toast((ok.length === 1 ? 'Army loaded: ' : 'Armies loaded: ') + ok.map((e) => e.name).join(', '), 5000);
+	}
+	document.body.classList.add('show-toolbar');
+	setTimeout(() => document.body.classList.remove('show-toolbar'), 5000);
+}
+
+// Reads /userdata/ArmyReport.json while the game starts (the engine writes it on every start).
+async function pollArmyReport(run) {
+	const started = Date.now();
+	let after = 0;
+	while (armyRun === run && Date.now() - started < 240000) {
+		const file = await importer.readUserFile('armyreport.json');
+		// A report from an earlier run was removed before the start; if that failed, only a newer one counts.
+		if (file && (run.cleared || file.lastModified >= run.startedAt - 2000)) {
+			try {
+				applyArmyReport(JSON.parse(await file.text()));
+				tellArmyResult();
+				return;
+			} catch (e) { /* still being written: next time */ }
+		}
+		tellArmyResult();
+		if (gameEnded && ++after > 2) return;
+		await new Promise((r) => setTimeout(r, 600));
+	}
+}
+
+$('army-btn').onclick = () => {
+	const open = $('army-panel').hidden;
+	$('army-panel').hidden = !open;
+	$('army-btn').setAttribute('aria-expanded', String(open));
+	canvas.focus();
+};
+
+// A line from the engine that means it is not going on.
+const FATAL_RE = /RuntimeError|unreachable|worker sent an error|Aborted\(|^Fatal error|Cannot enlarge memory|memory access out of bounds|Uncaught/i;
+let crashTimer = 0;
+function noteFatal() {
+	if (crashTimer || !gameRunning) return;
+	// The lines that explain it follow the first one.
+	crashTimer = setTimeout(() => endGame({ code: 1, crashed: true, soft: true }), 700);
+}
+
+// ---- the player's files in the browser's storage (screenshots, replays, saved games) ----------------
+
+const FILE_GROUPS = [
+	['screenshots', 'Screenshots'],
+	['save', 'Saved games'],
+	['replays', 'Replays'],
+];
+async function renderFiles() {
+	const list = $('files-list');
+	list.textContent = 'Reading…';
+	let entries = [];
+	try { entries = await importer.listUserData(); } catch (e) { list.textContent = 'Cannot read the browser storage: ' + (e && e.message || e); return; }
+	list.textContent = '';
+	let shown = 0;
+	for (const [dir, title] of FILE_GROUPS) {
+		const rows = entries.filter((f) => f.path.split('/')[1] === dir).sort((a, b) => b.modified - a.modified);
+		if (!rows.length) continue;
+		const h = document.createElement('h3');
+		h.textContent = title + ' (' + rows.length + ')';
+		list.appendChild(h);
+		for (const f of rows) {
+			shown++;
+			const row = document.createElement('div');
+			row.className = 'file-row';
+			const name = f.path.split('/').pop();
+			const label = document.createElement('span');
+			label.textContent = name;
+			const meta = document.createElement('span');
+			meta.className = 'meta';
+			meta.textContent = importer.formatBytes(f.size) + ' · ' + new Date(f.modified).toLocaleString();
+			const get = document.createElement('button');
+			get.type = 'button';
+			get.textContent = 'Download';
+			get.onclick = async () => {
+				const file = await importer.readUserFile(f.path);
+				if (!file) { toast('That file is gone.'); return; }
+				const a = document.createElement('a');
+				a.href = URL.createObjectURL(file);
+				a.download = name;
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+			};
+			row.append(label, meta, get);
+			list.appendChild(row);
+		}
+	}
+	if (!shown) {
+		const empty = document.createElement('p');
+		empty.id = 'files-empty';
+		empty.textContent = 'Nothing yet. Saved games, replays and screenshots from the game show up here.';
+		list.appendChild(empty);
+	}
+}
+function openFiles() {
+	$('files').hidden = false;
+	renderFiles();
+	$('files-close').focus();
+}
+function closeFiles() {
+	$('files').hidden = true;
+	if (!$('stage').hidden) canvas.focus();
+}
+$('files-close').onclick = closeFiles;
+$('files-refresh').onclick = renderFiles;
+$('shots').onclick = openFiles;
+$('open-files').onclick = openFiles;
+$('files').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeFiles(); } });
+
+// The game saves screenshots with its screenshot key (F12 in the starter content, Print Screen in the original): this is the
+// same for keyboards without it.
+$('screenshot').onclick = () => {
+	tellEngine('_WebPlatform_RequestScreenshot');
+	toast('Screenshot taken. “Files” downloads it.', 3500);
+	canvas.focus();
+};
+
+// ---- starting ---------------------------------------------------------------------------------------
+
+// The resolution in the game's Options file, if the game has saved one: [width, height] or null.
+async function savedResolution() {
+	try {
+		const entries = await importer.listUserData();
+		const file = entries.find((f) => /(^|\/)options\.ini$/.test(f.path));
+		if (!file) return null;
+		const text = await (await importer.readUserFile(file.path)).text();
+		const m = /^\s*Resolution\s*=\s*(\d+)\s+(\d+)/mi.exec(text);
+		return m ? [Number(m[1]), Number(m[2])] : null;
+	} catch (e) {
+		return null;
+	}
+}
+
+function fitSize(sharp) {
+	const k = sharp ? (window.devicePixelRatio || 1) : 1;
+	let w = Math.floor(window.innerWidth * k), h = Math.floor(window.innerHeight * k);
+	const cap = Math.min(1, Math.sqrt(8294400 / (w * h)));	// at most 4K worth of pixels
+	w = Math.max(800, Math.floor(w * cap)) & ~1;
+	h = Math.max(600, Math.floor(h * cap)) & ~1;
+	return [w, h];
+}
+
+// The size the game starts with, and the command line arguments that make it so: [[w, h], args].
+async function resolutionChoice() {
+	const v = $('resolution').value;
+	if (v === 'auto') {
+		const saved = await savedResolution();
+		return saved ? [saved, []] : [[1024, 768], ['-xres', '1024', '-yres', '768']];
+	}
+	const [w, h] = v === 'fit' ? fitSize(false) : v === 'fitsharp' ? fitSize(true) : v.split('x').map(Number);
+	return [[w, h], ['-xres', String(w), '-yres', String(h)]];
+}
+
+function describeResolution() {
+	const v = $('resolution').value;
+	const text = {
+		auto: 'The game starts at the resolution its Options screen saved (1024 × 768 the first time). Changes made in the game are kept.',
+		fit: 'The game starts at the size of this window (' + fitSize(false).join(' × ') + '). Resize the window later and the picture follows it with black bars.',
+		fitsharp: 'The game starts at the size of this window in screen pixels (' + fitSize(true).join(' × ') + '): crisp on Retina and other high density screens, and needs a faster graphics card.',
+	}[v];
+	$('res-hint').textContent = text || 'This overrides the resolution that the game’s Options screen saved.';
+}
+$('resolution').addEventListener('change', describeResolution);
+window.addEventListener('resize', () => { if (!$('setup').hidden) describeResolution(); });
+
+async function startGame() {
+	if ($('play').disabled || gameRunning || gameEnded) return;
+	$('play').disabled = true;
+	try { localStorage.setItem('zh-resolution', $('resolution').value); } catch (e) { /* ignore */ }
+
+	const [size, resolutionArgs] = await resolutionChoice();
+	launchSize = size;
+	clientSize = { width: size[0], height: size[1] };
+	const args = [...resolutionArgs];
+	for (const extra of params.getAll('arg')) args.push(extra);
+
+	// The ticked armies: the engine reads them in place at /armies, one "-army <path>" each.
+	const picked = await prepareArmies();
+	direct.setArmyFiles(picked.files);
+	for (const a of picked.files) args.push('-army', armies.ARMIES_MOUNT + '/' + a.name);
+	armyRun = null;
+	armyToldOnce = false;
+	armyFailTimer = 0;
+	$('army-btn').hidden = true;
+	$('army-panel').hidden = true;
+	if (picked.files.length) {
+		armyRun = {
+			entries: picked.files.map((a) => ({ id: a.id, name: a.rec.manifest.name, path: armies.ARMIES_MOUNT + '/' + a.name, rec: a.rec, status: 'pending', reason: '', factions: [] })),
+			extra: [], seen: false, cleared: false, startedAt: Date.now(),
+		};
+		armyRun.cleared = await importer.removeUserFile('armyreport.json');
+		renderArmyRun();
+	}
+
+	$('setup').hidden = true;
+	$('stage').hidden = false;
+	$('mode-badge').hidden = currentMode() !== 'starter';
+	layoutCanvas();
+	canvas.focus();
+	gameRunning = true;
+	window.__zhPlayAt = Date.now();	// (start up time, for tests: __zhFirstFrameAt - __zhPlayAt)
+
+	window.Module = {
+		canvas,
+		arguments: args,
+		print: (text) => { console.log(text); pushLog(text, false); noteArmyLine(text); },
+		printErr: (text) => {
+			console.warn(text);
+			noteProblem(text);
+			noteArmyLine(text);
+			if (/saves and options will not be kept/.test(text)) toast('This browser window cannot keep files (a private window?): saved games and options are lost when it closes.', 12000);
+			const fatal = FATAL_RE.test(text);
+			pushLog(text, fatal || /out of memory/i.test(text));
+			if (fatal) noteFatal();
+		},
+		setStatus: () => {},
+		onAbort: (what) => {
+			pushLog('Aborted: ' + what, false);
+			noteProblem(String(what));
+			endGame({ code: 1, crashed: true });
+		},
+		onExit: (code) => {
+			pushLog('Exited with code ' + code, false);
+			endGame({ code });
+		},
+		postRun: [() => { $('loading').hidden = true; }],
+	};
+
+	// An install read in place: hand the files to the engine thread (see webdirect/INTEGRATION.md). The armies go with them.
+	if (currentMode() === 'install' && isDirect(status.game)) {
+		try {
+			direct.attachCurrent(window.Module);
+		} catch (e) {
+			pushLog('Could not open the game folder: ' + (e && e.message || e), true);
+			gameRunning = false;
+			return;
+		}
+	} else if (picked.files.length) {
+		// The starter content and the copy in browser storage come from OPFS; the armies are still read in place.
+		try {
+			direct.attachArmies(window.Module);
+		} catch (e) {
+			pushLog('Could not open the armies: ' + (e && e.message || e), true);
+			gameRunning = false;
+			return;
+		}
+	}
+	if (picked.left.length) toast('Left out (could not be opened): ' + picked.left.join(', '), 8000);
+
+	const template = $('game-script').content.querySelector('script');
+	const script = document.createElement('script');
+	script.src = template.getAttribute('src');
+	document.body.appendChild(script);
+	document.body.classList.add('show-toolbar');
+	setTimeout(() => document.body.classList.remove('show-toolbar'), 3000);
+	if (armyRun) pollArmyReport(armyRun);
+}
+$('play').onclick = async () => {
+	// Ticked armies from an earlier visit whose folder still needs Chrome's permission: asked right here, in the click.
+	if (army.needsAccess && army.remembered && checked.size > 0) {
+		if (!await allowArmies()) toast('The armies folder was not opened: starting without armies.', 6000);
+	}
+	// A room that is still being joined is joined before the engine asks for its network address.
+	for (let i = 0; net && net.state.status === 'connecting' && i < 100; ++i) await new Promise((r) => setTimeout(r, 100));
+	startGame();
+};
+
+// The game module (and with it the Web Audio context) is only loaded from the Play click, so the
+// context starts running. If the browser still suspended it (autoplay policy), any later click or key
+// resumes it.
+function resumeAudio() {
+	try {
+		if (window.zhWebAudio && typeof window.zhWebAudio.resume === 'function') window.zhWebAudio.resume();
+	} catch (e) { /* ignore */ }
+}
+for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, resumeAudio, { capture: true });
+
+// A hidden tab gets no animation frames, so the game stands still (it waits for the next frame); its sound is paused with
+// it and goes on when the tab is back.
+document.addEventListener('visibilitychange', () => {
+	try {
+		const ctx = window.zhWebAudio && window.zhWebAudio.ctx;
+		if (!ctx) return;
+		if (document.visibilityState === 'hidden') ctx.suspend();
+		else ctx.resume();
+	} catch (e) { /* ignore */ }
+});
+
+// Memory: the game can use about 4 GB. Say so before the browser refuses more.
+let memoryWarned = false;
+setInterval(() => {
+	if (!gameRunning || !window.__zhHeapBytes || memoryWarned) return;
+	if (window.__zhHeapBytes > 3.5 * 1024 * 1024 * 1024) {
+		memoryWarned = true;
+		toast('The game is close to the browser’s memory limit. Closing other tabs helps; lower the detail in Options if it stops.', 9000);
+	}
+}, 3000);
+
+try {
+	const saved = localStorage.getItem('zh-resolution');
+	if (saved && [...$('resolution').options].some(o => o.value === saved)) $('resolution').value = saved;
+} catch (e) { /* ignore */ }
+describeResolution();
+
+// For tests and automation.
+window.__zh = {
+	importer, direct, startGame, logLines, refreshStatus, joinRoom, fail: (text) => pushLog(text, true),
+	state: () => ({ gameRunning, gameEnded, problem: problem && problem.title, launchSize, clientSize, fullscreen: !!document.fullscreenElement }),
+	renderFiles, armies, army, armyLib, armyImport, importState: () => importUi.testApi.state(), checkedArmies: () => [...checked], armyRun: () => armyRun,
+	armyRows: () => army.packages.map((r) => ({ path: r.path, served: r.served, ok: r.ok, status: armyStatus(r).kind, text: armyStatus(r).text, why: armyStatus(r).why, id: r.manifest && r.manifest.id })),
+	classify: (text) => { const p = PROBLEMS.find((q) => q.re.test(text)); return p ? p.title : null; },
+};
+
+const armiesReady = initArmies();
+
+// "Play again" reloads the page and starts the game as soon as the start page is ready (it needs no new click: the
+// folder permission Chrome kept, or the files in this browser's storage, are all it needs).
+(async function autoPlay() {
+	let want = false;
+	try { want = sessionStorage.getItem('zh-autoplay') === '1'; sessionStorage.removeItem('zh-autoplay'); } catch (e) { /* ignore */ }
+	try {
+		await refreshStatus();
+	} catch (e) { pushLog('Status: ' + e, false); }
+	try { await armiesReady; } catch (e) { pushLog('Armies: ' + e, false); }
+	if (!want) return;
+	// Armies were ticked but Chrome has to ask again before their folder can be read: that needs a click, so the player starts it.
+	if (army.needsAccess && army.remembered && checked.size > 0) return;
+	for (let i = 0; i < 100 && $('play').disabled && !gameRunning; ++i) await new Promise((r) => setTimeout(r, 150));
+	if (!$('play').disabled && !gameRunning) $('play').click();
+}());
+</script>
+</body>
+</html>

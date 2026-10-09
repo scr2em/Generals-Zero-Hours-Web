@@ -84,6 +84,9 @@
 #include "GameClient/LookAtXlat.h"
 
 #include "GameNetwork/NetworkInterface.h"
+#if RTS_ZEROHOUR
+#include "GameLogic/PlayerAssist.h"
+#endif
 
 
 
@@ -555,6 +558,25 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_CREATE_FORMATION:
 		{
 			onCreateFormation(msg, currentlySelectedGroup);
+			break;
+		}
+		case GameMessage::MSG_ASSIST_FORMATION:
+		case GameMessage::MSG_ASSIST_FORMATION_MOVE:
+		case GameMessage::MSG_ASSIST_PROTECT:
+		case GameMessage::MSG_ASSIST_UNPROTECT:
+		{
+#if RTS_ZEROHOUR
+			// player assists: only carried out when the match allows them
+			if (ThePlayerAssist)
+			{
+#if RETAIL_COMPATIBLE_AIGROUP
+				AIGroup *selected = currentlySelectedGroup;
+#else
+				AIGroup *selected = currentlySelectedGroup.Peek();
+#endif
+				ThePlayerAssist->onMessage(msg, msgPlayer, selected);
+			}
+#endif
 			break;
 		}
 		case GameMessage::MSG_CLEAR_INGAME_POPUP_MESSAGE:
@@ -1294,6 +1316,16 @@ bool GameLogic::onDoAttackmoveto(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curr
 	{
 		currentlySelectedGroup->releaseWeaponLockForGroup(LOCKED_TEMPORARILY);	// release any temporary locks.
 		currentlySelectedGroup->groupAttackMoveToPosition( &dest, NO_MAX_SHOTS_LIMIT, CMD_FROM_PLAYER );
+#if RTS_ZEROHOUR
+		if (ThePlayerAssist)
+		{
+#if RETAIL_COMPATIBLE_AIGROUP
+			ThePlayerAssist->noteGroupMove( currentlySelectedGroup, &dest );
+#else
+			ThePlayerAssist->noteGroupMove( currentlySelectedGroup.Peek(), &dest );
+#endif
+		}
+#endif
 	}
 
 	return true;
@@ -1307,6 +1339,16 @@ bool GameLogic::onDoForcemoveto(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &curre
 	{
 		currentlySelectedGroup->releaseWeaponLockForGroup(LOCKED_TEMPORARILY);	// release any temporary locks.
 		currentlySelectedGroup->groupMoveToPosition( &dest, false, CMD_FROM_PLAYER );
+#if RTS_ZEROHOUR
+		if (ThePlayerAssist)
+		{
+#if RETAIL_COMPATIBLE_AIGROUP
+			ThePlayerAssist->noteGroupMove( currentlySelectedGroup, &dest );
+#else
+			ThePlayerAssist->noteGroupMove( currentlySelectedGroup.Peek(), &dest );
+#endif
+		}
+#endif
 	}
 
 	return true;
@@ -1321,6 +1363,16 @@ bool GameLogic::onDoMoveto(MAYBE_UNUSED GameMessage *msg, AIGroupPtr &currentlyS
 		//DEBUG_LOG(("GameLogicDispatch - got a MSG_DO_MOVETO command"));
 		currentlySelectedGroup->releaseWeaponLockForGroup(LOCKED_TEMPORARILY);	// release any temporary locks.
 		currentlySelectedGroup->groupMoveToPosition( &dest, false, CMD_FROM_PLAYER );
+#if RTS_ZEROHOUR
+		if (ThePlayerAssist)
+		{
+#if RETAIL_COMPATIBLE_AIGROUP
+			ThePlayerAssist->noteGroupMove( currentlySelectedGroup, &dest );
+#else
+			ThePlayerAssist->noteGroupMove( currentlySelectedGroup.Peek(), &dest );
+#endif
+		}
+#endif
 	}
 
 	return true;

@@ -53,8 +53,8 @@ void *Debug::PreStatic=&Debug::PreStaticInit;
 #pragma data_seg(".CRT$XCY")
 void *Debug::PostStatic=&Debug::PostStaticInit;
 #pragma data_seg()
-#elif defined(__GNUC__) && defined(_WIN32)
-// For GCC/MinGW-w64 targeting Windows, use constructor attributes
+#elif defined(__GNUC__) && (defined(_WIN32) || defined(__EMSCRIPTEN__))
+// For GCC/MinGW-w64 targeting Windows and for WebAssembly, use constructor attributes
 // Use priority 101 for PreStatic (very early) and 65434 for PostStatic (very late)
 void __attribute__((constructor(101))) GccPreStaticInit() { Debug::PreStaticInit(); }
 void __attribute__((constructor(65434))) GccPostStaticInit() { Debug::PostStaticInit(); }
@@ -286,7 +286,9 @@ static LONG WINAPI LocalVectoredExceptionHandler(struct _EXCEPTION_POINTERS *pEx
 
 void Debug::InstallExceptionHandler()
 {
-#if defined(_MSC_VER)
+#if defined(__EMSCRIPTEN__)
+  // WebAssembly has no structured exceptions to catch.
+#elif defined(_MSC_VER)
   _set_se_translator(LocalSETranslator);
 #elif defined(__GNUC__) && defined(_WIN32)
   // MinGW-w64 doesn't support _set_se_translator, use Vectored Exception Handler
@@ -320,6 +322,9 @@ bool Debug::SkipNext()
     :
     : "memory"
   );
+#elif defined(__EMSCRIPTEN__)
+  // WebAssembly cannot read its call stack: all call sites share one frame.
+  help=0;
 #else
   #error "Unsupported compiler or architecture for inline assembly"
 #endif

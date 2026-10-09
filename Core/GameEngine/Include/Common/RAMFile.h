@@ -104,6 +104,10 @@ class RAMFile : public File
 		virtual Bool	openFromArchive(File *archiveFile, const AsciiString& filename, Int offset, Int size); ///< copy file data from the given file at the given offset for the given size.
 		virtual Bool	copyDataToFile(File *localFile);										///< write the contents of the RAM file to the given local file.  This could be REALLY slow.
 
+		/// Take ownership of an already filled buffer (allocated with MSGNEW("RAMFILE") Char[size]) as the file contents.
+		/// Used by archive formats that decompress a whole entry (see ZipArchiveFile). Returns FALSE and leaves the buffer to the caller on failure.
+		virtual Bool	openFromMemory(const AsciiString& filename, Char *data, Int size);
+
 		/**
 			Allocate a buffer large enough to hold entire file, read
 			the entire file into the buffer, then close the file.
