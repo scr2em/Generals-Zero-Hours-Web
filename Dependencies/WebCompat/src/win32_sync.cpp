@@ -44,7 +44,7 @@ HandleObject *HandleToObject(HANDLE handle, uint32_t type)
 	if (!handle || handle == INVALID_HANDLE_VALUE || (reinterpret_cast<uintptr_t>(handle) & 3) != 0)
 		return nullptr;
 	// Pseudo handles are small negative numbers.
-	if (reinterpret_cast<uintptr_t>(handle) > 0xFFFFFFF0u)
+	if (reinterpret_cast<uintptr_t>(handle) > (uintptr_t)(intptr_t)-16)
 		return nullptr;
 	HandleObject *object = reinterpret_cast<HandleObject *>(handle);
 	if (object->magic != HandleObject::MAGIC)
