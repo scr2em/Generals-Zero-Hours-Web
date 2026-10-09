@@ -17,7 +17,8 @@ function loadPlaywright() {
 }
 
 function findChromium(explicit) {
-	const candidates = [explicit, process.env.CHROMIUM_PATH, '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium/chrome'];
+	const candidates = [explicit, process.env.CHROMIUM_PATH, '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium/chrome',
+		'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'];
 	return candidates.find((p) => p && fs.existsSync(p));   // undefined: Playwright's own browser
 }
 
@@ -78,6 +79,43 @@ export class Browser {
 		} finally {
 			await page.close().catch(() => {});
 		}
+	}
+
+	// Starts the game the way a player does (no -aiMatch): intro videos (clicked away, as a player does), then the main
+	// menu with its shell map, which has computer players. Watches for `seconds` and fails on any engine failure.
+	// { ok, error, log }.
+	async runBoot(build, seconds) {
+		const lines = [];
+		const page = await this.context.newPage();
+		const note = (text) => { for (const l of String(text).split('\n')) lines.push(l); };
+		page.on('console', (m) => note(m.text()));
+		page.on('pageerror', (e) => note('PAGEERROR ' + e.message));
+		page.on('worker', (w) => w.on('console', (m) => note(m.text())));
+		page.on('crash', () => note('PAGECRASH the browser tab crashed'));
+		let error = null;
+		try {
+			await page.goto(this.url(build, 'picker=input&copy=1'));
+			await page.waitForFunction(() => document.getElementById('play') && !document.getElementById('play').disabled, null, { timeout: 60000 });
+			await page.click('#play');
+			const t0 = Date.now();
+			let nextClick = t0 + 8000;
+			while (Date.now() - t0 < seconds * 1000) {
+				const fatal = lines.find((l) => /Engine thread stopped|worker sent an error|RuntimeError|Aborted\(|abort\(|PAGECRASH|memory access out of bounds|Fatal error|Assertion failed/.test(l));
+				if (fatal) { error = 'engine failure: ' + fatal.slice(0, 300); break; }
+				if (lines.some((l) => /^Exited with code/.test(l))) { error = 'the engine exited'; break; }
+				// skip the intro videos like a player: a click on the game every few seconds during the first minute
+				if (Date.now() > nextClick && Date.now() - t0 < 60000) {
+					await page.mouse.click(400, 300).catch(() => {});
+					nextClick = Date.now() + 4000;
+				}
+				await page.waitForTimeout(200);
+			}
+		} catch (e) {
+			error = 'browser: ' + (e && e.message || e);
+		} finally {
+			await page.close().catch(() => {});
+		}
+		return { ok: !error, error, log: lines.filter((l) => !/^\s*$/.test(l)) };
 	}
 
 	// Plays one match. `args` are the engine's command line arguments. Resolves to
