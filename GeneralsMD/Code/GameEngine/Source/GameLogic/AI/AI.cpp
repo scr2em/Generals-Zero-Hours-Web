@@ -330,6 +330,9 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "AirMaxSeconds",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMaxSeconds ) },
 			{ "AirAssaultSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airAssaultSeconds ) },
 			{ "AirCooldownSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airCooldownSeconds ) },
+			{ "FillBunkers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useBunkers ) },
+			{ "BunkerReserve",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerReserve ) },
+			{ "BunkerArmyShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerArmyShare ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1333,6 +1336,9 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_airMaxSeconds = 100.0f;
 	ex.m_airAssaultSeconds = 90.0f;
 	ex.m_airCooldownSeconds = 45.0f;
+	ex.m_useBunkers = true;
+	ex.m_bunkerReserve = 200.0f;
+	ex.m_bunkerArmyShare = 0.3f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1448,6 +1454,9 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_airMaxSeconds );
 		xfer->xferReal( &sk.m_airAssaultSeconds );
 		xfer->xferReal( &sk.m_airCooldownSeconds );
+		xfer->xferBool( &sk.m_useBunkers );
+		xfer->xferReal( &sk.m_bunkerReserve );
+		xfer->xferReal( &sk.m_bunkerArmyShare );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

@@ -232,6 +232,11 @@ struct AISkillSettings
 	Real m_airMaxSeconds;			///< Longest flight to the drop point.
 	Real m_airAssaultSeconds;	///< The squad is on its own for this long after the drop.
 	Real m_airCooldownSeconds;///< Pause between two missions.
+
+	// ---- standing garrisons (bunkers) ----
+	Bool m_useBunkers;				///< Defensive structures that hold infantry are filled and kept filled.
+	Real m_bunkerReserve;			///< Infantry for the posts is trained only when the money left is at least this.
+	Real m_bunkerArmyShare;		///< The men in the posts are at most this share of the army (the field army and the posts together), but always two.
 };
 
 class AISideBuildList : public MemoryPoolObject

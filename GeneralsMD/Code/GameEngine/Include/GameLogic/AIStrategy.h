@@ -283,6 +283,16 @@ struct AIAbilityUse
 	UnsignedInt		m_frame;
 };
 
+/// An infantryman on his way into (or inside) a defensive structure of ours as its standing garrison.
+struct AIBunkerRecord
+{
+	ObjectID			m_unit;
+	ObjectID			m_building;
+	UnsignedInt		m_since;
+	Int						m_phase;						///< 0: entering, 1: inside
+	Int						m_class;						///< 1: anti-armour, 0: anti-infantry
+};
+
 enum AIArmyState CPP_11(: Int)
 {
 	ARMY_GATHER = 0,				///< teams gather at the rally point and grow
@@ -457,6 +467,18 @@ private:
 	void tryStartRepairs();
 	void updateRepair();
 
+	// standing garrisons (AIBunker.cpp)
+	enum { MAX_BUNKER_MEN = 24 };
+	Bool bunkerOn() const;
+	Bool isGarrisonPost( Object *obj ) const;
+	Bool isBunkerMan( ObjectID id ) const;
+	const AICombatFigures *seenEnemyFigures( Bool infantry ) const;
+	Int bunkerClass( const AICombatFigures *f ) const;
+	Real bunkerArmourShare() const;
+	Real postThreatScore( Object *post );
+	void trainForBunker( Int wantedClass );
+	void updateBunkers();
+
 	// airborne insertion (AIAirborne.cpp)
 	enum { MAX_SQUAD = 8 };
 	Bool airborneOn() const;
@@ -627,6 +649,15 @@ private:
 	UnsignedInt		m_bdDamageFrame;								///< latest damage to one of our objects inside the zone by an enemy
 	UnsignedInt		m_nextBaseDefence;
 	UnsignedInt		m_bdWeakFrame;									///< last trace line about a threat that the teams at home do not go out to
+	AIBunkerRecord m_bunkerMen[MAX_BUNKER_MEN];			///< infantry that hold defensive structures for good
+	Int						m_numBunkerMen;
+	UnsignedInt		m_nextBunker;
+	UnsignedInt		m_nextBunkerTrain;
+	UnsignedInt		m_bunkerQueueFrame;
+	Int						m_bunkerQueued;									///< infantry ordered for the posts and not seen yet
+	Int						m_bunkerPosts;									///< statistics for the trace
+	Int						m_bunkerEntered;
+	Int						m_bunkerTrained;
 	Int						m_airPhase;											///< airborne insertion: 0 = no mission
 	ObjectID			m_airTransport;
 	ObjectID			m_squad[MAX_SQUAD];

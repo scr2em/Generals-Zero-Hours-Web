@@ -20,8 +20,8 @@
   },
   {
    "file": "data/ini/commandset.ini",
-   "find": "  3  = Command_ConstructIronwoodFactory\n  13 = Command_AttackMove",
-   "replace": "  3  = Command_ConstructIronwoodFactory\n  4  = Command_ConstructIronwoodGeoTower\n  13 = Command_AttackMove"
+   "find": "  3  = Command_ConstructIronwoodFactory\n  14 = Command_Stop",
+   "replace": "  3  = Command_ConstructIronwoodFactory\n  4  = Command_ConstructIronwoodGeoTower\n  14 = Command_Stop"
   }
  ]
 }
