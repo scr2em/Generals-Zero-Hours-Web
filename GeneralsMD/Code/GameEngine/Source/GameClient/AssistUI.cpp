@@ -1126,11 +1126,17 @@ void AssistUI::setupOptionsButton( const char *layoutName, const char *likeButto
 	if (TheWindowManager->winGetWindowFromId( nullptr, id ))
 		return;
 
+	// A button of the layout that is shown (a hidden one, or one in a hidden panel, is no place for ours; the screen
+	// itself may still be hidden while the menu is being set up, so it is not asked).
 	auto find = [layoutName]( const char *name ) -> GameWindow *
 	{
 		AsciiString full;
 		full.format( "%s:%s", layoutName, name );
-		return TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( full ) );
+		GameWindow *win = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( full ) );
+		for (GameWindow *w = win; w && w->winGetParent(); w = w->winGetParent())
+			if (w->winIsHidden())
+				return nullptr;
+		return win;
 	};
 
 	// Where it goes: under the given button; layouts without it (some community patches drop the keyboard shortcuts
