@@ -43,6 +43,7 @@
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/AISkirmishPlayer.h"
+#include "GameLogic/AIStrategy.h"
 #include "GameLogic/SidesList.h"
 #include "GameLogic/AI.h"
 #include "GameLogic/AIPathfind.h"
@@ -75,7 +76,9 @@ m_curLeftFlankRightDefenseAngle(0),
 m_curRightFlankLeftDefenseAngle(0),
 m_curRightFlankRightDefenseAngle(0),
 m_frameToCheckEnemy(0),
-m_currentEnemy(nullptr)
+m_currentEnemy(nullptr),
+m_strategy(nullptr),
+m_numUnaffordable(0)
 
 {
 	m_frameLastBuildingBuilt = TheGameLogic->getFrame();
@@ -85,6 +88,26 @@ m_currentEnemy(nullptr)
 AISkirmishPlayer::~AISkirmishPlayer()
 {
 	clearTeamsInQueue();
+	delete m_strategy;
+	m_strategy = nullptr;
+}
+
+/**
+ * Expert is Hard with the strategic layer on.  Everything the layer does is gated on it existing, so
+ * Easy, Normal and Hard keep playing exactly like the original skirmish AI.
+ */
+void AISkirmishPlayer::setExpert(Bool expert)
+{
+	AIPlayer::setExpert(expert);
+	if (expert && m_strategy == nullptr)
+	{
+		m_strategy = NEW AIStrategy(this, m_player);
+	}
+	else if (!expert && m_strategy != nullptr)
+	{
+		delete m_strategy;
+		m_strategy = nullptr;
+	}
 }
 
 
@@ -383,9 +406,88 @@ Bool AISkirmishPlayer::isAGoodIdeaToBuildTeam( TeamPrototype *proto )
 			}
 			TheScriptEngine->AppendDebugMessage(str, false);
 		}
+		if (needMoney && m_strategy && m_numUnaffordable < MAX_UNAFFORDABLE)
+			m_unaffordable[m_numUnaffordable++] = proto;	// Expert may decide to save up for it
 		return false;
 	}
 	return true;
+}
+
+/**
+ * Choose the team to build.  Expert weighs the candidates by how well they counter what it has seen of
+ * the enemy army (weapon damage types against armor, range, cost), softened by the production priority
+ * the scripts gave them: a team two priority steps below the best is a quarter as likely, not excluded.
+ * Without the strategic layer this is the original choice: random among the best priority.
+ */
+TeamPrototype *AISkirmishPlayer::pickTeamPrototype( const std::list<TeamPrototype *> &candidates, Int hiPri )
+{
+	if (m_strategy == nullptr || m_strategy->rollMistake())
+		return AIPlayer::pickTeamPrototype(candidates, hiPri);
+
+	enum { MAX_CANDIDATES = 64 };
+	TeamPrototype *picks[MAX_CANDIDATES];
+	Real weights[MAX_CANDIDATES];
+	Int num = 0;
+	Real total = 0.0f;
+	Real bestWeight = 0.0f;
+	for (std::list<TeamPrototype *>::const_iterator t = candidates.begin(); t != candidates.end() && num < MAX_CANDIDATES; ++t)
+	{
+		if (hiPri - (*t)->getTemplateInfo()->m_productionPriority > 2)
+			continue;
+		const Real w = m_strategy->teamWeight(*t, hiPri);
+		picks[num] = *t;
+		weights[num] = w;
+		total += w;
+		if (w > bestWeight)
+			bestWeight = w;
+		++num;
+	}
+	if (num == 0)
+		return AIPlayer::pickTeamPrototype(candidates, hiPri);
+
+	// Saving up: a team that counters the enemy much better than anything affordable is worth waiting for,
+	// as long as the money for it is not far off.
+	for (Int u = 0; u < m_numUnaffordable; ++u)
+	{
+		TeamPrototype *proto = m_unaffordable[u];
+		const Real w = m_strategy->teamWeight(proto, hiPri);
+		if (w > 1.6f * bestWeight && m_strategy->shouldSaveFor(proto, teamCost(proto)))
+			return nullptr;
+	}
+
+	m_strategy->noteTeamPicked();
+	Real roll = GameLogicRandomValue(0, 9999) / 10000.0f * total;
+	for (Int i = 0; i < num; ++i)
+	{
+		roll -= weights[i];
+		if (roll <= 0.0f)
+			return picks[i];
+	}
+	return picks[num - 1];
+}
+
+/// What it takes to start the team: the money isPossibleToBuildTeam asks for.
+Real AISkirmishPlayer::teamCost( TeamPrototype *proto )
+{
+	Real cost = 0.0f;
+	for (Int i = 0; i < proto->getTemplateInfo()->m_numUnitsInfo; ++i)
+	{
+		const TCreateUnitsInfo &u = proto->getTemplateInfo()->m_unitsInfo[i];
+		const ThingTemplate *thing = TheThingFactory->findTemplate(u.unitThingName);
+		if (thing)
+			cost += thing->calcCostToBuild(m_player) * ((u.maxUnits + u.minUnits) / 2.0f);
+	}
+	return cost * TheAI->getAiData()->m_teamResourcesToBuild;
+}
+
+Bool AISkirmishPlayer::chooseAttackObjective(const Coord3D *from, Real power, Coord3D *objective)
+{
+	return m_strategy ? m_strategy->chooseObjective(from, power, objective) : false;
+}
+
+Int AISkirmishPlayer::extraGatherers() const
+{
+	return m_strategy ? m_strategy->extraGatherers() : 0;
 }
 
 /**
@@ -401,6 +503,7 @@ Bool AISkirmishPlayer::selectTeamToReinforce( Int minPriority )
  */
 Bool AISkirmishPlayer::selectTeamToBuild()
 {
+	m_numUnaffordable = 0;
 	return AIPlayer::selectTeamToBuild();
 }
 
@@ -932,6 +1035,11 @@ void AISkirmishPlayer::doTeamBuilding()
 			if (m_teamTimer > 3*LOGICFRAMES_PER_SECOND) {
 				m_teamTimer = 3*LOGICFRAMES_PER_SECOND;
 			}
+			// Expert does not let a production building idle while there is money for the next team.
+			if (m_strategy && m_strategy->productionIsStarved()) {
+				m_readyToBuildTeam = true;
+				m_teamDelay = 0;
+			}
 		}
 
 		// This timer is to keep from banging on the logic each frame.  If something interesting
@@ -955,6 +1063,8 @@ void AISkirmishPlayer::doTeamBuilding()
 void AISkirmishPlayer::update()
 {
 	AIPlayer::update();
+	if (m_strategy)
+		m_strategy->update();
 }
 
 //----------------------------------------------------------------------------------------------------------
@@ -1106,6 +1216,9 @@ void AISkirmishPlayer::newMap()
 			info->incrementNumRebuilds(); // the initial build in the normal build list consumes a rebuild, so add one.
 		}
 	}
+
+	if (m_strategy)
+		m_strategy->newMap();
 }
 
 //----------------------------------------------------------------------------------------------------------
@@ -1173,6 +1286,14 @@ Bool AISkirmishPlayer::computeSuperweaponTarget(const SpecialPowerTemplate *powe
 		return TRUE;
 	}
 
+	// Expert aims at the densest cluster of what it has seen (sneak attacks use the original rule: they
+	// want the places that are poorly defended).
+	if (m_strategy && m_strategy->skill().m_smartPowers && power->getSpecialPowerType() != SPECIAL_SNEAK_ATTACK)
+	{
+		if (m_strategy->computeSuperweaponTarget(power, retPos, playerNdx, weaponRadius))
+			return TRUE;
+	}
+
 	return AIPlayer::computeSuperweaponTarget(power, retPos, playerNdx, weaponRadius);
 
 }
@@ -1194,7 +1315,7 @@ void AISkirmishPlayer::xfer( Xfer *xfer )
 {
 
 	// version
-	XferVersion currentVersion = 1;
+	XferVersion currentVersion = 2;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -1224,6 +1345,15 @@ void AISkirmishPlayer::xfer( Xfer *xfer )
 
 	// right flank right defense angle
 	xfer->xferReal( &m_curRightFlankRightDefenseAngle );
+
+	// 2: the strategic layer of the Expert level
+	if( version >= 2 )
+	{
+		if( xfer->getXferMode() == XFER_LOAD )
+			setExpert( m_expert );
+		if( m_strategy )
+			xfer->xferSnapshot( m_strategy );
+	}
 
 }
 

@@ -1248,7 +1248,7 @@ static void updateSkirmishBattleHonors(SkirmishBattleHonors& stats)
 				++numEasy;
 			if (TheGameInfo->getConstSlot(i)->getState() == SLOT_MED_AI)
 				++numMedium;
-			if (TheGameInfo->getConstSlot(i)->getState() == SLOT_BRUTAL_AI)
+			if (TheGameInfo->getConstSlot(i)->getState() == SLOT_BRUTAL_AI || TheGameInfo->getConstSlot(i)->getState() == SLOT_EXPERT_AI)
 				++numBrutal;
 		}
 		else if (slot->isAI())
@@ -1370,7 +1370,7 @@ static void updateChallengeMedals(Int& medals)
 		if (slot->isAI() && !isSlotLocalAlly(TheGameInfo, slot))
 		{
 			++numAIs;
-			if (TheGameInfo->getConstSlot(i)->getState() == SLOT_BRUTAL_AI)
+			if (TheGameInfo->getConstSlot(i)->getState() == SLOT_BRUTAL_AI || TheGameInfo->getConstSlot(i)->getState() == SLOT_EXPERT_AI)
 				++numBrutals;
 		}
 		else if (slot->isAI())

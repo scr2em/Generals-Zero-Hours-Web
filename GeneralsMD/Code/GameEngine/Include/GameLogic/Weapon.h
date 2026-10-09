@@ -399,6 +399,7 @@ public:
 	Real getUnmodifiedAttackRange() const;
 	Real getMinimumAttackRange() const;
 	Int getDelayBetweenShots(const WeaponBonus& bonus) const;
+	Real getAverageDelayBetweenShots() const { return (m_minDelayBetweenShots + m_maxDelayBetweenShots) * 0.5f; }	///< frames, no random roll: for analysis code that must not touch the random generator
 	Int getClipReloadTime(const WeaponBonus& bonus) const;
 	Real getPrimaryDamage(const WeaponBonus& bonus) const;
 	Real getPrimaryDamageRadius(const WeaponBonus& bonus) const;

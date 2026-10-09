@@ -74,6 +74,7 @@ UnsignedInt Money::withdraw(UnsignedInt amountToWithdraw, Bool playSound)
 	}
 
 	m_money -= amountToWithdraw;
+	m_totalWithdrawn += amountToWithdraw;
 
 	return amountToWithdraw;
 }
@@ -93,6 +94,11 @@ void Money::deposit(UnsignedInt amountToDeposit, Bool playSound, Bool trackIncom
 	{
 		m_incomeBuckets[m_currentBucket] += amountToDeposit;
 		m_cashPerMinute += amountToDeposit;
+		m_totalIncome += amountToDeposit;
+	}
+	else
+	{
+		m_totalOtherDeposits += amountToDeposit;
 	}
 
 	m_money += amountToDeposit;

@@ -121,7 +121,7 @@ STRINGS = [
     # ---- messages the game shows ----------------------------------------------------------------------
     ("GUI:Player", "Player"),
     ("GUI:Open", "Open"), ("GUI:Closed", "Closed"), ("GUI:EasyAI", "Easy computer"), ("GUI:MediumAI", "Medium computer"),
-    ("GUI:HardAI", "Hard computer"),
+    ("GUI:HardAI", "Hard computer"), ("GUI:ExpertAI", "Expert computer"),
     ("GUI:Custom", "Custom"), ("GUI:Low", "Low"), ("GUI:Medium", "Medium"), ("GUI:High", "High"), ("GUI:VeryHigh", "Very high"),
     ("GUI:Start", "Start"), ("GUI:Surrender", "Surrender"), ("GUI:Retry", "Retry"), ("GUI:Error", "Error"),
     ("GUI:RestartMission", "Restart"), ("GUI:ExitMission", "Exit to menu"),

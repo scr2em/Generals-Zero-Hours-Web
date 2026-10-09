@@ -337,6 +337,10 @@ static void gameTooltip(GameWindow *window,
 				tooltip.concat(L'\n');
 				tooltip.concat(TheGameText->fetch("GUI:HardAI"));
 				break;
+			case SLOT_EXPERT_AI:
+				tooltip.concat(L'\n');
+				tooltip.concat(TheGameText->FETCH_OR_SUBSTITUTE("GUI:ExpertAI", L"Expert AI"));
+				break;
 			}
 		}
 	}
