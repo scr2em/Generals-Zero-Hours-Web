@@ -19,6 +19,24 @@ tools/zharmy/run_tests.sh                 # all unit tests, about 40 s (20 s of 
 `<mod...>` and `<ruleset...>` are folders and/or `.big` files. A folder contributes its loose files and every `.big`
 below it.
 
+## In the browser
+
+The web launcher ("Import armies from a mod…") runs this same code under Pyodide in a Web Worker: pick a mod folder, see the
+armies it holds, tick the ones to import; the packages are stored in the browser and used like any other army. The glue is
+`webapi.py` (`open_json`, `convert_json`, `retail_json`; JSON in and out), which reads the mod and the ruleset once and converts
+several armies from them. It uses `convert`, `layout`, `inspect_mod`'s rules and `validate` as they are; the command line is
+unchanged. The mod is mounted read only and read by byte range (nothing is copied into the Python heap). The default for a
+mod installed in the game folder is `--mod-archives auto`, and the page's list of "which files belong to the mod" is
+`layout.is_retail_archive`. See `docs/ARMY_PACKAGES.md`, "Importing in the browser". The page's build puts `zharmy.zip` (the
+`.py` files, not `gen_schema.py` or the tests) next to `pyodide/`.
+
+Measured in headless Chromium on a busy 4 core machine (load average about 17), cold cache: Pyodide and the converter load in
+5.7 to 7.8 s (12.4 MB raw, about 5.5 MB with gzip: `pyodide.asm.wasm` 8.6 MB, `python_stdlib.zip` 2.4 MB, `pyodide.asm.js`
+1.1 MB, `zharmy.zip` 0.09 MB); the browser keeps them for the next visit. The three-army synthetic mod: reading 0.5 s,
+converting 0.05 to 0.33 s per army. The starter content's Ironwood with `--requires none`: reading 0.9 s, converting 0.49 s
+(0.3 s with CPython on the same machine). Mods the size of a real total conversion have not been measured here (no retail data
+in the sandbox): reading the INI text of the game and the mod is the part that grows, about 15 MB of text.
+
 ## How files are layered (what the engine does)
 
 * A loose file beats any archive.
@@ -212,6 +230,7 @@ schema.py schema_data.py gen_schema.py       reference schema (data generated fr
 refs.py assets.py w3d.py                     finding / rewriting references; file collection; W3D chunks
 strings.py scb.py                            CSF/STR tables; skirmish script files
 convert.py inspect_mod.py validate.py        the three commands
+webapi.py                                    entry points of the in-browser importer (not used by the command line)
 package.py                                   ZIP container, manifest, contentHash
 tests/                                       unit tests, synthetic game + mod fixtures (written from scratch)
 ```

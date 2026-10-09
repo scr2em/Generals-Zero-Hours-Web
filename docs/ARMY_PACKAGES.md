@@ -6,9 +6,11 @@ Players add extra armies (factions) to Zero Hour without replacing the game:
 
 1. A **converter** (`tools/zharmy`) turns an army from a mod the player owns into a
    self-contained package file, `<something>.zharmy`.
-2. The player keeps their packages in one folder.
-3. The **launcher** lets them pick that folder (optional), lists the armies it finds and
-   which can be used with the current game data, and passes the checked ones to the engine.
+2. The player keeps their packages in one folder, or lets the launcher make them in the browser
+   ("Import armies from a mod", see "Importing in the browser").
+3. The **launcher** lets them pick that folder (optional), lists the armies it finds (and the
+   ones it imported) and which can be used with the current game data, and passes the checked
+   ones to the engine.
 4. The **engine** loads each package on top of the game data (the "ruleset"); its
    factions appear in the skirmish faction list next to the standard ones.
 
@@ -244,8 +246,8 @@ Rules (the engine checks them and refuses a package that breaks one):
 
 ## Converter (`tools/zharmy`)
 
-Python 3, standard library only, runs on the player's machine (and later in the
-browser). `tools/zharmy/README.md` has the commands and the details.
+Python 3, standard library only, runs on the player's machine and, under Pyodide, in the
+browser (see "Importing in the browser"). `tools/zharmy/README.md` has the commands and the details.
 
 - `zharmy archives <game folder>`: lists the `.big` files in the order the engine loads them
   (Zero Hour's archives, then the base game's) and shows which would be taken as the mod's.
@@ -269,6 +271,41 @@ browser). `tools/zharmy/README.md` has the commands and the details.
 - `zharmy validate <file> [--base <ruleset data>] [--mod <mod> | --mod-archives auto]`: checks
   a package against the rules above, the same way the engine does. Without `--mod` /
   `--mod-archives` every missing reference is an error (the mod as played is not known).
+
+## Importing in the browser
+
+The web launcher runs the same converter in the player's browser, so no command line is needed:
+
+1. **Where it runs.** `tools/zharmy` (Python, standard library only) runs in a dedicated Web Worker under
+   [Pyodide](https://pyodide.org) (CPython compiled to WebAssembly). Nothing is converted on a server and nothing is
+   uploaded. The page ships `pyodide/` (Pyodide 0.29.5: `pyodide.js`, `pyodide.asm.js`, `pyodide.asm.wasm`,
+   `python_stdlib.zip`, `pyodide-lock.json`; fetched and checked against a SHA-256 by `cmake/pyodide.cmake`) and
+   `zharmy.zip` (the `.py` files of `tools/zharmy`), and loads them only when the player starts an import. The
+   glue is `tools/zharmy/webapi.py`; the commands and the converter code are the ones the command line uses.
+2. **How files are read.** The player picks a folder (`showDirectoryPicker`, read only). The page collects a `File`
+   reference for each file the converter can use (`.big`, INI, strings, scripts, models, textures, sounds; no movies,
+   programs or maps) without reading them. The worker mounts the references with Emscripten's WORKERFS, which answers
+   every `open/seek/read` of Python with a `FileReaderSync` read of that byte range. Nothing is copied: a mod of several GB
+   costs the bytes the converter really reads (archive directories, the INI text, the files an army uses).
+3. **Which folder is what.** A folder that holds Zero Hour (it has `INIZH.big`, `W3DZH.big`, ...) is the game with the mod
+   installed in it: the page mounts the whole folder, lists its `.big` files and ticks the ones that are not retail Zero Hour /
+   Generals archives. That judgement is the converter's (`layout.is_retail_archive`, the list behind `--mod-archives auto`;
+   the page asks the worker, there is no second list in JavaScript); the player can correct the ticks. If the ticks are what
+   `auto` would pick, the import uses `--mod-archives auto`, else the exact archives. The folder is both the mod and `--base`
+   (a folder with Zero Hour and Generals side by side is layered like the engine does, by `layout.py`). Any other folder is the
+   mod's own: it is compared with the Zero Hour files the launcher already has (read in place, or its copy in the browser's
+   storage). Without Zero Hour files, "Make armies that do not need your Zero Hour files" converts with `--requires none`.
+4. **The list.** `Session` (`webapi.py`) reads the mod once (`convert.Context`), lists the playable factions
+   (`webapi.describe_factions`, the same list `inspect` prints; a faction that cannot be played in the mod itself is shown and cannot be ticked) and converts each ticked one from that same data; every package is checked with
+   `validate` before it is kept. Tags are suggested like `convert-all` does and kept unique among the armies the launcher
+   lists; the package id is `<mod name>.<faction>`, so importing the same mod again replaces the earlier packages.
+5. **Where the packages live.** Finished packages are stored as `<id>.zharmy` files in the browser's Origin Private File
+   System, folder `armies-library/` (`web/armylibrary.js`). They are listed with the same code as the packages of an armies
+   folder (only the ZIP directory and manifest are read), with the same statuses and ticks (imported ones are ticked when
+   they are made), plus "Download .zharmy" and "Delete".
+6. **How the engine gets them.** On Play, the launcher takes the `File` of each ticked package (an OPFS file is a `File`
+   like any other) and hands it to the engine exactly like a package from a folder (`direct.setArmyFiles`): the engine sees
+   `/armies/library/<id>.zharmy` and gets `-army /armies/library/<id>.zharmy`. The engine needed no change.
 
 ## Not in v1
 

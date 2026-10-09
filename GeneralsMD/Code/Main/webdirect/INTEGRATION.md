@@ -107,6 +107,12 @@ The launcher's "Armies" section (`web/armies.js`, `web/shell.html`) serves the a
 * The armies folder handle is kept in IndexedDB under its own key (`rememberArmiesFolder`, `loadArmiesFolder`,
   `forgetArmiesFolder`), separate from the game folders.
 
+Armies imported in the browser (`web/armylibrary.js`, `web/armyimport-ui.js`) are `.zharmy` files in the OPFS folder
+`armies-library/`. They need nothing from this backend: the launcher takes the `File` of each ticked one (`getFile()` of the OPFS
+handle) and passes it to `setArmyFiles` with the name `library/<id>.zharmy`, so the engine reads it at
+`/armies/library/<id>.zharmy` like a package from a folder. `openFiles(targetKey)` returns the files of an open target
+(`[{ path, file }]`); the importer uses it to compare a mod with the Zero Hour files that are read in place.
+
 ## Test results (headless Chromium in the sandbox, `webdirect/test/run_all.sh`)
 
 * Backend test (`web_direct_test`): mount, case insensitive lookup (lower/mixed/upper, relative after `chdir`), directory

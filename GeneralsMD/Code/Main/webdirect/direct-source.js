@@ -239,6 +239,17 @@ export function describeOpen(targetKey) {
 	return o ? { files: o.files, bytes: o.bytes, folder: o.folder } : null;
 }
 
+/**
+ * The files of an open target as [{ path: 'data/ini/x.ini' (below the target's folder), file }], or null when it is not open.
+ * Each file is a reference to the file on disk; nothing is read. The army importer hands them to its converter.
+ */
+export function openFiles(targetKey) {
+	const o = open.get(targetKey);
+	if (!o) return null;
+	const prefix = TARGETS[targetKey].dir + '/';
+	return o.entries.map((e) => ({ path: e.path.startsWith(prefix) ? e.path.slice(prefix.length) : e.path, file: e.file }));
+}
+
 /** Closes the open files of a target (all with no argument). */
 export function closeOpen(targetKey) {
 	if (targetKey) open.delete(targetKey); else open.clear();

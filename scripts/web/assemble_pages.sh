@@ -19,7 +19,7 @@ fi
 site_src="$1/GeneralsMD"
 out="$2"
 
-for f in z_generals.html z_generals.js z_generals.wasm importer.js armies.js coi-serviceworker.js; do
+for f in z_generals.html z_generals.js z_generals.wasm importer.js armies.js armyimport.js armyimport-ui.js armyimport-worker.js armylibrary.js coi-serviceworker.js; do
     if [ ! -f "$site_src/$f" ]; then
         echo "error: $site_src/$f is missing; build the z_generals target first" >&2
         exit 1
@@ -35,6 +35,14 @@ mkdir -p "$out"
 
 # The page, the engine and the launcher's scripts.
 cp "$site_src/z_generals.js" "$site_src/z_generals.wasm" "$site_src/importer.js" "$site_src/armies.js" "$site_src/coi-serviceworker.js" "$out/"
+# Importing armies from a mod in the browser: the page's scripts, the converter (zharmy.zip) and Pyodide (pyodide/).
+cp "$site_src/armyimport.js" "$site_src/armyimport-ui.js" "$site_src/armyimport-worker.js" "$site_src/armylibrary.js" "$out/"
+if [ -f "$site_src/zharmy.zip" ] && [ -f "$site_src/pyodide/pyodide.asm.wasm" ]; then
+    cp "$site_src/zharmy.zip" "$out/"
+    cp -R "$site_src/pyodide" "$out/pyodide"
+else
+    echo "note: no converter in $site_src (configured with -DRTS_WEB_PYODIDE=OFF?): the launcher will not import armies from a mod" >&2
+fi
 for f in direct-source.js zhnet.js; do
     if [ -f "$site_src/$f" ]; then cp "$site_src/$f" "$out/"; fi
 done

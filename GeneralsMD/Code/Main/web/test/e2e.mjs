@@ -8,11 +8,16 @@
 // <site>/starterpack/ (copied there), downloaded through the launcher into OPFS, checked against
 // its manifest and started. Build the pack with Content/StarterPack/build_pack.py.
 //
+// Section 8 (importing armies from a mod in the browser) writes a small original game and mod with the converter's own
+// test fixtures (python3 and tools/zharmy are needed) and needs the converter next to the page (pyodide/ and zharmy.zip, built
+// by the web_army_converter target).
+//
 // The page is served by serve.py (cross-origin isolated). The "game" is
 // web_platform_test, which prints TEST: lines for everything it receives.
 
 import { createRequire } from 'node:module';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, cpSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { writeTestPackages, writeManyPackages } from './zharmy_fixture.mjs';
@@ -998,6 +1003,326 @@ if (starter) {
 		await page.screenshot({ path: path.join(out, '17-armies-many.png') });
 		await context.close();
 	}
+}
+
+// ---- 8. importing armies from a mod in the browser (Pyodide worker, the converter of tools/zharmy) -------------------
+{
+	const repoTools = path.resolve(here, '..', '..', '..', '..', '..', 'tools');
+	const importRoot = path.join(out, 'army-import');
+	rmSync(importRoot, { recursive: true, force: true });
+	// A small original game and mod, written by the converter's own test fixtures: "game" = retail-like archives with the
+	// mod's installed next to them (!ModMain.big, zModArt.big; three armies), "retail" = the game alone, "modonly" = the
+	// mod's archives alone, "broken" = the game with an army that cannot be converted and an archive that is not one.
+	const made = spawnSync('python3', ['-B', '-c', `
+import sys
+sys.path.insert(0, sys.argv[2])
+from zharmy.tests import fixtures as fx
+from zharmy.bigfile import BigWriter
+root = sys.argv[1]
+fx.build_base(root + '/game'); fx.build_mod_archives(root + '/game')
+fx.build_base(root + '/retail')
+fx.build_mod_archives(root + '/modonly')
+fx.build_base(root + '/broken')
+w = BigWriter()
+w.add('Data\\\\INI\\\\PlayerTemplate\\\\Broken.ini', b'PlayerTemplate FactionNoSide\\n  PlayableSide = Yes\\nEnd\\n')
+w.write(root + '/broken/!Broken.big')
+open(root + '/broken/!Corrupt.big', 'wb').write(b'this is not an archive')
+`, importRoot, repoTools], { encoding: 'utf8' });
+	check('import: the synthetic game and mod were written', made.status === 0 && existsSync(path.join(importRoot, 'game', '!ModMain.big')), (made.stderr || '').slice(-300));
+	const url = (q = '?picker=input') => `http://127.0.0.1:${port}/${page_name}${q}`;
+	const chooseMod = async (page, dir) => {
+		const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#imp-choose')]);
+		await chooser.setFiles(dir);
+		await page.waitForSelector('#imp-files:not([hidden])', { timeout: 60000 });
+		// a Zero Hour folder: the list of archives appears once the converter (which knows the retail names) is loaded
+		await page.waitForFunction(() => !/Looking at its files|Loading the converter/.test(document.getElementById('imp-files-text').textContent), null, { timeout: 120000 });
+	};
+	const waitArmies = (page) => page.waitForSelector('#imp-armies:not([hidden])', { timeout: 300000 });
+	const waitResult = (page) => page.waitForSelector('#imp-result:not([hidden])', { timeout: 300000 });
+	const libraryFiles = (page) => page.evaluate(async () => {
+		const root = await navigator.storage.getDirectory();
+		let dir;
+		try { dir = await root.getDirectoryHandle('armies-library'); } catch (e) { return []; }
+		const list = [];
+		for await (const [name, handle] of dir.entries()) list.push([name, (await handle.getFile()).size]);
+		return list.sort();
+	});
+	const libraryBytes = (page, name) => page.evaluate(async (n) => {
+		const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('armies-library');
+		const buf = new Uint8Array(await (await (await dir.getFileHandle(n)).getFile()).arrayBuffer());
+		let bin = '';
+		for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192));
+		return btoa(bin);
+	}, name);
+	const timings = {};
+	const sha = (buf) => createHash('sha256').update(buf).digest('hex');
+
+	// 8a. the mod is installed in the Zero Hour folder: pick that folder, say which archives are the mod's, import two armies
+	{
+		const context = await browser.newContext({ viewport: { width: 1100, height: 1000 }, acceptDownloads: true });
+		const page = await context.newPage();
+		const logs = [];
+		page.on('console', (m) => logs.push(m.text()));
+		page.on('pageerror', (e) => logs.push('PAGEERROR ' + e.message));
+		page.on('dialog', (d) => d.accept());
+		const sizes = {};
+		page.on('response', async (r) => {
+			const u = new URL(r.url());
+			if (/\/(pyodide\/|zharmy\.zip)/.test(u.pathname)) {
+				const b = await r.body().catch(() => null);
+				if (b) sizes[u.pathname.replace(/^\//, '')] = b.length;
+			}
+		});
+		await page.goto(url());
+		await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+		const game = await importFolder(page, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
+		check('import: the launcher has a Zero Hour folder to play with', /Ready/.test(game), game);
+
+		check('import: the section offers "Import armies from a mod…" and the panel starts closed', /Import armies from a mod/.test(await page.textContent('#import-open')) && await page.isHidden('#army-import'));
+		check('import: the section says what the folder button is for', /Armies folder/.test(await page.textContent('#row-armies')) && /Armies from a mod/.test(await page.textContent('#row-import')));
+		check('import: no technical words in the section', !/ruleset|pyodide|python|converter|manifest/i.test(await page.textContent('#choice-armies')), (await page.textContent('#choice-armies')).replace(/\s+/g, ' ').slice(0, 200));
+		await page.click('#import-open');
+		check('import: the panel opens with the folder step', await page.isVisible('#army-import') && await page.isVisible('#imp-choose') && await page.isHidden('#imp-files'));
+		check('import: it says the Zero Hour files are ready', /Zero Hour files are ready/.test(await page.textContent('#imp-game-note')), await page.textContent('#imp-game-note'));
+		await page.screenshot({ path: path.join(out, '30-import-open.png') });
+
+		await chooseMod(page, path.join(importRoot, 'game'));
+		check('import: a Zero Hour folder asks "Which files belong to the mod?"', /Which files belong to the mod\?/.test(await page.textContent('#imp-files-title')) && await page.isVisible('#imp-archives'));
+		const archives = await page.evaluate(() => [...document.querySelectorAll('#imp-archives input')].map((b) => [b.getAttribute('data-path'), b.checked]));
+		check('import: all 7 archives are listed', archives.length === 7, JSON.stringify(archives));
+		check('import: only the archives that are not retail names are ticked', JSON.stringify(archives.filter((a) => a[1]).map((a) => a[0])) === JSON.stringify(['!ModMain.big', 'zModArt.big']), JSON.stringify(archives));
+		check('import: the list says which come with the game', /AudioZH\.big[^]*comes with the game/.test(await page.textContent('#imp-archives')) && /not from the original game/.test(await page.textContent('#imp-archives')));
+		await page.screenshot({ path: path.join(out, '31-import-files.png') });
+		while ((await page.locator('#imp-archives input:checked').count()) > 0) await page.locator('#imp-archives input:checked').first().uncheck();
+		check('import: nothing ticked: the button waits and says why', await page.isDisabled('#imp-look') && /Tick the files/.test(await page.textContent('#imp-look-hint')), await page.textContent('#imp-look-hint'));
+		await page.check('#imp-archives input[data-path="!ModMain.big"]');
+		await page.check('#imp-archives input[data-path="zModArt.big"]');
+		check('import: ticking the mod\'s files enables it', !(await page.isDisabled('#imp-look')));
+
+		const t0 = Date.now();
+		await page.click('#imp-look');
+		await page.waitForSelector('#imp-run:not([hidden])', { timeout: 10000 });
+		check('import: progress is shown while the mod is read', await page.isVisible('#imp-run-text'));
+		await waitArmies(page);
+		timings.firstOpenMs = Date.now() - t0;
+		const found = await page.evaluate(() => [...document.querySelectorAll('#imp-army-list .imp-army')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
+		check('import: "Armies found in this mod" lists 3 armies', found.length === 3 && /Armies found in this mod/.test(await page.textContent('#imp-armies')), JSON.stringify(found));
+		check('import: each shows its name, whether the computer can play it, and how big it is', /Alpha Army.*Computer can play it.*3 units and buildings/.test(found.join('|')) && /Beta Army.*Humans only.*1 unit or building/.test(found.join('|')) && /Test Army/.test(found.join('|')), JSON.stringify(found));
+		check('import: an army that comes with Zero Hour is marked, new ones are told apart', /Test Army.*changes an army that comes with Zero Hour/.test(found.join('|')) && /Alpha Army.*a new army/.test(found.join('|')));
+		check('import: all are ticked and the button counts them', (await page.locator('#imp-army-list input[data-faction]:checked').count()) === 3 && /Import 3 armies/.test(await page.textContent('#imp-go')));
+		check('import: the page says how long reading took', /Reading the mod took [\d.]+ seconds/.test(await page.textContent('#imp-armies-note')), await page.textContent('#imp-armies-note'));
+		await page.screenshot({ path: path.join(out, '32-import-armies.png'), fullPage: true });
+
+		// choose: untick the army that comes with the game, fix a tag clash, rename
+		check('import: a link unticks the armies that come with Zero Hour', await page.isVisible('#imp-retail'));
+		await page.click('#imp-retail');
+		check('import: it unticks only Test Army and updates the button', /Import 2 armies/.test(await page.textContent('#imp-go')) && !(await page.isChecked('input[data-faction="FactionTstBase"]')) && await page.isChecked('input[data-faction="FactionModAlpha"]'));
+		await page.check('input[data-faction="FactionTstBase"]');
+		check('import: ticking one updates the button', /Import 3 armies/.test(await page.textContent('#imp-go')));
+		await page.uncheck('input[data-faction="FactionTstBase"]');
+		const tags = await page.evaluate(() => [...document.querySelectorAll('input[data-tag]')].map((i) => [i.getAttribute('data-tag'), i.value]));
+		check('import: name and tag are behind "Change name or tag"', !(await page.isVisible('input[data-tag="FactionModBeta"]')) && /Change name or tag/.test(await page.textContent('#imp-army-list')));
+		await page.click('.imp-army:has(input[data-faction="FactionModBeta"]) summary');
+		await page.click('.imp-army:has(input[data-faction="FactionModAlpha"]) summary');
+		await page.locator('input[data-tag="FactionModBeta"]').fill('MA');
+		check('import: a tag used twice is refused in plain words and the button waits', await page.isDisabled('#imp-go') && /used twice/.test(await page.textContent('#imp-army-list')), await page.textContent('#imp-army-list'));
+		await page.locator('input[data-tag="FactionModBeta"]').fill('ma');
+		await page.locator('input[data-tag="FactionModBeta"]').fill('B!');
+		check('import: a tag with other characters is refused', await page.isDisabled('#imp-go') && /2 to 6 capital letters/.test(await page.textContent('#imp-army-list')));
+		await page.locator('input[data-tag="FactionModBeta"]').fill('MBETA');
+		check('import: a good tag enables the button again', !(await page.isDisabled('#imp-go')));
+		await page.locator('input[data-name="FactionModAlpha"]').fill('Alpha Prime');
+		check('import: the default tags come from the names', JSON.stringify(tags) === JSON.stringify([['FactionTstBase', 'TB'], ['FactionModAlpha', 'MA'], ['FactionModBeta', 'MB']]), JSON.stringify(tags));
+
+		const t1 = Date.now();
+		await page.click('#imp-go');
+		await waitResult(page);
+		timings.importTwoMs = Date.now() - t1;
+		check('import: the result says 2 armies were imported and are ticked', /Imported 2 armies/.test(await page.textContent('#imp-result-text')), await page.textContent('#imp-result-text'));
+		const table = await page.evaluate(() => [...document.querySelectorAll('#imp-table tbody tr')].map((tr) => [...tr.cells].map((c) => c.textContent)));
+		check('import: the summary table has one row per army with size, objects, weapons, models, textures, sounds, warnings', table.length === 2 && table[0].length === 9 && table[0][0] === 'Alpha Prime' && table[0][8] === 'Ready' && Number(table[0][2]) === 4 && Number(table[0][4]) === 4 && Number(table[0][5]) === 4 && Number(table[0][6]) === 2 && /MB$/.test(table[0][1]), JSON.stringify(table));
+		check('import: the table says Beta Army was converted too', table[1][0] === 'Beta Army' && table[1][8] === 'Ready' && Number(table[1][4]) === 1, JSON.stringify(table[1]));
+		const progressLog = await page.textContent('#imp-log').catch(() => '');
+		const report = await page.evaluate(() => [...document.querySelectorAll('#imp-reports details')].map((d) => d.textContent));
+		check('import: each army has a report that can be opened (what was copied, checks)', report.length === 2 && /Alpha Prime: report/.test(report[0]) && /testmod|OK/.test(report[0]), (report[0] || '').slice(0, 200));
+		await page.screenshot({ path: path.join(out, '33-import-result.png'), fullPage: true });
+
+		// in the library, like any other army
+		const files = await libraryFiles(page);
+		check('import: the packages are stored in the browser (armies-library/<id>.zharmy)', files.length === 2 && /^modmain\.(modalpha|modbeta)\.zharmy$/.test(files[0][0]) && files.every((f) => f[1] > 1000), JSON.stringify(files));
+		const rows = await page.evaluate(() => window.__zh.armyRows());
+		check('import: both appear in the Armies list as ready', rows.length === 2 && rows.every((r) => r.status === 'ready' && /^library\//.test(r.path)), JSON.stringify(rows));
+		check('import: both are ticked by default', JSON.stringify(await page.evaluate(() => window.__zh.checkedArmies())) === JSON.stringify(['modmain.modalpha', 'modmain.modbeta']) && (await page.locator('#armies-list input:checked').count()) === 2);
+		const listText = await page.textContent('#armies-list');
+		check('import: the list shows the new name, tag, factions with AI / humans only, and "imported"', /Alpha Prime/.test(listText) && /MA/.test(listText) && /MBETA/.test(listText) && /Alpha Prime \(AI\)/.test(listText) && /Beta Army \(humans only\)/.test(listText) && /imported/.test(listText) && /from ModMain/.test(listText), listText.replace(/\s+/g, ' ').slice(0, 300));
+		check('import: the state line counts them', /2 armies imported in this browser/.test(await page.textContent('#state-import')), await page.textContent('#state-import'));
+		await page.screenshot({ path: path.join(out, '34-import-listed.png'), fullPage: true });
+
+		// the new name is the army's name in the game, too (its string), not only the package's
+		const alphaFile = path.join(importRoot, 'alpha-prime.zharmy');
+		writeFileSync(alphaFile, Buffer.from(await libraryBytes(page, 'modmain.modalpha.zharmy'), 'base64'));
+		const inside = spawnSync('python3', ['-B', '-c', 'import sys,zipfile,json; z=zipfile.ZipFile(sys.argv[1]); print(json.loads(z.read("manifest.json"))["factions"][0]["displayName"]); print(z.read("army/strings.str").decode("latin-1"))', alphaFile], { encoding: 'utf8' });
+		check('import: a new name is the army\'s name in the game (manifest and string)', /^Alpha Prime\n/.test(inside.stdout) && /"Alpha Prime"/.test(inside.stdout) && !/"Alpha Army"/.test(inside.stdout), inside.stdout.slice(0, 200));
+
+		// importing the same mod again replaces, and a tag held by another army is not offered
+		await page.click('#imp-more');
+		await chooseMod(page, path.join(importRoot, 'game'));
+		await page.click('#imp-look');
+		await waitArmies(page);
+		const tagsAgain = await page.evaluate(() => [...document.querySelectorAll('input[data-tag]')].map((i) => [i.getAttribute('data-tag'), i.value]));
+		check('import: importing again offers the same tags (the old army is replaced)', JSON.stringify(tagsAgain.slice(1)) === JSON.stringify([['FactionModAlpha', 'MA'], ['FactionModBeta', 'MB']]) && tagsAgain[0][1] === 'TB', JSON.stringify(tagsAgain));
+		check('import: it says it replaces the army imported before', /Importing again replaces it/.test(await page.textContent('#imp-army-list')));
+		await page.uncheck('input[data-faction="FactionTstBase"]');
+		await page.uncheck('input[data-faction="FactionModBeta"]');
+		await page.click('#imp-go');
+		await waitResult(page);
+		check('import: importing one again keeps the other one', (await libraryFiles(page)).length === 2 && /Imported 1 army/.test(await page.textContent('#imp-result-text')), await page.textContent('#imp-result-text'));
+		const sizesNow = await libraryFiles(page);
+		// the same bytes the command line tool makes (one converter code base)
+		const cli = spawnSync('python3', ['-B', '-m', 'zharmy', 'convert', path.join(importRoot, 'game'), '--base', path.join(importRoot, 'game'), '--mod-archives', '!ModMain.big', 'zModArt.big',
+			'--faction', 'FactionModAlpha', '--tag', 'MA', '--id', 'modmain.modalpha', '--mod-name', 'ModMain', '-o', path.join(importRoot, 'cli-alpha.zharmy'), '-q'], { cwd: repoTools, encoding: 'utf8' });
+		const cliBytes = existsSync(path.join(importRoot, 'cli-alpha.zharmy')) ? readFileSync(path.join(importRoot, 'cli-alpha.zharmy')) : Buffer.alloc(0);
+		const browserBytes = Buffer.from(await libraryBytes(page, 'modmain.modalpha.zharmy'), 'base64');
+		check('import: the package made in the browser is byte for byte the one the command line tool makes', cliBytes.length > 0 && sha(cliBytes) === sha(browserBytes), `${cliBytes.length} vs ${browserBytes.length} ${(cli.stderr || '').slice(-200)}`);
+		await page.click('#imp-close');
+		check('import: Close folds the panel away', await page.isHidden('#army-import'));
+
+		// download
+		const [download] = await Promise.all([page.waitForEvent('download'), page.click('[data-download="modmain.modbeta.zharmy"]')]);
+		const dlPath = path.join(importRoot, 'downloaded.zharmy');
+		await download.saveAs(dlPath);
+		const dl = readFileSync(dlPath);
+		check('import: "Download .zharmy" gives the package file', download.suggestedFilename() === 'modmain.modbeta.zharmy' && dl.length === sizesNow.find((f) => f[0] === 'modmain.modbeta.zharmy')[1] && dl.subarray(0, 4).toString('hex') === '504b0304', download.suggestedFilename() + ' ' + dl.length);
+		const dlTable = spawnSync('python3', ['-B', '-m', 'zharmy', 'validate', dlPath, '--base', path.join(importRoot, 'retail')], { cwd: repoTools, encoding: 'utf8' });
+		check('import: the downloaded package passes the command line tool\'s check', dlTable.status === 0, (dlTable.stdout + dlTable.stderr).slice(-300));
+
+		// Play: the library packages go to the engine like those of a folder
+		await page.click('#play');
+		await page.waitForFunction(() => document.getElementById('stage').hidden === false);
+		await page.waitForFunction(() => window.__zh.logLines.some((l) => l.includes('TEST: ready')), null, { timeout: 30000 }).catch(() => {});
+		const argv = await page.evaluate(() => window.Module.arguments);
+		const armyArgs = argv.map((a, i) => (a === '-army' ? argv[i + 1] : null)).filter(Boolean);
+		check('import: Play passes -army /armies/library/<id>.zharmy for the imported armies', JSON.stringify(armyArgs) === JSON.stringify(['/armies/library/modmain.modalpha.zharmy', '/armies/library/modmain.modbeta.zharmy']), argv.join(' '));
+		const engineLog = logs.filter((l) => l.startsWith('TEST:') || /WebPlatform:|ZHARMY/.test(l)).join('\n');
+		for (const [name, size] of sizesNow) {
+			check(`import: the engine reads ${name} from the browser's storage (size ${size})`, engineLog.includes(`TEST: army /armies/library/${name} size=${size} first=504b0304(4)`), engineLog.split('\n').filter((l) => /army/.test(l)).join('|'));
+		}
+		await page.waitForFunction(() => /Armies: 2 loaded/.test(document.getElementById('army-btn').textContent), null, { timeout: 15000 }).catch(() => {});
+		check('import: the toolbar says 2 armies loaded', /Armies: 2 loaded/.test(await page.textContent('#army-btn')), await page.textContent('#army-btn'));
+		await page.evaluate(() => window.Module.onExit(0));
+		await page.click('#back-to-start');
+		await page.waitForSelector('#armies-list li');
+
+		// delete
+		await page.click('[data-delete="modmain.modbeta.zharmy"]');
+		await page.waitForFunction(() => document.querySelectorAll('#armies-list > li').length === 1);
+		check('import: Delete removes the army from the list and from the storage', JSON.stringify((await libraryFiles(page)).map((f) => f[0])) === JSON.stringify(['modmain.modalpha.zharmy']) && !(await page.evaluate(() => window.__zh.checkedArmies())).includes('modmain.modbeta'), JSON.stringify(await libraryFiles(page)));
+		await page.reload();
+		await page.waitForFunction(() => document.querySelectorAll('#armies-list > li').length === 1);
+		check('import: after a reload the imported army is still there', /Alpha Army/.test(await page.textContent('#armies-list')) && /1 army imported/.test(await page.textContent('#state-import')));
+
+		const total = Object.values(sizes).reduce((n, b) => n + b, 0);
+		console.log('IMPORT sizes (bytes sent): ' + JSON.stringify(sizes) + ' total ' + total);
+		check('import: only this site was asked for the converter (pyodide/ and zharmy.zip)', Object.keys(sizes).length >= 5 && total > 5e6, JSON.stringify(sizes));
+		await context.close();
+	}
+
+	// 8b. a mod folder of its own, compared with the Zero Hour files the launcher copied into the browser
+	{
+		const context = await browser.newContext({ viewport: { width: 1100, height: 1000 } });
+		const page = await context.newPage();
+		const logs = [];
+		page.on('console', (m) => logs.push(m.text()));
+		page.on('pageerror', (e) => logs.push('PAGEERROR ' + e.message));
+		page.on('dialog', (d) => d.accept());
+		await page.goto(url('?picker=input&copy=1'));
+		await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+		await page.click('#import-open');
+		await chooseMod(page, path.join(importRoot, 'modonly'));
+		check('import (own folder): no archive list, it says it will be compared with the Zero Hour files', await page.isHidden('#imp-archives') && /looks like a mod.s own folder/.test(await page.textContent('#imp-files-text')), await page.textContent('#imp-files-text'));
+		check('import (own folder): without Zero Hour files it explains what to do and waits', await page.isDisabled('#imp-look') && /Choose your Zero Hour folder above first/.test(await page.textContent('#imp-look-hint')), await page.textContent('#imp-look-hint'));
+		check('import (own folder): the option without Zero Hour files is under "More options"', await page.isVisible('#imp-advanced summary') && /do not need your Zero Hour files/.test(await page.textContent('#imp-advanced')));
+		// now give the launcher the game (a copy in browser storage), the panel notices
+		await importFolder(page, '#pick-game', 'state-game', path.join(importRoot, 'retail'));
+		check('import (own folder): once the game is chosen the button is enabled', !(await page.isDisabled('#imp-look')));
+		const t0 = Date.now();
+		await page.click('#imp-look');
+		await waitArmies(page);
+		timings.copyBaseOpenMs = Date.now() - t0;
+		const found = await page.evaluate(() => [...document.querySelectorAll('#imp-army-list .imp-army')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
+		check('import (own folder): the three armies are found against the copied game', found.length === 3, JSON.stringify(found));
+		await page.uncheck('input[data-faction="FactionTstBase"]');
+		await page.uncheck('input[data-faction="FactionModBeta"]');
+		await page.click('#imp-go');
+		await waitResult(page);
+		const table = await page.evaluate(() => [...document.querySelectorAll('#imp-table tbody tr')].map((tr) => [...tr.cells].map((c) => c.textContent)));
+		check('import (own folder): one army imported', table.length === 1 && table[0][8] === 'Ready' && /imported 1 army/i.test(await page.textContent('#imp-result-text')), JSON.stringify(table));
+		const id = (await libraryFiles(page))[0][0];
+		check('import (own folder): the mod name comes from the folder name', id === 'modonly.modalpha.zharmy', id);
+		const rows = await page.evaluate(() => window.__zh.armyRows());
+		check('import (own folder): ready with the copied game, ticked', rows.length === 1 && rows[0].status === 'ready' && (await page.evaluate(() => window.__zh.checkedArmies())).includes('modonly.modalpha'), JSON.stringify(rows));
+		await page.click('#play');
+		await page.waitForFunction(() => document.getElementById('stage').hidden === false);
+		await page.waitForFunction(() => window.__zh.logLines.some((l) => l.includes('TEST: ready')), null, { timeout: 30000 }).catch(() => {});
+		const engineLog = logs.filter((l) => l.startsWith('TEST:') || /WebPlatform:|ZHARMY/.test(l)).join('\n');
+		const size = (await libraryFiles(page))[0][1];
+		check('import (own folder): with a copied game the engine still reads the package from the library', engineLog.includes(`TEST: army /armies/library/modonly.modalpha.zharmy size=${size} first=504b0304(4)`) && /TEST: mount=0/.test(engineLog), engineLog.split('\n').filter((l) => /army|mount/.test(l)).join('|'));
+		await context.close();
+	}
+
+	// 8c. no game at all: the self-contained option; an army that cannot be converted and an archive that is not one
+	{
+		const context = await browser.newContext({ viewport: { width: 1100, height: 1000 } });
+		const page = await context.newPage();
+		page.on('dialog', (d) => d.accept());
+		await page.goto(url());
+		await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+		await page.click('#import-open');
+		check('import (no game): the panel explains what is needed', /No Zero Hour folder chosen yet/.test(await page.textContent('#imp-game-note')), await page.textContent('#imp-game-note'));
+		await chooseMod(page, path.join(importRoot, 'broken'));
+		const archives = await page.evaluate(() => [...document.querySelectorAll('#imp-archives input')].map((b) => [b.getAttribute('data-path'), b.checked]));
+		check('import (no game): the folder with Zero Hour in it needs no other game, the new archives are ticked', archives.filter((a) => a[1]).map((a) => a[0]).join() === '!Broken.big,!Corrupt.big', JSON.stringify(archives));
+		await page.click('#imp-look');
+		await waitArmies(page);
+		const found = await page.evaluate(() => [...document.querySelectorAll('#imp-army-list .imp-army')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
+		check('import (errors): the armies are listed, also the one that cannot be converted', found.length === 2 && /NoSide|FactionNoSide/.test(found.join('|')), JSON.stringify(found));
+		check('import (errors): an archive that is not one is reported in plain words', /!Corrupt\.big was skipped: not a BIG archive/.test(await page.textContent('#imp-armies-note')) && !/\/mnt\//.test(await page.textContent('#imp-armies-note')), await page.textContent('#imp-armies-note'));
+		await page.click('#imp-go');
+		await waitResult(page);
+		const table = await page.evaluate(() => [...document.querySelectorAll('#imp-table tbody tr')].map((tr) => [...tr.cells].map((c) => c.textContent)));
+		check('import (errors): one army is ready, the other failed', table.length === 2 && table.filter((r) => r[8] === 'Ready').length === 1 && table.filter((r) => r[8] === 'Failed').length === 1, JSON.stringify(table));
+		const text = await page.textContent('#imp-reports');
+		check('import (errors): the converter\'s own message is shown for the failed one', /PlayerTemplate FactionNoSide has no Side/.test(text), text.replace(/\s+/g, ' ').slice(0, 300));
+		check('import (errors): the result says what happened', /Imported 1 army/.test(await page.textContent('#imp-result-text')) && /1 could not be imported/.test(await page.textContent('#imp-result-text')), await page.textContent('#imp-result-text'));
+		await page.screenshot({ path: path.join(out, '35-import-error.png'), fullPage: true });
+		check('import (errors): the failed army is not stored', (await libraryFiles(page)).length === 1, JSON.stringify(await libraryFiles(page)));
+		const rows = await page.evaluate(() => window.__zh.armyRows());
+		check('import (no game): without game data the army waits for a choice (not ready)', rows.length === 1 && rows[0].status === 'wait', JSON.stringify(rows));
+
+		// self-contained: needs no game data at all
+		await page.click('#imp-more');
+		await chooseMod(page, path.join(importRoot, 'game'));
+		await page.click('#imp-advanced summary');
+		await page.check('#imp-selfcontained');
+		await page.click('#imp-look');
+		await waitArmies(page);
+		await page.uncheck('input[data-faction="FactionTstBase"]');
+		await page.uncheck('input[data-faction="FactionModBeta"]');
+		const t0 = Date.now();
+		await page.click('#imp-go');
+		await waitResult(page);
+		timings.selfContainedMs = Date.now() - t0;
+		const table2 = await page.evaluate(() => [...document.querySelectorAll('#imp-table tbody tr')].map((tr) => [...tr.cells].map((c) => c.textContent)));
+		check('import (self-contained): converted without Zero Hour files', table2.length === 1 && table2[0][8] === 'Ready', JSON.stringify(table2));
+		const rows2 = await page.evaluate(() => window.__zh.armyRows());
+		const mine = rows2.find((r) => /modmain\.modalpha/.test(r.id || ''));
+		check('import (self-contained): it is ready with any game data, even none', mine && mine.status === 'ready', JSON.stringify(rows2));
+		check('import (self-contained): the details say it works with any game data', /Works with: any game data/.test(await page.textContent('#armies-list')));
+		const bytes = Buffer.from(await libraryBytes(page, 'modmain.modalpha.zharmy'), 'base64');
+		check('import (self-contained): the file is bigger than the one that needs Zero Hour', bytes.length > 3000, String(bytes.length));
+		await context.close();
+	}
+	console.log('IMPORT timings: ' + JSON.stringify(timings));
 }
 
 // ---- 4. the error panel, in dark mode -------------------------------------------------------------

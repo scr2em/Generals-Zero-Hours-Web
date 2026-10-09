@@ -203,6 +203,43 @@
 	.army details p { margin: 4px 0; overflow-wrap: anywhere; }
 	.army details pre { margin: 4px 0; max-height: 180px; overflow: auto; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 	#army-btn.bad { border-color: var(--bad); }
+	.army-actions { display: flex; gap: 12px; margin: 4px 0 0 24px; font-size: 12px; }
+	.army-actions button.link { color: var(--muted); }
+	/* ---- importing armies from a mod ---- */
+	.import-panel { margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 13px; }
+	.import-panel header { display: flex; align-items: baseline; gap: 12px; }
+	.import-panel h3 { flex: 1; margin: 0 0 6px; font-size: 14px; }
+	.import-panel h4 { margin: 8px 0 4px; font-size: 13px; }
+	.import-panel p { margin: 4px 0 8px; color: var(--muted); }
+	.import-panel .state { color: var(--muted); font-size: 12px; }
+	.import-panel ul { list-style: none; margin: 4px 0 8px; padding: 0; }
+	.imp-archives, .imp-list { max-height: 300px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); }
+	.imp-archives li { padding: 4px 10px; border-top: 1px solid var(--border); }
+	.imp-archives li:first-child, .imp-list > li:first-child { border-top: none; }
+	.imp-archives label { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; cursor: pointer; overflow-wrap: anywhere; }
+	.imp-archives input, .imp-army-head input { flex: none; width: 16px; height: 16px; accent-color: var(--accent); align-self: center; }
+	.imp-meta { color: var(--muted); font-size: 12px; }
+	.imp-army, .imp-none { padding: 8px 10px; border-top: 1px solid var(--border); }
+	.imp-army-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+	.imp-army-head label { display: flex; flex: 1; min-width: 12em; gap: 8px; align-items: baseline; cursor: pointer; }
+	.imp-army details { margin: 4px 0 0 24px; font-size: 12px; color: var(--muted); }
+	.imp-army summary, .import-panel details > summary { cursor: pointer; }
+	.imp-fields { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0; }
+	.import-panel input[type="text"] { font: inherit; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; }
+	.import-panel input[aria-invalid="true"] { border-color: var(--bad); }
+	.import-panel .imp-modline { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 4px 0; color: var(--muted); }
+	.imp-actions { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 8px 0 4px; }
+	#imp-run-list li { padding: 2px 0; overflow-wrap: anywhere; }
+	#imp-log { margin: 6px 0; max-height: 160px; overflow: auto; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+	#imp-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+	#imp-table th, #imp-table td { padding: 3px 6px; border-top: 1px solid var(--border); text-align: left; }
+	#imp-table td.num, #imp-table th:not(:first-child):not(:last-child) { text-align: right; }
+	#imp-table td.ok { color: var(--good); font-weight: 600; }
+	#imp-table td.err { color: var(--bad); font-weight: 600; }
+	#imp-reports details { margin: 4px 0; font-size: 12px; color: var(--muted); }
+	#imp-reports pre { margin: 4px 0; max-height: 220px; overflow: auto; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+	.imp-error-text, #imp-error { color: var(--bad); overflow-wrap: anywhere; }
+	#imp-error { margin: 8px 0 0; }
 	#army-panel {
 		position: fixed; top: 44px; right: 8px; z-index: 6; width: min(380px, calc(100vw - 16px)); max-height: 60vh; overflow: auto;
 		padding: 10px 12px; border-radius: 8px; background: rgba(22, 27, 34, 0.96); color: #e6edf3; font-size: 13px; border: 1px solid #2b3440;
@@ -411,9 +448,62 @@
 
 		<section class="choice" id="choice-armies" aria-labelledby="armies-title">
 			<h2 id="armies-title">Armies <span class="badge">optional</span></h2>
-			<p id="armies-desc">Extra armies for skirmish games, kept as <code>.zharmy</code> files that were made from a mod you own. Choose the
-				folder that holds them and tick the ones you want. The game reads the ticked files straight from that folder: nothing is
-				uploaded or copied.</p>
+			<p id="armies-desc">Extra armies for skirmish games. Make them from a mod you own (right here in the browser), or keep them as <code>.zharmy</code> files
+				in a folder and choose that folder. The game reads the ticked ones; nothing is uploaded.</p>
+			<div class="row" id="row-import">
+				<div class="name">Armies from a mod</div>
+				<button type="button" id="import-open" aria-expanded="false" aria-controls="army-import">Import armies from a mod&hellip;</button>
+				<div class="state" id="state-import">Turns the armies of a mod you own into armies this game can use. The mod is only read.</div>
+			</div>
+			<section class="import-panel" id="army-import" hidden aria-labelledby="imp-title">
+				<header><h3 id="imp-title">Import armies from a mod</h3><button type="button" class="link" id="imp-close">Close</button></header>
+				<div id="imp-pick">
+					<p>Choose the folder of the mod: either the mod&rsquo;s own folder, or your Zero Hour folder if the mod is installed in it.
+						The files are only read. Nothing is changed or uploaded.</p>
+					<p id="imp-game-note"></p>
+					<button type="button" id="imp-choose">Choose mod folder&hellip;</button>
+					<span class="state" id="imp-pick-state" aria-live="polite"></span>
+				</div>
+				<div id="imp-files" hidden>
+					<h4 id="imp-files-title">Which files belong to the mod?</h4>
+					<p id="imp-files-text"></p>
+					<ul class="imp-archives" id="imp-archives"></ul>
+					<details id="imp-advanced">
+						<summary>More options</summary>
+						<p><label class="inline"><input type="checkbox" id="imp-selfcontained">
+							Make armies that do not need your Zero Hour files (the files get bigger)</label></p>
+					</details>
+					<div class="imp-actions">
+						<button type="button" class="primary" id="imp-look">Look for armies</button>
+						<span class="state" id="imp-look-hint"></span>
+					</div>
+				</div>
+				<div id="imp-armies" hidden>
+					<h4>Armies found in this mod</h4>
+					<div class="imp-modline"><label for="imp-modname">Name of the mod</label><input type="text" id="imp-modname" maxlength="60"></div>
+					<ul class="imp-list" id="imp-army-list"></ul>
+					<p id="imp-armies-note"></p>
+					<div class="imp-actions">
+						<button type="button" class="primary" id="imp-go">Import</button>
+						<button type="button" class="link" id="imp-retail" hidden>Untick the armies that come with Zero Hour</button>
+						<button type="button" class="link" id="imp-back">Choose a different folder</button>
+					</div>
+				</div>
+				<div id="imp-run" hidden>
+					<div class="progress"><div class="bar"><div id="imp-bar"></div></div><div class="progress-text" id="imp-run-text" aria-live="polite"></div></div>
+					<ul id="imp-run-list"></ul>
+					<pre id="imp-log" aria-label="What the converter is doing"></pre>
+					<button type="button" id="imp-cancel">Stop</button>
+				</div>
+				<div id="imp-result" hidden>
+					<h4>Done</h4>
+					<p id="imp-result-text" aria-live="polite"></p>
+					<table id="imp-table"></table>
+					<div id="imp-reports"></div>
+					<div class="imp-actions"><button type="button" id="imp-more">Import from another mod</button></div>
+				</div>
+				<p id="imp-error" hidden role="alert"></p>
+			</section>
 			<div class="row" id="row-armies">
 				<div class="name">Armies folder</div>
 				<button type="button" id="pick-armies">Choose armies folder&hellip;</button>
@@ -486,6 +576,7 @@
 		<p class="hint">In the game: Esc opens the game menu. F11 toggles fullscreen, which also gives the game every key (hold Esc to leave it). Ctrl+R reloads the page.</p>
 		<input type="file" id="folder-input" webkitdirectory multiple hidden>
 		<input type="file" id="armies-input" webkitdirectory multiple hidden>
+		<input type="file" id="import-input" webkitdirectory multiple hidden>
 	</div>
 </main>
 
@@ -554,6 +645,9 @@
 import * as importer from './importer.js';
 import * as direct from './direct-source.js';
 import * as armies from './armies.js';
+import * as armyLib from './armylibrary.js';
+import * as armyImport from './armyimport.js';
+import { initArmyImport } from './armyimport-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -735,6 +829,7 @@ async function refreshStatus() {
 		: mode === 'install' ? 'Will play: your Zero Hour installation' : '';
 	renderArmies();
 	updateButtons();
+	if (importUi) importUi.refresh();
 	// Chrome can keep the permission between visits; then there is nothing to click.
 	if (needsAccess && savedFolders.length && !autoReopenTried) {
 		autoReopenTried = true;
@@ -744,14 +839,14 @@ async function refreshStatus() {
 
 function updateButtons() {
 	const ready = currentMode() !== null && !needsAccess && problems.length === 0;
-	$('play').disabled = busy || !ready;
+	$('play').disabled = busy || !ready || army.importing;
 	$('pick-game').disabled = busy || !env.opfs;
 	$('pick-other').disabled = busy;
 	$('copy-mode').disabled = busy;
 	$('pick-generals').disabled = busy || !env.opfs;
 	$('download-starter').disabled = busy || !env.opfs;
 	$('clear').disabled = busy;
-	$('pick-armies').disabled = busy || army.busy || army.scanning;
+	$('pick-armies').disabled = busy || army.busy || army.scanning || army.importing;
 }
 
 function showProgress(p) {
@@ -988,16 +1083,20 @@ $('clear').onclick = async () => {
 // each are read, armies.js), and on Play the File objects of the ticked ones are handed to the engine, which serves them at
 // /armies (direct-source.js setArmyFiles / WebStorage.cpp) and gets "-army /armies/<file>" for each.
 
+let importUi = null;   // the import panel (armyimport-ui.js), set below
 const army = {
 	folder: null,        // { name, handle|null }: the folder that is listed now (a pick through <input> has no handle)
 	remembered: null,    // { name, handle } kept in IndexedDB from an earlier visit
 	needsAccess: false,  // remembered, but Chrome has to be asked for read permission first
-	packages: [],        // armies.scanPackages() records
+	packages: [],        // what is listed: the imported armies, then the ones of the folder (armies.scanPackages() records)
+	folderPackages: [],  // the records of the armies folder
+	libraryPackages: [], // the records of the armies imported in this browser (armylibrary.js)
 	scanning: false,
 	busy: false,
 	message: '',         // a problem to show in the state line
 	filter: '',
 	opened: 0,           // counts the listings (tests)
+	importing: false,    // a mod is being converted (the import panel)
 };
 let checked = armies.loadChecked();   // ids of the ticked packages, remembered in this browser
 
@@ -1021,6 +1120,52 @@ function armyStatus(rec) {
 }
 
 const selectedArmies = () => army.packages.filter((r) => armyStatus(r).kind === 'ready' && checked.has(r.manifest.id));
+
+// What the list shows: the armies imported in this browser first, then the ones of the armies folder. An imported army wins
+// when a folder has the same package (same id or tag); the served names (/armies/...) stay unique.
+function mergePackages() {
+	const all = army.libraryPackages.concat(army.folderPackages);
+	armies.resolveServed(all);
+	armies.markDuplicates(all);
+	army.packages = all;
+}
+
+function renderLibraryState() {
+	const n = army.libraryPackages.length;
+	const el = $('state-import');
+	el.className = 'state' + (n ? ' ok' : '');
+	el.textContent = n ? n + (n === 1 ? ' army' : ' armies') + ' imported in this browser (kept here until you delete them). The mod is only read.'
+		: 'Turns the armies of a mod you own into armies this game can use. The mod is only read.';
+}
+
+// The armies imported in this browser (OPFS armies-library/), listed like the ones of a folder.
+async function loadLibrary() {
+	try {
+		const items = await armyLib.listItems();
+		army.libraryPackages = await armies.scanPackages(items);
+	} catch (e) {
+		army.libraryPackages = [];
+		pushLog('The imported armies could not be listed: ' + (e && e.message || e), false);
+	}
+	mergePackages();
+	renderLibraryState();
+	renderArmies();
+	updateButtons();
+}
+
+async function deleteImported(rec) {
+	if (army.busy || busy) return;
+	const name = rec.manifest ? rec.manifest.name : rec.path;
+	if (!confirm('Delete “' + name + '” from this browser? You can import it again from the mod.')) return;
+	try {
+		await armyLib.remove(rec.handle ? rec.handle.name : rec.path.split('/').pop());
+		if (rec.manifest) checked.delete(rec.manifest.id);
+		armies.saveChecked(checked);
+	} catch (e) {
+		army.message = 'Could not delete “' + name + '”: ' + (e && e.message || e);
+	}
+	await loadLibrary();
+}
 
 function setArmyMessage(text) {
 	army.message = text;
@@ -1056,6 +1201,12 @@ function armyRow(rec) {
 		t.textContent = m.tag;
 		t.title = 'Tag: the prefix of everything this army adds to the game';
 		label.append(v, t);
+		if (rec.library) {
+			const mine = document.createElement('span');
+			mine.className = 'army-tag';
+			mine.textContent = 'imported';
+			label.append(mine);
+		}
 		box.id = 'army-' + m.id;
 		box.setAttribute('data-army', m.id);
 		box.onchange = () => {
@@ -1081,9 +1232,28 @@ function armyRow(rec) {
 		if (m.source && m.source.mod) bits.push('from ' + m.source.mod + (m.source.modVersion ? ' ' + m.source.modVersion : ''));
 	}
 	bits.push(importer.formatBytes(rec.size));
-	bits.push(rec.path);
+	bits.push(rec.library ? 'imported in this browser' : rec.path);
 	meta.textContent = bits.join(' · ');
 	li.append(meta);
+	if (rec.library) {
+		const act = document.createElement('div');
+		act.className = 'army-actions';
+		const file = rec.handle ? rec.handle.name : rec.path.split('/').pop();
+		const dl = document.createElement('button');
+		dl.type = 'button';
+		dl.className = 'link';
+		dl.textContent = 'Download .zharmy';
+		dl.setAttribute('data-download', file);
+		dl.onclick = () => armyLib.download(file).catch((e) => toast('Could not download: ' + (e && e.message || e), 6000));
+		const del = document.createElement('button');
+		del.type = 'button';
+		del.className = 'link';
+		del.textContent = 'Delete';
+		del.setAttribute('data-delete', file);
+		del.onclick = () => deleteImported(rec);
+		act.append(dl, del);
+		li.append(act);
+	}
 
 	if (st.why) {
 		const why = document.createElement('div');
@@ -1143,9 +1313,9 @@ function renderArmies() {
 	} else if (army.needsAccess && army.remembered) {
 		text = 'Your folder ' + folderName(army.remembered) + ' is remembered · allow access to list its armies';
 	} else if (has) {
-		const n = army.packages.length;
+		const n = army.folderPackages.length;
 		text = folderName(army.folder) + ' · ' + (n === 0 ? 'no .zharmy files found' : n + (n === 1 ? ' army' : ' armies') + ' found') +
-			(army.packages.truncated ? ' (only the first ' + armies.MAX_PACKAGES + ' are listed)' : '') + ' · read in place, not copied';
+			(army.folderPackages.truncated ? ' (only the first ' + armies.MAX_PACKAGES + ' are listed)' : '') + ' · read in place, not copied';
 		kind = n ? 'ok' : '';
 	} else {
 		text = 'No folder chosen. You can play without one.';
@@ -1157,7 +1327,7 @@ function renderArmies() {
 	$('armies-refresh-part').hidden = !(has && army.folder.handle);
 	const q = army.filter.trim().toLowerCase();
 	const list = $('armies-list');
-	const show = has && army.packages.length > 0;
+	const show = army.packages.length > 0;
 	$('armies-box').hidden = !show;
 	$('armies-filter').hidden = army.packages.length <= 8;
 	list.textContent = '';
@@ -1194,11 +1364,13 @@ async function openArmiesHandle(handle, { remember = false } = {}) {
 	army.scanning = true;
 	army.message = '';
 	army.folder = { name: handle.name, handle };
-	army.packages = [];
+	army.folderPackages = [];
+	mergePackages();
 	renderArmies();
 	try {
 		const items = await armies.listPackageFiles(handle);
-		army.packages = await armies.scanPackages(items, { onProgress: (done, total) => { $('state-armies').textContent = 'Reading armies… ' + done + ' of ' + total; } });
+		army.folderPackages = await armies.scanPackages(items, { onProgress: (done, total) => { $('state-armies').textContent = 'Reading armies… ' + done + ' of ' + total; } });
+		mergePackages();
 		army.needsAccess = false;
 		army.opened++;
 		if (remember) {
@@ -1207,7 +1379,8 @@ async function openArmiesHandle(handle, { remember = false } = {}) {
 		army.remembered = { name: handle.name, handle };
 	} catch (e) {
 		army.folder = null;
-		army.packages = [];
+		army.folderPackages = [];
+		mergePackages();
 		if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
 			army.needsAccess = !!army.remembered;
 			army.message = 'Chrome needs your permission to read the armies folder again.';
@@ -1248,9 +1421,11 @@ async function pickArmies() {
 			army.scanning = true;
 			army.message = '';
 			army.folder = { name, handle: null };
-			army.packages = [];
+			army.folderPackages = [];
+			mergePackages();
 			renderArmies();
-			army.packages = await armies.scanPackages(items, { onProgress: (done, total) => { $('state-armies').textContent = 'Reading armies… ' + done + ' of ' + total; } });
+			army.folderPackages = await armies.scanPackages(items, { onProgress: (done, total) => { $('state-armies').textContent = 'Reading armies… ' + done + ' of ' + total; } });
+			mergePackages();
 			army.opened++;
 			// A folder from <input> has no handle to remember; what was remembered before no longer matches.
 			army.remembered = null;
@@ -1290,7 +1465,8 @@ async function forgetArmies() {
 	army.folder = null;
 	army.remembered = null;
 	army.needsAccess = false;
-	army.packages = [];
+	army.folderPackages = [];
+	mergePackages();
 	army.message = '';
 	army.filter = '';
 	$('armies-filter').value = '';
@@ -1301,6 +1477,7 @@ async function forgetArmies() {
 
 // The remembered folder of an earlier visit: listed at once when Chrome kept the permission, else "Allow access".
 async function initArmies() {
+	await loadLibrary();
 	try {
 		army.remembered = await direct.loadArmiesFolder();
 	} catch (e) {
@@ -1328,6 +1505,32 @@ $('armies-none').onclick = () => {
 	renderArmies();
 	updateButtons();
 };
+
+// "Import armies from a mod…": converts a mod in the browser (armyimport-ui.js) into packages of the library.
+importUi = initArmyImport({
+	$, params, directoryPicker: env.directoryPicker, formatBytes: importer.formatBytes, log: (t) => pushLog(t, false),
+	game: () => (needsAccess ? 'access' : currentMode()),
+	// The Zero Hour files the launcher has: the ones it reads in place, or its copy in the browser's storage.
+	gameFiles: async () => (isDirect(status.game) ? direct.openFiles('game') : armyImport.opfsInstallFiles('game')),
+	existing: () => {
+		const tagOwners = new Map();
+		const ids = new Set();
+		for (const r of army.packages) {
+			if (!r.manifest) continue;
+			tagOwners.set(String(r.manifest.tag).toUpperCase(), r.manifest.id);
+			if (r.library) ids.add(r.manifest.id);
+		}
+		return { tagOwners, ids };
+	},
+	onImported: async (ids) => {
+		await loadLibrary();
+		for (const id of ids) checked.add(id);
+		armies.saveChecked(checked);
+		renderArmies();
+		updateButtons();
+	},
+	onBusy: (on) => { army.importing = !!on; updateButtons(); renderArmies(); },
+});
 
 // The ticked, usable packages as the engine gets them: File objects (read again from the folder now, so the engine sees the
 // files as they are at this moment) and the path below /armies. Packages that cannot be opened any more are left out.
@@ -2036,7 +2239,7 @@ describeResolution();
 window.__zh = {
 	importer, direct, startGame, logLines, refreshStatus, joinRoom, fail: (text) => pushLog(text, true),
 	state: () => ({ gameRunning, gameEnded, problem: problem && problem.title, launchSize, clientSize, fullscreen: !!document.fullscreenElement }),
-	renderFiles, armies, army, checkedArmies: () => [...checked], armyRun: () => armyRun,
+	renderFiles, armies, army, armyLib, armyImport, importState: () => importUi.testApi.state(), checkedArmies: () => [...checked], armyRun: () => armyRun,
 	armyRows: () => army.packages.map((r) => ({ path: r.path, served: r.served, ok: r.ok, status: armyStatus(r).kind, text: armyStatus(r).text, why: armyStatus(r).why, id: r.manifest && r.manifest.id })),
 	classify: (text) => { const p = PROBLEMS.find((q) => q.re.test(text)); return p ? p.title : null; },
 };

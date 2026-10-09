@@ -148,6 +148,11 @@ if(EMSCRIPTEN)
         )
         set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
             ${ZH_WEB_DIR}/shell.html
+            ${ZH_WEB_DIR}/armies.js
+            ${ZH_WEB_DIR}/armyimport.js
+            ${ZH_WEB_DIR}/armyimport-ui.js
+            ${ZH_WEB_DIR}/armyimport-worker.js
+            ${ZH_WEB_DIR}/armylibrary.js
             ${ZH_DIRECT_DIR}/zhdirect_pre.js
             ${ZH_DIRECT_DIR}/library_zhdirect.js)
 
@@ -156,6 +161,10 @@ if(EMSCRIPTEN)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${ZH_WEB_DIR}/importer.js
                 ${ZH_WEB_DIR}/armies.js
+                ${ZH_WEB_DIR}/armyimport.js
+                ${ZH_WEB_DIR}/armyimport-ui.js
+                ${ZH_WEB_DIR}/armyimport-worker.js
+                ${ZH_WEB_DIR}/armylibrary.js
                 ${ZH_WEB_DIR}/coi-serviceworker.js
                 ${ZH_WEB_DIR}/zhcursor.js
                 ${ZH_WEB_DIR}/serve.py
@@ -166,7 +175,41 @@ if(EMSCRIPTEN)
         )
     endfunction()
 
+    # The army converter that runs in the browser: tools/zharmy (zharmy.zip) and Pyodide (pyodide/), next to the page.
+    # The launcher loads them only when the player imports armies from a mod (web/armyimport.js).
+    include(${CMAKE_SOURCE_DIR}/cmake/pyodide.cmake)
+    if(ZH_PYODIDE_DIR)
+        file(GLOB ZH_ZHARMY_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR}/tools
+            ${CMAKE_SOURCE_DIR}/tools/zharmy/*.py)
+        list(FILTER ZH_ZHARMY_SOURCES EXCLUDE REGEX "gen_schema\\.py$")
+        set(ZH_ARMY_SITE_DIR ${CMAKE_BINARY_DIR}/GeneralsMD)
+        set(ZH_ARMY_STAMP ${CMAKE_CURRENT_BINARY_DIR}/web_army_converter.stamp)
+        set(ZH_PYODIDE_COPY)
+        foreach(_f IN LISTS ZH_PYODIDE_FILES)
+            list(APPEND ZH_PYODIDE_COPY COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${ZH_PYODIDE_DIR}/${_f} ${ZH_ARMY_SITE_DIR}/pyodide/${_f})
+        endforeach()
+        set(ZH_ZHARMY_FULL)
+        foreach(_f IN LISTS ZH_ZHARMY_SOURCES)
+            list(APPEND ZH_ZHARMY_FULL ${CMAKE_SOURCE_DIR}/tools/${_f})
+        endforeach()
+        add_custom_command(
+            OUTPUT ${ZH_ARMY_STAMP}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${ZH_ARMY_SITE_DIR}/pyodide
+            ${ZH_PYODIDE_COPY}
+            COMMAND ${CMAKE_COMMAND} -E tar cf ${ZH_ARMY_SITE_DIR}/zharmy.zip --format=zip -- ${ZH_ZHARMY_SOURCES}
+            COMMAND ${CMAKE_COMMAND} -E touch ${ZH_ARMY_STAMP}
+            DEPENDS ${CMAKE_SOURCE_DIR}/cmake/pyodide.cmake ${ZH_ZHARMY_FULL}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tools
+            COMMENT "Copying Pyodide and the army converter next to the page"
+            VERBATIM)
+        add_custom_target(web_army_converter ALL DEPENDS ${ZH_ARMY_STAMP})
+    endif()
+
     zh_web_link_options(z_generals)
+    if(TARGET web_army_converter)
+        add_dependencies(z_generals web_army_converter)
+    endif()
     # The fonts behind GDI text (Arial -> Liberation Sans, ...), at /webfonts.
     webfonts_embed(z_generals)
 
@@ -184,6 +227,9 @@ if(EMSCRIPTEN)
     target_include_directories(web_platform_test PRIVATE ${CMAKE_SOURCE_DIR}/Core/GameEngineDevice/Include)
     set_target_properties(web_platform_test PROPERTIES SUFFIX ".html")
     zh_web_link_options(web_platform_test)
+    if(TARGET web_army_converter)
+        add_dependencies(web_platform_test web_army_converter)
+    endif()
     target_link_options(web_platform_test PRIVATE -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 -lGL)
 
     # Test of the read in place mode without the game: the WasmFS backend, the file lookup, reads and

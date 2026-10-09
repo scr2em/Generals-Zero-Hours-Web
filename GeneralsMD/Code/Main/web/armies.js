@@ -250,6 +250,46 @@ export function servedNames(paths) {
 }
 
 /**
+ * Marks the records that cannot be used together with an earlier one: the same id or the same tag. The order of `records`
+ * decides who wins (the earlier one). Can be called again after the list changed: what was wrong with the file itself stays
+ * wrong, the duplicate marks are worked out afresh.
+ */
+export function markDuplicates(records) {
+	const ids = new Map();
+	const tags = new Map();
+	const where = (r) => (r.library ? 'your imported armies' : r.path);
+	for (const r of records) {
+		if (r.readOk === undefined) { r.readOk = r.ok; r.readError = r.error; }
+		r.ok = r.readOk;
+		r.error = r.readOk ? '' : r.readError;
+		if (!r.ok) continue;
+		const sameId = ids.get(r.manifest.id);
+		const sameTag = tags.get(r.manifest.tag.toUpperCase());
+		if (sameId) { r.ok = false; r.error = 'The same package (id ' + r.manifest.id + ') is already listed from ' + where(sameId) + '.'; continue; }
+		if (sameTag) { r.ok = false; r.error = 'Uses the tag ' + r.manifest.tag + ', like ' + sameTag.manifest.name + ' (' + where(sameTag) + '). Two packages cannot be used together with the same tag.'; continue; }
+		ids.set(r.manifest.id, r);
+		tags.set(r.manifest.tag.toUpperCase(), r);
+	}
+	return records;
+}
+
+/** Makes the served paths of a list of records unique (ignoring case); the first record keeps its name, later ones get "from-folder/" in front when they clash. */
+export function resolveServed(records) {
+	const used = new Set();
+	for (const r of records) {
+		let name = r.served;
+		let n = 1;
+		while (used.has(name.toLowerCase())) {
+			n++;
+			name = 'from-folder' + (n > 2 ? '-' + n : '') + '/' + r.served;
+		}
+		r.served = name;
+		used.add(name.toLowerCase());
+	}
+	return records;
+}
+
+/**
  * Reads every package of a listing. items: [{ segments, getFile }]. Resolves to the package records, sorted by path:
  *   { path, served, file, size, ok, error, manifest, license, readme }
  * A record that repeats the id or the tag of an earlier one (in path order) is marked not ok.
@@ -266,7 +306,7 @@ export async function scanPackages(items, { onProgress = () => {}, concurrency =
 		while (next < sorted.length) {
 			const i = next++;
 			const item = sorted[i];
-			const record = { path: item.segments.join('/'), served: served[i], handle: item.handle || null, getFile: item.getFile, file: null, size: 0, ok: false, error: '' };
+			const record = { path: item.segments.join('/'), served: served[i], handle: item.handle || null, library: !!item.library, getFile: item.getFile, file: null, size: 0, ok: false, error: '' };
 			try {
 				record.file = await item.getFile();
 				record.size = record.file.size;
@@ -280,17 +320,7 @@ export async function scanPackages(items, { onProgress = () => {}, concurrency =
 		}
 	};
 	await Promise.all(Array.from({ length: Math.min(concurrency, sorted.length) }, worker));
-	const ids = new Map();
-	const tags = new Map();
-	for (const r of records) {
-		if (!r.ok) continue;
-		const sameId = ids.get(r.manifest.id);
-		const sameTag = tags.get(r.manifest.tag.toUpperCase());
-		if (sameId) { r.ok = false; r.error = 'The same package (id ' + r.manifest.id + ') is already listed from ' + sameId.path + '.'; continue; }
-		if (sameTag) { r.ok = false; r.error = 'Uses the tag ' + r.manifest.tag + ', like ' + sameTag.manifest.name + ' (' + sameTag.path + '). Two packages cannot be used together with the same tag.'; continue; }
-		ids.set(r.manifest.id, r);
-		tags.set(r.manifest.tag.toUpperCase(), r);
-	}
+	markDuplicates(records);
 	records.truncated = truncated;
 	return records;
 }
