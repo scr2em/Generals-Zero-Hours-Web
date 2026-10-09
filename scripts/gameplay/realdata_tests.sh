@@ -11,6 +11,12 @@
 #            ally (an Easy AI in place of a human) against two Experts: do the Expert allies attack?
 #   bunker   China Expert against Hard: does it put infantry in its bunkers?
 #
+# What a pass looks like in the team suite: every Expert launches its first wave ("WAVE launches") within about 11 game minutes
+# (the table says "min 11" or less) and not every Expert sits under alarm for more than a quarter of the game (seconds under alarm
+# below about 400 in 30 minutes; an alarm that lasts longer than 90 s ends "(stale"); in the trace the line "waves: army A of N
+# needed (...; allies X)" shows allies above 0 once the allies have an army. Compare with the old behaviour by adding the words
+# "off-team+bdcap" to the variant of an Expert (expert:China:trace+off-team+bdcap@1).
+#
 # Options:
 #   --quick           fewer games (about a third of the time)
 #   --workers N       games at the same time (default 2; each needs about 1 GB of memory and a core)
@@ -25,7 +31,7 @@
 #   git add test-reports && git commit -m "Gameplay test report" && git push
 set -euo pipefail
 
-usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; }
 
 QUICK=0
 WORKERS=2
@@ -151,7 +157,7 @@ for suite in ("boot", "1v1", "team", "bunker"):
     if os.path.exists(rep):
         body = open(rep, errors="replace").read().split("\n", 1)[-1]   # without its title
         print(re.sub(r"(?m)^(#+) ", lambda m: "#" + m.group(1) + " ", body).strip()[:8000])
-    print("\n| match | result | per Expert (player): waves launched, base alarms, seconds under alarm, bunker entries | errors |\n|---|---|---|---|")
+    print("\n| match | result | per Expert (player): waves launched (first at minute), base alarms, seconds under alarm (stale ones), bunker entries | errors |\n|---|---|---|---|")
     for f in sorted(glob.glob(os.path.join(d, "matches", "*.json"))):
         if f.endswith("-replay.json"): continue
         j = json.load(open(f))
@@ -166,13 +172,17 @@ for suite in ("boot", "1v1", "team", "bunker"):
         errors = []
         if os.path.exists(log):
             for line in open(log, errors="replace"):
-                m = re.match(r"AISTRAT\[p(\d+) f\d+\] (.*)", line)
+                m = re.match(r"AISTRAT\[p(\d+) f(\d+)\] (.*)", line)
                 if m:
-                    p = per.setdefault(m.group(1), [0, 0, 0, 0])
-                    t = m.group(2)
-                    if t.startswith("WAVE launches"): p[0] += 1
+                    p = per.setdefault(m.group(1), [0, 0, 0, 0, 0, 0])
+                    t = m.group(3)
+                    if t.startswith("WAVE launches"):
+                        p[0] += 1
+                        if p[4] == 0: p[4] = int(m.group(2))     # frame of the first wave
                     elif t.startswith("BASEDEF alarm"): p[1] += 1
-                    elif t.startswith("BASEDEF clear after"): p[2] += int(re.match(r"BASEDEF clear after (\d+)", t).group(1))
+                    elif t.startswith("BASEDEF clear after"):
+                        p[2] += int(re.match(r"BASEDEF clear after (\d+)", t).group(1))
+                        if "(stale:" in t: p[5] += 1
                     elif t.startswith("BUNKER:") and " goes into " in t: p[3] += 1
                 elif re.search(r"RuntimeError|Engine thread stopped|Assertion failed|Fatal error", line):
                     errors.append(line.strip()[:120])
@@ -180,7 +190,7 @@ for suite in ("boot", "1v1", "team", "bunker"):
             with open(os.path.join(d, "matches", mid + ".trace.txt"), "w") as t:
                 t.writelines(l for l in open(log, errors="replace") if l.startswith("AISTRAT[") or "AIMATCH" in l)
             if j.get("ok"): os.remove(log)
-        stats = "; ".join(f"p{k}: {v[0]}, {v[1]}, {v[2]}, {v[3]}" for k, v in sorted(per.items())) or "-"
+        stats = "; ".join(f"p{k}: {v[0]} (min {v[4] // 1800 if v[0] else '-'}), {v[1]}, {v[2]} ({v[5]}), {v[3]}" for k, v in sorted(per.items())) or "-"
         print(f"| {mid} | {outcome} | {stats} | {(j.get('error') or '') + ' ' + ' / '.join(errors[:2])} |")
 PY
 
