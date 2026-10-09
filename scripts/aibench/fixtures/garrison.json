@@ -1,0 +1,20 @@
+{
+ "description": "The power plant can be garrisoned (GarrisonContain, 4 infantry who shoot from inside); the infantry have a transport slot (needed to enter containers).",
+ "edits": [
+  {
+   "file": "data/ini/object.ini",
+   "find": "  CommandSet = IronwoodPowerCommandSet",
+   "replace": "  Behavior = GarrisonContain ModuleTag_Garrison\n    ContainMax = 4\n    AllowInsideKindOf = INFANTRY\n    PassengersAllowedToFire = Yes\n    EnterSound = None\n  End\n  CommandSet = IronwoodPowerCommandSet"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  BuildCost = 150\n  BuildTime = 6.0",
+   "replace": "  TransportSlotCount = 1\n  BuildCost = 150\n  BuildTime = 6.0"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  BuildCost = 250\n  BuildTime = 8.0",
+   "replace": "  TransportSlotCount = 1\n  BuildCost = 250\n  BuildTime = 8.0"
+  }
+ ]
+}

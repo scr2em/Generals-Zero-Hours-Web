@@ -841,6 +841,7 @@ set(GAMEENGINE_SRC
     Source/GameLogic/AI/AITactics.cpp
     Source/GameLogic/AI/AIBaseDefence.cpp
     Source/GameLogic/AI/AIGeo.cpp
+    Source/GameLogic/AI/AIGarrison.cpp
     Source/GameLogic/AI/AIProtect.cpp
     Source/GameLogic/AI/AIRaid.cpp
     Source/GameLogic/AI/AIRoute.cpp

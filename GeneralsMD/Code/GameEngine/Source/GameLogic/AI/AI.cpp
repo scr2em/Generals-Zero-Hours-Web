@@ -315,6 +315,10 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "GeoReach",							INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoReach ) },
 			{ "GeoRallyOut",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOut ) },
 			{ "GeoRallyOffset",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOffset ) },
+			{ "UseGarrisons",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useGarrison ) },
+			{ "GarrisonThreatValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonThreatValue ) },
+			{ "GarrisonHoldSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonHoldSeconds ) },
+			{ "GarrisonClear",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_garrisonClear ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1303,6 +1307,10 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_geoReach = 300.0f;
 	ex.m_geoRallyOut = 140.0f;
 	ex.m_geoRallyOffset = 90.0f;
+	ex.m_useGarrison = true;
+	ex.m_garrisonThreatValue = 300.0f;
+	ex.m_garrisonHoldSeconds = 8.0f;
+	ex.m_garrisonClear = true;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1403,6 +1411,10 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_geoReach );
 		xfer->xferReal( &sk.m_geoRallyOut );
 		xfer->xferReal( &sk.m_geoRallyOffset );
+		xfer->xferBool( &sk.m_useGarrison );
+		xfer->xferReal( &sk.m_garrisonThreatValue );
+		xfer->xferReal( &sk.m_garrisonHoldSeconds );
+		xfer->xferBool( &sk.m_garrisonClear );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

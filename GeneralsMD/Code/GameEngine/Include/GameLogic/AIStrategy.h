@@ -266,6 +266,15 @@ struct AIPatient
 	Int						m_retries;
 };
 
+/// An infantryman on his way into (or inside) one of our structures to hold it against an attack.
+struct AIGarrisonRecord
+{
+	ObjectID			m_unit;
+	ObjectID			m_building;
+	UnsignedInt		m_since;
+	Int						m_phase;						///< 0: entering, 1: inside, 2: leaving
+};
+
 enum AIArmyState CPP_11(: Int)
 {
 	ARMY_GATHER = 0,				///< teams gather at the rally point and grow
@@ -337,6 +346,8 @@ public:
 	/// One of the player's objects took damage (called by the body module; feeds the protect relation).
 	void onObjectDamaged( Object *victim, ObjectID attacker, Real amount ) { m_protect.onDamaged(victim, attacker, amount); noteBaseDamage(victim, attacker, amount); }
 	void geoReset();
+	/// Is the unit in (or on its way into) a structure of ours as a garrison, or sent to bring down a garrisoned enemy structure?
+	Bool isGarrisoned( ObjectID id ) const;
 	/// Reads the test bench variant (the feature switches); the build list code needs them before newMap().
 	void applyVariant();
 	/// Turn of the base layout for a start position that faces the enemy ("layout"); false: the original turn.
@@ -437,6 +448,15 @@ private:
 	void updatePatients();
 	void tryStartRepairs();
 	void updateRepair();
+
+	// garrisons (AIGarrison.cpp)
+	enum { MAX_GARRISONED = 12, MAX_CLEANERS = 4 };
+	Bool garrisonOn() const;
+	Bool baseUnderAttack( Coord3D *where, Real *value, Real *range ) const;
+	void dropGarrisoned( Int index );
+	void updateGarrisonDefence();
+	void updateGarrisonClearing();
+	void updateGarrison();
 
 	// terrain-aware defence (AIGeo.cpp)
 	Bool geoOn() const;
@@ -578,6 +598,20 @@ private:
 	UnsignedInt		m_bdDamageFrame;								///< latest damage to one of our objects inside the zone by an enemy
 	UnsignedInt		m_nextBaseDefence;
 	UnsignedInt		m_bdWeakFrame;									///< last trace line about a threat that the teams at home do not go out to
+	AIGarrisonRecord m_garrisoned[MAX_GARRISONED];	///< infantry that hold structures of ours against an attack
+	Int						m_numGarrisoned;
+	UnsignedInt		m_garrisonLastThreat;
+	UnsignedInt		m_nextGarrison;
+	ObjectID			m_cleaners[MAX_CLEANERS];				///< units sent against an enemy structure that holds a garrison
+	Int						m_numCleaners;
+	ObjectID			m_clearTarget;
+	UnsignedInt		m_clearStart;
+	UnsignedInt		m_nextClearSearch;
+	Int						m_garrisonEntered;							///< statistics for the trace
+	Int						m_garrisonSeconds;							///< unit-seconds spent inside, and of those the seconds in which the unit fired
+	Int						m_garrisonFiring;
+	Int						m_garrisonClearJobs;
+	Int						m_garrisonClears;
 	enum { GEO_MAX_ENTRANCES = 4, GEO_MAX_SITES = 16 };
 	Int						m_numEntrances;									///< terrain-aware defence: the ways into the base
 	AIEntrance		m_entrances[GEO_MAX_ENTRANCES];

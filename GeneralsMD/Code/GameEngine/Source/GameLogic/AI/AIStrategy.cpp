@@ -157,6 +157,18 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bdDamageFrame(0),
 	m_nextBaseDefence(0),
 	m_bdWeakFrame(0),
+	m_numGarrisoned(0),
+	m_garrisonLastThreat(0),
+	m_nextGarrison(0),
+	m_numCleaners(0),
+	m_clearTarget(INVALID_ID),
+	m_clearStart(0),
+	m_nextClearSearch(0),
+	m_garrisonEntered(0),
+	m_garrisonSeconds(0),
+	m_garrisonFiring(0),
+	m_garrisonClearJobs(0),
+	m_garrisonClears(0),
 	m_numEntrances(0),
 	m_geoReady(FALSE),
 	m_geoWall(FALSE),
@@ -217,6 +229,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_route, 0, sizeof(m_route));
 	m_bdPos.zero();
 	memset(m_entrances, 0, sizeof(m_entrances));
+	memset(m_garrisoned, 0, sizeof(m_garrisoned));
+	memset(m_cleaners, 0, sizeof(m_cleaners));
 	memset(m_geoSites, 0, sizeof(m_geoSites));
 	m_bdDamagePos.zero();
 	memset(m_breachers, 0, sizeof(m_breachers));
@@ -252,7 +266,8 @@ void AIStrategy::applyVariant()
 		{ "raid", AIPlayer::AIF_RAID }, { "protect", AIPlayer::AIF_PROTECT },
 		{ "repair", AIPlayer::AIF_REPAIR }, { "route", AIPlayer::AIF_ROUTE }, { "basedef", AIPlayer::AIF_BASEDEF },
 		{ "geo", AIPlayer::AIF_GEO }, { "layout", AIPlayer::AIF_LAYOUT },
-		{ "georally", AIPlayer::AIF_GEORALLY }, { "geosites", AIPlayer::AIF_GEOSITES } };
+		{ "georally", AIPlayer::AIF_GEORALLY }, { "geosites", AIPlayer::AIF_GEOSITES },
+		{ "garrison", AIPlayer::AIF_GARRISON }, { "clear", AIPlayer::AIF_CLEAR } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -381,6 +396,7 @@ void AIStrategy::update()
 				AI_TRACE("repair and heal: %d trips to pads, %d units mended, %d structure repairs by dozers, %d on their way, %d pads known", m_repairTrips, m_repairsDone, m_dozerRepairs, m_numPatients, m_numSites);
 				AI_TRACE("base defence: %d alarms (%d idle units near the rally point at the moments they began), %d team orders, %s now", m_bdAlarms, m_bdIdleAtAlarm, m_bdOrders, m_bdActive ? "ALARM" : "quiet");
 				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
+				AI_TRACE("garrisons: %d infantry entered (%d unit-seconds inside, %d of them firing), %d structures of the enemy attacked (%d brought down), %d holding now", m_garrisonEntered, m_garrisonSeconds, m_garrisonFiring, m_garrisonClearJobs, m_garrisonClears, m_numGarrisoned);
 				AI_TRACE("routes: %d waves routed around defences, %d breaches started (%d with the defences down)", m_routesPlanned, m_breachesStarted, m_breachKills);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
@@ -393,6 +409,7 @@ void AIStrategy::update()
 
 	updateBaseDefence();
 	updateGeo();
+	updateGarrison();
 
 	if (now >= m_nextTeamEval)
 	{
@@ -2170,7 +2187,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 8;
+	XferVersion currentVersion = 9;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2291,6 +2308,18 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferReal(&m_geoRing);
 		xfer->xferInt(&m_numGeoSites);
 		xfer->xferUser(m_geoSites, sizeof(m_geoSites));
+	}
+	if (version >= 9)
+	{
+		xfer->xferInt(&m_numGarrisoned);
+		xfer->xferUser(m_garrisoned, sizeof(m_garrisoned));
+		xfer->xferUnsignedInt(&m_garrisonLastThreat);
+		xfer->xferUnsignedInt(&m_nextGarrison);
+		xfer->xferInt(&m_numCleaners);
+		xfer->xferUser(m_cleaners, sizeof(m_cleaners));
+		xfer->xferObjectID(&m_clearTarget);
+		xfer->xferUnsignedInt(&m_clearStart);
+		xfer->xferUnsignedInt(&m_nextClearSearch);
 	}
 }
 

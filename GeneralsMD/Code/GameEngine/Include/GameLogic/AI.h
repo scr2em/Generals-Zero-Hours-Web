@@ -211,6 +211,12 @@ struct AISkillSettings
 	Real m_geoReach;					///< Defence structures are placed within the base radius plus this of the base center.
 	Real m_geoRallyOut;				///< The army waits this far outside the base radius on the main way in (open ground).
 	Real m_geoRallyOffset;		///< When terrain closes the perimeter: the army waits this far from the chokepoint of the main way in (positive: outside it, on the side of the enemy).
+
+	// ---- batch 2: garrisons ----
+	Bool m_useGarrison;				///< Infantry at home garrison the structures facing an attack; units bring down enemy structures that hold garrisons.
+	Real m_garrisonThreatValue;///< Value of armed enemies in the base that makes the infantry take cover.
+	Real m_garrisonHoldSeconds;///< The garrison stays in this long after the last enemy was seen in the base.
+	Bool m_garrisonClear;			///< Units bring down enemy structures that hold garrisons.
 };
 
 class AISideBuildList : public MemoryPoolObject
