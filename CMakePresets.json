@@ -177,6 +177,23 @@
             }
         },
         {
+            "name": "native-headless",
+            "displayName": "Native headless Zero Hour for tests (Linux, macOS; clang)",
+            "generator": "Ninja",
+            "hidden": false,
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_COMPILER": "clang++",
+                "RTS_BUILD_NATIVE_HEADLESS": "ON",
+                "RTS_BUILD_GENERALS": "OFF",
+                "RTS_BUILD_CORE_TOOLS": "OFF",
+                "RTS_BUILD_ZEROHOUR_TOOLS": "OFF"
+            }
+        },
+        {
             "name": "mingw-w64-i686",
             "displayName": "MinGW-w64 32-bit (i686) Release",
             "generator": "Unix Makefiles",
@@ -293,6 +310,13 @@
             "configurePreset": "emscripten",
             "displayName": "Build WebAssembly (Emscripten) Zero Hour Release",
             "description": "Build WebAssembly (Emscripten) Zero Hour Release"
+        },
+        {
+            "name": "native-headless",
+            "configurePreset": "native-headless",
+            "displayName": "Build native headless Zero Hour",
+            "description": "Build native headless Zero Hour (zh_headless)",
+            "targets": ["zh_headless"]
         },
         {
             "name": "mingw-w64-i686",

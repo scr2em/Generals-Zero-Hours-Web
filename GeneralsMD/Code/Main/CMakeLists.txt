@@ -1,4 +1,14 @@
-if(EMSCRIPTEN)
+if(IS_NATIVE_HEADLESS_BUILD)
+    # The native headless build (cmake/native-headless.cmake) has only the command line program: no
+    # window, renderer, audio or video. See NativeMain.cpp.
+    add_executable(zh_headless NativeMain.cpp WinMain.h)
+    target_link_libraries(zh_headless PRIVATE
+        z_gameenginedevice
+        zi_always
+    )
+    # build/<preset>/GeneralsMD/zh_headless, where the web build puts its page.
+    set_target_properties(zh_headless PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/GeneralsMD)
+elseif(EMSCRIPTEN)
     add_executable(z_generals)
 
     # z_generals.html (page), z_generals.js (loader), z_generals.wasm
@@ -47,6 +57,14 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/BuildVersion.h
 #define VERSION_BUILDNUM 601
 "
 )
+
+if(IS_NATIVE_HEADLESS_BUILD)
+    target_include_directories(zh_headless PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_BINARY_DIR}
+    )
+    return()
+endif()
 
 if(MSVC)
     target_link_options(z_generals PRIVATE "/NODEFAULTLIB:libci.lib")

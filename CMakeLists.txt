@@ -67,6 +67,8 @@ include(cmake/config.cmake)
 
 if(EMSCRIPTEN)
     include(cmake/emscripten.cmake)
+elseif(RTS_BUILD_NATIVE_HEADLESS)
+    include(cmake/native-headless.cmake)
 endif()
 include(cmake/gamespy.cmake)
 include(cmake/lzhl.cmake)

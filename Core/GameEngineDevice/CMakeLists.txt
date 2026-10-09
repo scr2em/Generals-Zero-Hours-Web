@@ -215,7 +215,7 @@ endif()
 # systems and engine), no Miles audio and no Bink video. It keeps the window
 # message driven mouse and the message box based OS display, and swaps in the
 # browser devices. Rendering is the unchanged W3D.
-if(EMSCRIPTEN)
+if(IS_WEB_BUILD)
     list(FILTER GAMEENGINEDEVICE_SRC EXCLUDE REGEX
         "(Win32Device/Common/Win32(BIGFile|BIGFileSystem|GameEngine|LocalFile|LocalFileSystem)\\.(h|cpp)|Win32Device/GameClient/Win32DIKeyboard\\.(h|cpp)|MilesAudioDevice/|VideoDevice/Bink/)")
 
@@ -243,6 +243,17 @@ if(EMSCRIPTEN)
     )
 endif()
 
+# The native headless build (cmake/native-headless.cmake) keeps the web devices except for the parts that
+# talk to the browser: the platform layer (events, canvas, WasmFS), the Web Audio backend and the network.
+if(IS_NATIVE_HEADLESS_BUILD)
+    list(FILTER GAMEENGINEDEVICE_SRC EXCLUDE REGEX
+        "WebDevice/(Platform/WebPlatform|Platform/WebStorage|Audio/WebAudioBackend|Network/WebNet)\\.cpp")
+    list(APPEND GAMEENGINEDEVICE_SRC
+        Source/NativeDevice/NativePlatform.cpp
+        Source/NativeDevice/NativeAudioBackend.cpp
+    )
+endif()
+
 add_library(corei_gameenginedevice_private INTERFACE)
 add_library(corei_gameenginedevice_public INTERFACE)
 
@@ -258,9 +269,11 @@ target_link_libraries(corei_gameenginedevice_private INTERFACE
     stb
 )
 
-if(EMSCRIPTEN)
+if(IS_WEB_BUILD)
     # MP3 decoder of the Web Audio device
     target_link_libraries(corei_gameenginedevice_private INTERFACE deps_minimp3)
+endif()
+if(EMSCRIPTEN)
     # The audio device's own tests (web_audio_test and friends), not part of the game build.
     add_subdirectory(Source/WebDevice/Audio EXCLUDE_FROM_ALL)
     # The transport level test of the browser network (web_net_test), see GeneralsMD/Code/Main/webnet/README.md.
