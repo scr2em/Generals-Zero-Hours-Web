@@ -215,6 +215,7 @@ struct AITeamRecord
 	UnsignedInt		m_orderFrame;				///< frame of the last order the strategic layer gave the team
 	Coord3D				m_target;						///< retreat point or objective
 	Real					m_lastAdvantage;
+	Bool					m_baseDefence;			///< sent by the base defence: not to be sent back to the rally point until the base is clear
 	Bool					m_inWave;						///< part of the wave that is out (set at the launch); a team that appears later waits for the next one
 	ObjectID			m_idMark;						///< object ids from here on belong to units that joined after the last order of the strategic layer (0 = none given)
 };
@@ -318,7 +319,9 @@ public:
 	/// Is the unit on a task of its own (a raid ...) that the team logic must leave alone?
 	Bool isDetached( ObjectID id ) const;
 	/// One of the player's objects took damage (called by the body module; feeds the protect relation).
-	void onObjectDamaged( Object *victim, ObjectID attacker, Real amount ) { m_protect.onDamaged(victim, attacker, amount); }
+	void onObjectDamaged( Object *victim, ObjectID attacker, Real amount ) { m_protect.onDamaged(victim, attacker, amount); noteBaseDamage(victim, attacker, amount); }
+	/// Is the base under attack (an armed enemy force seen in it, or damage to our objects there)?  Base defence has priority over every hold.
+	Bool baseUnderThreat() const { return m_bdActive; }
 
 protected:
 	virtual void crc( Xfer *xfer ) override;
@@ -407,6 +410,13 @@ private:
 	void updatePatients();
 	void tryStartRepairs();
 	void updateRepair();
+
+	// base defence priority (AIBaseDefence.cpp)
+	Bool baseDefenceOn() const;
+	void noteBaseDamage( Object *victim, ObjectID attacker, Real amount );
+	Bool findBaseThreat( Coord3D *where, Real *value ) const;
+	void sendTeamToBase( Team *team, AITeamRecord &rec, const Coord3D &where );
+	void updateBaseDefence();
 
 	// defend the workers (AITactics.cpp, AIProtect.cpp)
 	Bool protectOn() const;
@@ -526,6 +536,18 @@ private:
 	Int						m_repairTrips;							///< statistics for the trace
 	Int						m_repairsDone;
 	Int						m_dozerRepairs;
+	Bool					m_bdActive;											///< base defence: a threat is in the base zone
+	UnsignedInt		m_bdLastThreat;
+	UnsignedInt		m_bdSince;
+	UnsignedInt		m_bdDamageFrame;								///< latest damage to one of our objects inside the zone by an enemy
+	UnsignedInt		m_nextBaseDefence;
+	UnsignedInt		m_bdWeakFrame;									///< last trace line about a threat that the teams at home do not go out to
+	Coord3D				m_bdPos;
+	Coord3D				m_bdDamagePos;
+	Real					m_bdValue;
+	Int						m_bdAlarms;											///< statistics for the trace
+	Int						m_bdOrders;
+	Int						m_bdIdleAtAlarm;
 	AIProtect			m_protect;							///< protect relation: armed units that answer an attack on the gatherers and workers
 	UnsignedInt		m_nextProtect;
 	Bool					m_protectActive;

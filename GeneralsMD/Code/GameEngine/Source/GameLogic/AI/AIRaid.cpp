@@ -323,7 +323,7 @@ void AIStrategy::tryStartRaid()
 	const AISkillSettings &sk = skill();
 	if (now < secondsToFrames(sk.m_raidStartSeconds) || now < m_raidCooldown)
 		return;
-	if (m_threatSince != 0 || m_player->getAttackedFrame() + 10 * LOGICFRAMES_PER_SECOND > now)
+	if (m_threatSince != 0 || m_bdActive || m_player->getAttackedFrame() + 10 * LOGICFRAMES_PER_SECOND > now)
 		return;		// the base is under fire: the units stay
 	if (m_enemy.roleCount(AIROLE_ECONOMY) == 0)
 		return;
@@ -428,6 +428,11 @@ void AIStrategy::updateRaidOut()
 	health /= m_numRaiders;
 	Object *lead = TheGameLogic->findObjectByID(m_raiders[0]);
 
+	if (m_bdActive && baseDefenceOn())
+	{
+		sendRaidersHome("the base is under attack");
+		return;
+	}
 	if (now - m_raidStart >= secondsToFrames(sk.m_raidMaxSeconds))
 	{
 		sendRaidersHome("time is up");

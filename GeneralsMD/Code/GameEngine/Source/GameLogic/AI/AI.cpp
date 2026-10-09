@@ -302,6 +302,11 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "RouteMaxDetour",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_routeMaxDetour ) },
 			{ "BreachRangeFactor",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachRangeFactor ) },
 			{ "BreachHoldSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachHoldSeconds ) },
+			{ "BaseDefencePriority",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useBaseDefence ) },
+			{ "BaseDefenceMargin",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_baseDefenceMargin ) },
+			{ "BaseDefenceMinValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_baseDefenceMinValue ) },
+			{ "BaseDefenceMinAdvantage",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceMinAdvantage ) },
+			{ "BaseDefenceClearSeconds",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceClearSeconds ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1277,6 +1282,11 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_routeMaxDetour = 1.8f;
 	ex.m_breachRangeFactor = 1.12f;
 	ex.m_breachHoldSeconds = 80.0f;
+	ex.m_useBaseDefence = true;
+	ex.m_baseDefenceMargin = 120.0f;
+	ex.m_baseDefenceMinValue = 150.0f;
+	ex.m_baseDefenceMinAdvantage = 0.6f;
+	ex.m_baseDefenceClearSeconds = 5.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1364,6 +1374,11 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_routeMaxDetour );
 		xfer->xferReal( &sk.m_breachRangeFactor );
 		xfer->xferReal( &sk.m_breachHoldSeconds );
+		xfer->xferBool( &sk.m_useBaseDefence );
+		xfer->xferReal( &sk.m_baseDefenceMargin );
+		xfer->xferReal( &sk.m_baseDefenceMinValue );
+		xfer->xferReal( &sk.m_baseDefenceMinAdvantage );
+		xfer->xferReal( &sk.m_baseDefenceClearSeconds );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

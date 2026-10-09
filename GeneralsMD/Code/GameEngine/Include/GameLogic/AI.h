@@ -194,6 +194,13 @@ struct AISkillSettings
 	Real m_routeMaxDetour;		///< A way around is accepted when it is at most this many times the straight way.
 	Real m_breachRangeFactor;	///< A unit breaches a defence when its weapon range is at least this many times the defence's.
 	Real m_breachHoldSeconds;	///< The wave waits this long at the staging point for the breachers.
+
+	// ---- base defence priority ----
+	Bool m_useBaseDefence;		///< Base defence comes before every gather/hold/merge/raid state: the teams at home answer an enemy in the base.
+	Real m_baseDefenceMargin;	///< The base zone is the base radius plus this.
+	Real m_baseDefenceMinValue;///< Value of seen armed enemies in the zone (or damage to our objects there) that counts as a threat.
+	Real m_baseDefenceMinAdvantage;///< The teams at home go out to a threat that is not hitting anything of ours only when they are worth this share of it.
+	Real m_baseDefenceClearSeconds;///< The base is clear when no threat was seen for this long; the teams then go back to their role.
 };
 
 class AISideBuildList : public MemoryPoolObject
