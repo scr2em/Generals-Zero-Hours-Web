@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 // AI-vs-AI test bench runner: plays batches of computer-vs-computer matches of the WebAssembly game in headless
-// Chromium, in parallel, and reports win rates, Elo, speed and a determinism check. See README.md.
+// Chromium (or of the native headless build, --native), in parallel, and reports win rates, Elo, speed and a
+// determinism check. See README.md.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startServer } from './lib/server.mjs';
 import { Browser } from './lib/browser.mjs';
+import { NativeRunner, findNativeExecutable } from './lib/native.mjs';
 import { loadOverlay, makeOverlaySite } from './lib/overlay.mjs';
 import { compareRuns } from './lib/stats.mjs';
 import { buildReport, renderMarkdown, summaryText } from './lib/report.mjs';
@@ -16,6 +18,8 @@ Builds (the web build directories that contain z_generals.html):
   --site DIR              the build to test
   --baseline DIR          a second build to compare against (reported as "baseline"; --site is then "candidate")
   --build NAME=DIR        any number of named builds (repeatable); the first is the baseline of the comparison
+  --native PATH           the native headless build (zh_headless, CMake preset "native-headless", or its directory): its
+                          matches run as processes, without a browser (reported as "native"); can be combined with the above
 Game data:
   --data starter|DIR      "starter" (default): the free starter content built next to the page (starterpack/);
                           DIR: a Zero Hour install (the folder with INIZH.big), or a folder holding ZeroHour/ (and optionally
@@ -67,6 +71,7 @@ function parseArgs(argv) {
 			case '--site': o.builds.push({ name: 'candidate', dir: next(), site: true }); break;
 			case '--baseline': o.builds.unshift({ name: 'baseline', dir: next() }); break;
 			case '--build': { const v = next(); const eq = v.indexOf('='); if (eq < 1) throw new Error('--build NAME=DIR'); o.builds.push({ name: v.slice(0, eq), dir: v.slice(eq + 1) }); break; }
+			case '--native': o.builds.push({ name: 'native', dir: next(), native: true }); break;
 			case '--data': o.data = next(); o.dataGiven = true; break;
 			case '--zh': o.zh = next(); break;
 			case '--generals': o.generals = next(); break;
@@ -97,11 +102,17 @@ function parseArgs(argv) {
 			default: throw new Error(`unknown option ${a}\n\n${USAGE}`);
 		}
 	}
-	if (!o.builds.length) throw new Error(`--site (or --baseline/--build) is required\n\n${USAGE}`);
+	if (!o.builds.length) throw new Error(`--site (or --baseline/--build/--native) is required\n\n${USAGE}`);
 	const seen = new Set();
 	for (const b of o.builds) {
 		if (seen.has(b.name)) throw new Error(`two builds are called ${b.name}`);
 		seen.add(b.name);
+		if (b.native) {
+			// the executable, and its directory, where the starter_pack target puts the starter content (starterpack/)
+			b.exe = findNativeExecutable(b.dir);
+			b.dir = path.dirname(b.exe);
+			continue;
+		}
 		b.dir = path.resolve(b.dir);
 		if (!fs.existsSync(path.join(b.dir, 'z_generals.html'))) throw new Error(`${b.dir} has no z_generals.html (is it the web build directory, e.g. build/bench/GeneralsMD?)`);
 	}
@@ -181,6 +192,7 @@ async function main() {
 	fs.mkdirSync(path.join(o.out, 'matches'), { recursive: true });
 	const log = (m) => console.log(m);
 
+	// Where each build's starter content is: its own directory, or an edited copy (--overlay).
 	let mounts = Object.fromEntries(o.builds.map((b) => [b.name, b.dir]));
 	let profileDir = o.profile;
 	if (o.overlay) {
@@ -189,20 +201,31 @@ async function main() {
 		const parts = o.overlay.split(',').map((n) => loadOverlay(path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures'), n.trim()));
 		const overlay = { name: parts.map((p) => p.name).join('+'), description: parts.map((p) => p.description || p.name).join(' / '), edits: parts.flatMap((p) => p.edits) };
 		log(`overlay ${overlay.name}: ${overlay.description || ''}`);
-		mounts = Object.fromEntries(o.builds.map((b) => [b.name, makeOverlaySite(b.dir, overlay, o.out)]));
+		mounts = Object.fromEntries(o.builds.map((b) => [b.name, makeOverlaySite(b.dir, overlay, o.out, { packOnly: !!b.native })]));
 		profileDir = o.profile + '-overlay-' + overlay.name;
 	}
-	const { server, port } = await startServer(mounts, o.port).catch((e) => { throw new Error(`cannot listen on port ${o.port}: ${e.message}`); });
-	const browser = new Browser({ port, profileDir, chromium: o.chromium, headful: o.headful });
-	await browser.open();
-	const cleanup = async () => { await browser.close(); server.close(); };
+	// The web builds play in the browser, the native ones as processes.
+	const runners = {};
+	const webBuilds = o.builds.filter((b) => !b.native);
+	let server = null, browser = null;
+	if (webBuilds.length) {
+		const webMounts = Object.fromEntries(webBuilds.map((b) => [b.name, mounts[b.name]]));
+		const started = await startServer(webMounts, o.port).catch((e) => { throw new Error(`cannot listen on port ${o.port}: ${e.message}`); });
+		server = started.server;
+		browser = new Browser({ port: started.port, profileDir, chromium: o.chromium, headful: o.headful });
+		await browser.open();
+		for (const b of webBuilds) runners[b.name] = browser;
+	}
+	for (const b of o.builds.filter((x) => x.native))
+		runners[b.name] = new NativeRunner({ exe: b.exe, data: o.data, starterDir: path.join(mounts[b.name], 'starterpack') });
+	const cleanup = async () => { if (browser) await browser.close(); if (server) server.close(); };
 	process.on('SIGINT', async () => { await cleanup(); process.exit(130); });
 
 	try {
-		for (const b of o.builds) await browser.prepareData(b.name, o.data, log);
+		for (const b of o.builds) await runners[b.name].prepareData(b.name, o.data, log);
 
 		if (o.boot) {
-			const r = await browser.runBoot(o.builds[0].name, o.boot);
+			const r = await runners[o.builds[0].name].runBoot(o.builds[0].name, o.boot);
 			fs.writeFileSync(path.join(o.out, 'boot.log'), r.log.join('\n') + '\n');
 			log(r.ok ? `boot: PASS (${o.boot} s without an engine failure)` : `boot: FAIL ${r.error}`);
 			process.exitCode = r.ok ? 0 : 1;
@@ -211,7 +234,7 @@ async function main() {
 
 		if (o.probe) {
 			const b = o.builds[0].name;
-			const run = async (args) => (await browser.runMatch(b, ['-aiMatch', ...args], 120000)).error || '';
+			const run = async (args) => (await runners[b].runMatch(b, ['-aiMatch', ...args], 120000)).error || '';
 			log('Maps:  ' + ((await run(['map=__none__', 'players=hard:random,hard:random', 'seed=1'])).replace(/^.*Maps: /, '') || '(none)'));
 			const maps = o.maps.length ? o.maps[0] : '__none__';
 			log('Sides: ' + ((await run([`map=${maps}`, 'players=hard:__none__,hard:random', 'seed=1'])).replace(/^.*Sides: /, '') || '(give --map to see the sides)'));
@@ -223,7 +246,7 @@ async function main() {
 		const records = [];
 		let done = 0;
 		const runJob = async (job, attempt = 0) => {
-			const r = await browser.runMatch(job.build, job.args, o.matchTimeout * 1000);
+			const r = await runners[job.build].runMatch(job.build, job.args, o.matchTimeout * 1000);
 			if (!r.ok && technical(r.error) && attempt < o.retries) { log(`  retry ${job.id}: ${r.error}`); return runJob(job, attempt + 1); }
 			return { ...r, attempts: attempt + 1 };
 		};

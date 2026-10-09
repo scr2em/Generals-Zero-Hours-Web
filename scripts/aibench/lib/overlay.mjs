@@ -44,10 +44,12 @@ function linkTree(src, dst, skip) {
 }
 
 // Makes a copy of the build directory (symlinks) whose starterpack/ carries the overlay's edits. Returns its path.
-export function makeOverlaySite(buildDir, overlay, outDir) {
+// With packOnly the copy has only the starterpack/ folder (the native build reads the pack from there).
+export function makeOverlaySite(buildDir, overlay, outDir, { packOnly = false } = {}) {
 	const site = path.join(outDir, 'overlay-' + overlay.name + '-' + path.basename(path.dirname(buildDir)) + '-' + path.basename(buildDir));
 	fs.rmSync(site, { recursive: true, force: true });
-	linkTree(buildDir, site, (n) => n === 'starterpack');
+	if (packOnly) fs.mkdirSync(site, { recursive: true });
+	else linkTree(buildDir, site, (n) => n === 'starterpack');
 	const pack = path.join(buildDir, 'starterpack');
 	const packOut = path.join(site, 'starterpack');
 	linkTree(pack, packOut, null);

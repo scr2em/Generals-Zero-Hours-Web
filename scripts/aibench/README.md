@@ -25,6 +25,8 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
 * The game data stays in the browser profile (OPFS): the starter content is downloaded from the build once, a real
   install is copied once. Use the same `--profile` (and the same `--port`, which is part of the browser origin) and
   later runs start at once.
+* **Native runner** (`--native`): the same matches without a browser, with the native headless build (`zh_headless`,
+  see below). Each match is its own process that reads the game data in place; there is nothing to import.
 
 ## Requirements
 
@@ -35,6 +37,38 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
   On the Linux sandbox: `NODE_PATH=/opt/node22/lib/node_modules`, Chromium from `/opt/pw-browsers`. Elsewhere
   `npm i playwright && npx playwright install chromium`, or `--chromium /path/to/chrome`.
 
+## The native headless build (`--native`)
+
+`zh_headless` is the game logic of the web build compiled for Linux or macOS with the system's clang: the same engine
+and the same Win32 stand-ins (`Dependencies/WebCompat`), without window, renderer, audio or video
+(`cmake/native-headless.cmake`, `GeneralsMD/Code/Main/NativeMain.cpp`). It is a 64-bit program. It runs `-aiMatch`
+(and `-simulateReplay`) and prints the same `AIMATCH_RESULT` line.
+
+Install: Linux: `clang`, `cmake` (3.28 or newer), `ninja`, `python3` (`apt install clang cmake ninja-build python3`).
+macOS: the Xcode command line tools (`xcode-select --install`), and `brew install cmake ninja`.
+
+```
+cmake --preset native-headless                      # build/native-headless
+cmake --build build/native-headless --target zh_headless starter_pack
+build/native-headless/GeneralsMD/zh_headless --zh build/native-headless/GeneralsMD/starterpack \
+    -aiMatch "map=Ironwood Crossing" players=hard:Ironwood,hard:Ironwood seed=1 timeout=5
+```
+
+`--zh DIR` is the Zero Hour folder (default `$ZH_PATH`), `--generals DIR` the original Generals (default
+`$GENERALS_PATH`, optional), `--userdata DIR` where the options and replays go (default: a temporary folder that is
+removed at the end, so parallel matches do not share it). The files are read in place with the Windows file names
+matched case-insensitively. The bench:
+
+```
+node scripts/aibench/aibench.mjs --native build/native-headless/GeneralsMD/zh_headless --data starter --seeds 8 --workers 2
+node scripts/aibench/aibench.mjs --native build/native-headless --zh "$ZH_PATH" --map tournamenta --matchup "expert:China,hard:China"
+```
+
+`--data starter` uses `starterpack/` next to the executable (the `starter_pack` target). `--native` can be combined with
+`--site` to play the same matches in both; their results are not bit-identical (the floating point of the native
+build and of WebAssembly differ), but each build is deterministic on its own. `--boot` needs a web build.
+`scripts/gameplay/realdata_tests.sh` uses the native build when `build/native-headless` exists.
+
 ## Options
 
 `node aibench.mjs --help` lists them all. The important ones:
@@ -44,6 +78,7 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
 | `--site DIR` | the build under test (reported as `candidate`) |
 | `--baseline DIR` | a second build to compare against (reported as `baseline`); both are played with identical matches |
 | `--build NAME=DIR` | any number of named builds; the first one is the baseline of the comparison |
+| `--native PATH` | the native headless build (`zh_headless` or its directory), reported as `native`; no browser needed |
 | `--data starter\|DIR` | the free starter content (default), a Zero Hour install, or a folder holding `ZeroHour/` (+ optional `Generals/`) |
 | `--zh DIR` / `--generals DIR` | the Zero Hour install and (optional) the original Generals install; default `$ZH_PATH` / `$GENERALS_PATH` |
 | `--map NAME` | repeatable. Folder/file name, display name or path of the map |
@@ -230,6 +265,7 @@ run in `scripts/gameplay/realdata_tests.sh assists`. See `scripts/assistbench/RE
 scripts/aibench/aibench.mjs       the command line runner
 scripts/aibench/lib/server.mjs    static server for the builds (one origin, isolation headers)
 scripts/aibench/lib/browser.mjs   Playwright: data import, one match per page, result capture
+scripts/aibench/lib/native.mjs    --native: one zh_headless process per match, result capture
 scripts/aibench/lib/stats.mjs     win rates, Wilson intervals, Elo, determinism comparison
 scripts/aibench/lib/overlay.mjs   --overlay: an edited copy of the starter pack
 scripts/aibench/fixtures/*.json   the overlays
@@ -240,6 +276,6 @@ GeneralsMD/Code/GameEngine/Source/Common/AIMatch.cpp, Include/Common/AIMatch.h  
 GeneralsMD/Code/GameEngine/Include/Common/AIMatchShared.h   its parts that -assistMatch reuses (map/side lookup, JSON, bench flag)
 ```
 
-Engine hooks outside the module: `-aiMatch` in `CommandLine.cpp` (implies headless), `GameMain.cpp` and `WebMain.cpp`
-(start the mode), `GameLogic.cpp` (no load screen; CRC messages into the command list), `Recorder.cpp` (no replay
+Engine hooks outside the module: `-aiMatch` in `CommandLine.cpp` (implies headless), `GameMain.cpp`, `WebMain.cpp` and
+`NativeMain.cpp` (start the mode), `GameLogic.cpp` (no load screen; CRC messages into the command list), `Recorder.cpp` (no replay
 unless `record=1`), `Money.h/.cpp` and `ScoreKeeper.h` (read access to the tallies).
