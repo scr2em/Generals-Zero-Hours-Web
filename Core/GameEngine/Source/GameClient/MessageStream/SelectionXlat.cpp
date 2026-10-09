@@ -1332,33 +1332,6 @@ GameMessageDisposition SelectionTranslator::onMetaOptions(MAYBE_UNUSED const Gam
 	// stop drawing selection feedback, as we're going to ignore the selection.
 	m_leftMouseButtonIsDown = FALSE;
 
-#ifdef __EMSCRIPTEN__
-	// Web port: Escape first cancels what the player is doing, like a right click: a pending
-	// command, then building placement, then the selection. Only with nothing left to cancel
-	// does it open the options screen (and it always closes it again).
-	if (!TheInGameUI->isQuitMenuVisible())
-	{
-		if (TheInGameUI->getGUICommand())
-		{
-			TheInGameUI->setGUICommand( nullptr );
-			TheInGameUI->setScrolling( FALSE );
-			return DESTROY_MESSAGE;
-		}
-		if (TheInGameUI->getPendingPlaceSourceObjectID() != INVALID_ID)
-		{
-			TheInGameUI->placeBuildAvailable(nullptr, nullptr);
-			TheInGameUI->setPreventLeftClickDeselectionInAlternateMouseModeForOneClick(FALSE);
-			TheInGameUI->setScrolling(FALSE);
-			return DESTROY_MESSAGE;
-		}
-		if (TheInGameUI->getSelectCount() > 0)
-		{
-			TheInGameUI->deselectAllDrawables();
-			return DESTROY_MESSAGE;
-		}
-	}
-#endif
-
 	// let this message drop through, the commandXLat will show the options screen itself.
 	return KEEP_MESSAGE;
 }
