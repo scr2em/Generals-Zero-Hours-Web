@@ -803,6 +803,7 @@ void AssistUI::init()
 void AssistUI::reset()
 {
 	AssistProtectUI::reset();
+	AssistStanceUI::reset();
 	AssistCoverageUI::reset();
 	AssistAlertUI::reset();
 	AssistOddsUI::reset();
@@ -833,6 +834,7 @@ void AssistUI::update()
 	if (s_formationPanel == nullptr)
 		s_formationPanel = new FormationPanel;
 	AssistProtectUI::init();
+	AssistStanceUI::init();
 	AssistCoverageUI::init();
 	AssistAlertUI::init();
 	AssistOddsUI::init();
@@ -966,7 +968,7 @@ void AssistUI::drawAim()
 
 namespace
 {
-	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_CLOSE = 100 };
+	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_STANCES = 6, OPT_CLOSE = 100 };
 
 	struct ToggleRow { Int id; const wchar_t *label; Bool *value; };
 }
@@ -982,6 +984,7 @@ public:
 		addButton( OPT_FORMATIONS, 0, L"Formations: picker, hotkeys, drag to aim", nullptr );
 		addButton( OPT_PROTECT, 0, L"Protect: units guard other units, buildings and groups", nullptr );
 		addButton( OPT_COVERAGE, 0, L"Defence coverage view: range rings and gaps in the base edge", nullptr );
+		addButton( OPT_STANCES, 0, L"Unit stances: kite, retreat when damaged, spread out, split fire", nullptr );
 		addButton( OPT_ODDS, 0, L"Odds meter: point at an enemy group to see who would win", nullptr );
 		addButton( OPT_ALERT, 0, L"Base under attack: one click sends idle army units to defend", nullptr );
 		addButton( 200, 0, L"All assists are off until switched on here.", nullptr );
@@ -1020,6 +1023,7 @@ public:
 		find( OPT_COVERAGE )->m_on = TheAssistOptions.m_coverage;
 		find( OPT_ALERT )->m_on = TheAssistOptions.m_baseAlert;
 		find( OPT_ODDS )->m_on = TheAssistOptions.m_odds;
+		find( OPT_STANCES )->m_on = TheAssistOptions.m_stances;
 	}
 
 	virtual Bool refresh() override { return TRUE; }
@@ -1052,7 +1056,7 @@ public:
 		}
 		*h = yy + AssistUI::px( 4 );
 		*x = ((Int)TheDisplay->getWidth() - *w) / 2;
-		*y = ((Int)TheDisplay->getHeight() - *h) / 3;
+		*y = AssistUI::px( 30 );		// at a fixed place near the top, so that the rows stay where they are when rows are added
 	}
 
 	virtual void clicked( Int id ) override
@@ -1064,6 +1068,7 @@ public:
 			case OPT_COVERAGE: TheAssistOptions.m_coverage = !TheAssistOptions.m_coverage; break;
 			case OPT_ALERT: TheAssistOptions.m_baseAlert = !TheAssistOptions.m_baseAlert; break;
 			case OPT_ODDS: TheAssistOptions.m_odds = !TheAssistOptions.m_odds; break;
+			case OPT_STANCES: TheAssistOptions.m_stances = !TheAssistOptions.m_stances; break;
 			case OPT_CLOSE: closeDialog(); return;
 			default: return;
 		}
@@ -1204,7 +1209,7 @@ GameMessageDisposition AssistUI::translate( const GameMessage *msg )
 	if (t != GameMessage::MSG_RAW_MOUSE_POSITION)
 		invalidateSelection();	// the selection may have changed since the last frame
 
-	if (AssistProtectUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ) || AssistOddsUI::translate( msg ))
+	if (AssistProtectUI::translate( msg ) || AssistStanceUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ) || AssistOddsUI::translate( msg ))
 		return DESTROY_MESSAGE;
 
 	// ---- hotkeys -----------------------------------------------------------------------------

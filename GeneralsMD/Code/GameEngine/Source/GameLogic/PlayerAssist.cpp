@@ -29,6 +29,7 @@
 #include "Common/PlayerList.h"
 #include "Common/Xfer.h"
 #include "GameLogic/AI.h"
+#include "GameLogic/AITacticsCore.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/PlayerAssist.h"
@@ -62,6 +63,9 @@ void PlayerAssist::reset()
 	m_allowed = FALSE;
 	m_units.clear();
 	m_protect.reset();
+	m_stances.clear();
+	for (Int i = 0; i < MAX_LEDGERS; ++i)
+		m_ledgers[i].clear();
 	for (Int i = 0; i < MAX_DEFEND; ++i)
 		m_defend[i] = DefendState();
 	m_aimValid = FALSE;
@@ -104,6 +108,7 @@ void PlayerAssist::logicUpdate()
 
 	const UnsignedInt now = TheGameLogic->getFrame();
 	m_protect.update( now );
+	updateStances( now );
 	if (now >= m_pruneFrame)
 	{
 		m_pruneFrame = now + 2 * LOGICFRAMES_PER_SECOND;
@@ -174,6 +179,11 @@ Bool PlayerAssist::onMessage( GameMessage *msg, Player *player, AIGroup *group )
 			return TRUE;
 		}
 
+		case GameMessage::MSG_ASSIST_STANCE:
+			if (group)
+				setStance( player, group, msg->getArgument( 0 )->integer, msg->getArgument( 1 )->integer, msg->getArgument( 2 )->integer );
+			return TRUE;
+
 		case GameMessage::MSG_ASSIST_BASE_DEFEND:
 			baseDefend( player, msg->getArgument( 0 )->location );
 			return TRUE;
@@ -232,7 +242,7 @@ void PlayerAssist::crc( Xfer *x )
 //-------------------------------------------------------------------------------------------------
 void PlayerAssist::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 3;
+	XferVersion currentVersion = 4;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -262,6 +272,9 @@ void PlayerAssist::xfer( Xfer *xfer )
 			}
 		}
 	}
+
+	if (version >= 4)
+		xferStances( xfer );
 
 	UnsignedInt count = (UnsignedInt)m_units.size();
 	xfer->xferUnsignedInt( &count );

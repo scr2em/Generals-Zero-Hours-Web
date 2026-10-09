@@ -21,11 +21,12 @@
 // starts with extra units, so that a test does not have to play for minutes to get an army.  Without the
 // argument nothing here runs.
 //
-//   spec = entry[+entry...]      entry = player:template:count[:ref:dx:dy]
+//   spec = entry[+entry...]      entry = player:template:count[:ref:dx:dy[:frame]]
 //
 // "player" is the slot index of the owner (0: the first, human player), the units appear around the command center of player "ref" (default the
-// owner), shifted by dx, dy world units (default -150, -130: below the base on the screen), in rows.  Every client of a
-// network match must pass the same argument.
+// owner), shifted by dx, dy world units (default -150, -130: below the base on the screen), in rows.  They appear in logic
+// frame "frame" (default 3), so that a test can set things up before a fight starts.  Every client of a network match must
+// pass the same argument.
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
@@ -62,7 +63,10 @@ void PlayerAssist::runTestSpec()
 	if (TheAssistOptions.m_testSpec.isEmpty())
 		return;
 
-	if (TheGameLogic->getFrame() != 3 || !(TheGameLogic->isInSkirmishGame() || TheGameLogic->isInMultiplayerGame() || TheGameLogic->isInReplayGame()))
+	if (!(TheGameLogic->isInSkirmishGame() || TheGameLogic->isInMultiplayerGame() || TheGameLogic->isInReplayGame()))
+		return;
+	const UnsignedInt now = TheGameLogic->getFrame();
+	if (now < 3)
 		return;
 
 	char spec[512];
@@ -70,11 +74,11 @@ void PlayerAssist::runTestSpec()
 	char *save = nullptr;
 	for (char *entry = strtok_r( spec, "+", &save ); entry; entry = strtok_r( nullptr, "+", &save ))
 	{
-		int owner = 0, count = 0, ref = -1, dx = -150, dy = -130;
+		int owner = 0, count = 0, ref = -1, dx = -150, dy = -130, frame = 3;
 		char name[128];
 		name[0] = 0;
-		const int n = sscanf( entry, "%d:%127[^:]:%d:%d:%d:%d", &owner, name, &count, &ref, &dx, &dy );
-		if (n < 3)
+		const int n = sscanf( entry, "%d:%127[^:]:%d:%d:%d:%d:%d", &owner, name, &count, &ref, &dx, &dy, &frame );
+		if (n < 3 || (UnsignedInt)frame != now)
 			continue;
 		if (ref < 0)
 			ref = owner;

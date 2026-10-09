@@ -252,7 +252,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_nextStatus(0)
 {
 	memset(m_teams, 0, sizeof(m_teams));
-	memset(m_ledger, 0, sizeof(m_ledger));
+	m_ledger.clear();
 	memset(m_steps, 0, sizeof(m_steps));
 	memset(m_raiders, 0, sizeof(m_raiders));
 	memset(m_patients, 0, sizeof(m_patients));
@@ -386,13 +386,7 @@ Bool AIStrategy::enemyStartPosition( Coord3D *pos ) const
 	if (enemy == nullptr)
 		return FALSE;
 	// The start positions of a map are public knowledge in a skirmish.
-	AsciiString name;
-	name.format("Player_%d_Start", enemy->getMpStartIndex() + 1);
-	Waypoint *way = TheTerrainLogic->getWaypointByName(name);
-	if (way == nullptr)
-		return FALSE;
-	*pos = *way->getLocation();
-	return TRUE;
+	return AITactics::playerStart(enemy, pos);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1273,16 +1267,7 @@ Bool AIStrategy::rallyPoint( Coord3D *pos )
 			toward.y = (extent.lo.y + extent.hi.y) * 0.5f;
 			toward.z = 0.0f;
 		}
-		Real dx = toward.x - base.x, dy = toward.y - base.y;
-		Real len = sqrtf(dx * dx + dy * dy);
-		if (len < 1.0f)
-		{
-			dx = 1.0f; dy = 0.0f; len = 1.0f;
-		}
-		const Real out = m_ai->m_baseRadius + 140.0f;
-		m_rally.x = base.x + dx / len * out;
-		m_rally.y = base.y + dy / len * out;
-		m_rally.z = TheTerrainLogic->getGroundHeight(m_rally.x, m_rally.y);
+		AITactics::rallyAhead(base, m_ai->m_baseRadius, toward, &m_rally);
 		Coord3D geoPos;
 		if (geoRally(&geoPos))
 			m_rally = geoPos;
@@ -2271,7 +2256,7 @@ void AIStrategy::xfer( Xfer *xfer )
 	xfer->xferCoord3D(&m_scoutTarget);
 	xfer->xferUnsignedInt(&m_savingSince);
 	xfer->xferUnsignedInt(&m_noSavingUntil);
-	xfer->xferUser(m_ledger, sizeof(m_ledger));
+	xfer->xferUser(&m_ledger, sizeof(m_ledger));
 	xfer->xferInt(&m_numSteps);
 	xfer->xferUser(m_steps, sizeof(m_steps));
 	xfer->xferInt(&m_tacticTeam);

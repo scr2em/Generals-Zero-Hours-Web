@@ -37,10 +37,12 @@
 #include "Common/GameCommon.h"
 #include "Common/Snapshot.h"
 #include "Common/SubsystemInterface.h"
+#include "GameLogic/AITacticsCore.h"
 #include "GameLogic/Protect.h"
 
 class AIGroup;
 class GameMessage;
+class Xfer;
 class Object;
 class Player;
 
@@ -73,6 +75,15 @@ struct AssistSlot
 	Real	m_x;
 	Real	m_depth;
 	Int		m_row;
+};
+
+/// The unit stances the player can switch on.  The values are part of the network messages.
+enum AssistStanceBit CPP_11(: Int)
+{
+	STANCE_KITE = 1,				///< step back while the weapon reloads
+	STANCE_RETREAT = 2,			///< pull out when damaged (the percent of health is a setting)
+	STANCE_SPREAD = 4,			///< keep apart from friends against area weapons
+	STANCE_SPLIT = 8				///< do not shoot at a target that has enough fire on it already
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -109,6 +120,15 @@ public:
 	Bool defendActive( Int playerIndex ) const;
 	void baseDefend( Player *player, const Coord3D &where );
 	void baseReturn( Player *player );
+
+	// ---- unit stances (AssistStance.cpp) ---------------------------------------------------------
+	/// The stance bits set for this unit (0: none).
+	Int stanceOf( ObjectID id ) const;
+	Int retreatPercentOf( ObjectID id ) const;
+	/// The bits that all eligible units of the list share; 'retreatPercent' gets the retreat setting they share (0: off or mixed).
+	Int sharedStance( const std::vector<ObjectID> &ids, Int *retreatPercent ) const;
+	/// A unit a stance makes sense for: armed, mobile, on the ground.
+	static Bool stanceEligible( const Object *obj );
 
 	// ---- formations (AssistFormation.cpp) ------------------------------------------------------
 	/// The formation set for this unit (AFORM_NONE if it has none).
@@ -149,6 +169,42 @@ private:
 	};
 	enum { MAX_DEFEND = 16 };
 
+	// the state of the stances of one unit
+	enum { PHASE_NONE = 0, PHASE_STEP, PHASE_ATTACK, PHASE_RETREAT, PHASE_PARKED };
+	struct StanceState
+	{
+		UnsignedByte	m_flags;						///< STANCE_ bits
+		UnsignedByte	m_retreatPercent;		///< retreat when below this share of the health
+		UnsignedByte	m_phase;						///< PHASE_
+		ObjectID			m_victim;						///< the enemy it steps back from
+		ObjectID			m_facility;					///< the place of repair it goes to
+		UnsignedInt		m_until;						///< end of the phase
+		Coord3D				m_from;							///< where it stood when it pulled out
+		Coord3D				m_to;								///< the place it pulls out to (no facility)
+		Real					m_spacing;					///< distance kept to friends against area weapons (0: not needed)
+		UnsignedInt		m_spacingUntil;
+		UnsignedInt		m_noRetreatUntil;		///< the player sent it back: no retreat until then
+		ObjectID			m_splitTarget;			///< the target this unit has put on the split fire ledger
+		Real					m_splitDamage;
+		UnsignedInt		m_splitUntil;
+		StanceState() : m_flags( 0 ), m_retreatPercent( 0 ), m_phase( 0 ), m_victim( INVALID_ID ), m_facility( INVALID_ID ), m_until( 0 ),
+			m_spacing( 0.0f ), m_spacingUntil( 0 ), m_noRetreatUntil( 0 ), m_splitTarget( INVALID_ID ), m_splitDamage( 0.0f ), m_splitUntil( 0 )
+		{
+			m_from.x = m_from.y = m_from.z = 0.0f;
+			m_to = m_from;
+		}
+	};
+	typedef std::map<ObjectID, StanceState> StanceMap;
+	enum { MAX_LEDGERS = 16 };
+
+	void setStance( Player *player, AIGroup *group, Int mask, Int value, Int percent );
+	void updateStances( UnsignedInt now );
+	void stanceUnit( Object *unit, StanceState &st, UnsignedInt now );
+	void startRetreat( Object *unit, StanceState &st, UnsignedInt now );
+	void endRetreat( Object *unit, StanceState &st );
+	Object *pickOtherTarget( Object *unit, Object *current, Real range, AITactics::SplitLedger &ledger, UnsignedInt now, const AITactics::Params &params );
+	void xferStances( Xfer *xfer );
+
 	void setFormation( AIGroup *group, Int type );
 	void formationMove( AIGroup *group, Int type, const Coord3D &a, const Coord3D &b, Bool attackMove );
 	void pruneDead();
@@ -158,6 +214,8 @@ private:
 	UnitMap			m_units;
 	ProtectManager	m_protect;
 	DefendState			m_defend[MAX_DEFEND];
+	StanceMap			m_stances;
+	AITactics::SplitLedger	m_ledgers[MAX_LEDGERS];			///< split fire: per player, damage assigned to targets
 
 	// the drag a formation move was given (valid only while the command is being carried out)
 	Bool				m_aimValid;

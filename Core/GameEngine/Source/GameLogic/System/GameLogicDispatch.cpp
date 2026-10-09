@@ -564,6 +564,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_ASSIST_FORMATION_MOVE:
 		case GameMessage::MSG_ASSIST_PROTECT:
 		case GameMessage::MSG_ASSIST_UNPROTECT:
+		case GameMessage::MSG_ASSIST_STANCE:
 		case GameMessage::MSG_ASSIST_BASE_DEFEND:
 		case GameMessage::MSG_ASSIST_BASE_RETURN:
 		{

@@ -451,6 +451,10 @@ public:
 		MSG_META_ASSIST_PROTECT,										///< protect: choose what the selected units protect
 		MSG_META_ASSIST_UNPROTECT,									///< protect: the selected units stop protecting
 		MSG_META_ASSIST_COVERAGE,										///< defence coverage view on / off
+		MSG_META_ASSIST_STANCE_KITE,								///< stance: kite on / off for the selection
+		MSG_META_ASSIST_STANCE_RETREAT,							///< stance: retreat when damaged, next setting
+		MSG_META_ASSIST_STANCE_SPREAD,							///< stance: spread out on / off
+		MSG_META_ASSIST_STANCE_SPLIT,								///< stance: split fire on / off
 		MSG_META_ASSIST_ODDS,												///< odds meter on / off
 		MSG_META_ASSIST_BASE_DEFEND,								///< base under attack: send the defenders, or send them back
 
@@ -625,6 +629,7 @@ public:
 		MSG_ASSIST_FORMATION_MOVE,									///< (Int formation, location a, location b, Bool attackMove) move in formation; a to b is the front line the player dragged (a == b: a click)
 		MSG_ASSIST_PROTECT,													///< (Int hotkey group or -1, Int n, n protector objectIDs, then the objectIDs to protect) the protectors guard these
 		MSG_ASSIST_UNPROTECT,												///< the selected units stop protecting
+		MSG_ASSIST_STANCE,													///< (mask, value, retreat percent) set stance bits of the selected units
 		MSG_ASSIST_BASE_DEFEND,											///< (location) idle army units near the place attack-move there (remembering where they were)
 		MSG_ASSIST_BASE_RETURN,											///< the units that were sent to defend go back to where they were
 

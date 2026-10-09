@@ -33,6 +33,7 @@
 #include "GameLogic/AI.h"
 #include "GameLogic/AIProtect.h"
 #include "GameLogic/AIRoute.h"
+#include "GameLogic/AITacticsCore.h"
 
 class AIPlayer;
 class Object;
@@ -235,14 +236,6 @@ struct AITeamRecord
 	Bool					m_baseDefence;			///< sent by the base defence: not to be sent back to the rally point until the base is clear
 	Bool					m_inWave;						///< part of the wave that is out (set at the launch); a team that appears later waits for the next one
 	ObjectID			m_idMark;						///< object ids from here on belong to units that joined after the last order of the strategic layer (0 = none given)
-};
-
-/// Damage that units have just assigned to a target (split fire): a small table with expiry.
-struct AILedgerEntry
-{
-	ObjectID			m_target;
-	Real					m_damage;
-	UnsignedInt		m_expire;
 };
 
 /// A unit that is stepping out of the fight for a moment (kiting): where it was attacking, and how to resume.
@@ -571,8 +564,7 @@ private:
 	Coord3D				m_scoutTarget;
 	UnsignedInt		m_savingSince;
 	UnsignedInt		m_noSavingUntil;
-	enum { LEDGER_SIZE = 32 };
-	AILedgerEntry	m_ledger[LEDGER_SIZE];		///< split fire: damage assigned to targets, see assignDamage
+	AITactics::SplitLedger	m_ledger;		///< split fire: damage assigned to targets, see assignDamage
 	AIStepRecord	m_steps[MAX_STEPS];				///< units that are kiting
 	Int						m_numSteps;
 	Int						m_tacticTeam;							///< round robin over the units of the field teams

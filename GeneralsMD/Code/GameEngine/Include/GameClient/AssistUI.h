@@ -237,3 +237,14 @@ public:
 	static Bool translate( const GameMessage *msg );
 	static void drawOverlays( View *view );
 };
+
+
+//-------------------------------------------------------------------------------------------------
+/// The unit stances (AssistUIStance.cpp).
+class AssistStanceUI
+{
+public:
+	static void init();
+	static void reset();
+	static Bool translate( const GameMessage *msg );	///< true when the message is used up
+};
