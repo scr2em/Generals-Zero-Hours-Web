@@ -1,0 +1,39 @@
+{
+ "name": "starter-idle-select",
+ "description": "Smoke check only (starter content, says nothing about gameplay): the idle hotkeys walk through the idle tanks by id and leave out the busy one; all-idle selects the three; the next idle worker is the one that is not driving away.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "kill all:0:IronwoodWorker",
+  "spawn army 0:IronwoodTank:3 at=cc:0^220,-150",
+  "spawn busy 0:IronwoodTank:1 at=cc:0^220,60",
+  "spawn workers 0:IronwoodWorker:2 at=cc:0^160,150",
+  "wait 5",
+  "ai busy move cc:0^900,0",
+  "ai workers[1] move cc:0^800,200",
+  "wait 10",
+  "expect idle army",
+  "expect not idle busy",
+  "expect count all:0:IronwoodWorker =2",
+  "idle army",
+  "expect selection army[0] exact=1",
+  "idle army",
+  "expect selection army[1] exact=1",
+  "idle army",
+  "expect selection army[2] exact=1",
+  "idle army",
+  "expect selection army[0] exact=1",
+  "idle all",
+  "expect selection army exact=1",
+  "idle workers",
+  "expect selection workers[0] exact=1",
+  "idle workers",
+  "expect selection workers[0] exact=1"
+ ],
+ "log": [
+  { "match": "^ASSIST idle army: 3 idle, selects unit \\d+ IronwoodTank", "min": 4 },
+  "^ASSIST idle army: selects all 3$",
+  { "match": "^ASSIST idle workers: 1 idle, selects unit \\d+ IronwoodWorker", "min": 2 }
+ ]
+}

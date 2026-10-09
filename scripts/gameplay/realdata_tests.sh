@@ -14,7 +14,7 @@
 #            Expert allies come to help when the stand-in's base is attacked, and go back afterwards? Once with the help switched off
 #            (off-allyhelp) for comparison
 #   bunker   China Expert against Hard: does it put infantry in its bunkers?
-#   assists  the player assists, scripted (scripts/assistbench/scenarios/realdata: formations, protect links), seconds each
+#   assists  the player assists, scripted (scripts/assistbench/scenarios/realdata: formations, protect links, stances, idle hotkeys), seconds each
 #
 # What a pass looks like in the team suite: every Expert launches its first wave ("WAVE launches") within about 11 game minutes
 # (the table says "min 11" or less) and not every Expert sits under alarm for more than a quarter of the game (seconds under alarm

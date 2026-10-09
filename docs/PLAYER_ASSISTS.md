@@ -13,6 +13,7 @@ and are the same on every machine.
 | Base under attack | orders | When the radar alert fires, a button appears (or Alt+A): idle army units nearby attack-move there; Alt+A again sends them back |
 | Odds meter | display | With own armed units selected, Alt+O and hover a visible enemy: favourable / even / unfavourable |
 | Unit stances | orders | Stance panel above the command bar for the selected units: Alt+K kite, Alt+R retreat when damaged (off / 30 / 50 / 70%), Alt+S spread out, Alt+X split fire. A player order always wins over a stance |
+| Idle hotkeys | selection | Alt+I selects the next idle army unit and centres the view on it, Ctrl+Alt+I selects all idle army units, Alt+W the next idle worker (builders and supply gatherers). The "Idle" counter at the top right shows how many stand idle; its buttons do the same |
 
 ## Checks on the real game data
 
@@ -44,6 +45,15 @@ skirmish against an Easy AI with the assist switched on, and look for the `ASSIS
 | Retreat | Select units in a fight and press Alt+R three times. | `percent=70`; then `ASSIST stance retreat: unit N at P% goes to repair facility M` (vehicles, with a repair pad), `... heal facility M` (infantry), or `... the rally point x,y`; after the heal, `... goes back to x,y`. |
 | Spread | Face an enemy with artillery or blast weapons and press Alt+S. | `ASSIST stance spread: ... moves apart` or `... steps aside`. |
 | Split fire | Have 8+ units attack a few enemies and press Alt+X. | `ASSIST stance split: unit N leaves A (enough on its way) for B`. |
+
+**Idle hotkeys** (no rule of the match needed: they only select)
+1. Scripted: `scripts/assistbench/scenarios/realdata/idle-select.json` (part of `realdata_tests.sh assists`). A pass: every
+   check passes and the trace has `ASSIST idle army: 3 idle, selects unit N ChinaTankBattleMaster` (four times, a different
+   N the first three), `ASSIST idle army: selects all 3` and `ASSIST idle workers: 1 idle, selects unit N ChinaVehicleDozer`.
+2. By hand: build a few tanks, a dozer and a supply truck; leave some standing. Expect `ASSIST idle count army=A workers=W`
+   whenever the numbers change, with A the idle army units and W the idle dozers and trucks (a truck on its supply round
+   and a dozer at work are not counted). Alt+I: the view jumps to one idle unit after the other; Ctrl+Alt+I selects them
+   all; Alt+W selects a worker that stands idle. A unit that is moving, fighting or inside a building is never picked.
 
 **Replays:** record the match, play it back, and check that the log has no `CRC Mismatch` line.
 

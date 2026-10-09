@@ -22,7 +22,7 @@
 // of them stood.  A second click sends the ones that are still around back to those places.
 //
 // An army unit is a unit that can shoot (from the combat figures of its template: no names), is not a worker, harvester or
-// support unit and is not a structure.  "Near" is a radius around the attack; "idle" is the AI's idle state, so units that
+// support unit and is not a structure (PlayerAssist::isArmyUnit, AssistIdle.cpp; the idle hotkeys use it as well).  "Near" is a radius around the attack; "idle" is the AI's idle state, so units that
 // the player is busy with are left alone.
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
@@ -58,21 +58,10 @@ namespace
 		std::vector<Object *>	m_units;
 	};
 
-	Bool isArmyUnit( Object *obj )
-	{
-		if (obj->isEffectivelyDead() || obj->isKindOf( KINDOF_STRUCTURE ) || obj->isKindOf( KINDOF_IMMOBILE ) ||
-				obj->isKindOf( KINDOF_DOZER ) || obj->isKindOf( KINDOF_HARVESTER ) || obj->isContained() || obj->isDisabledByType( DISABLED_HELD ))
-			return FALSE;
-		if (obj->getAIUpdateInterface() == nullptr)
-			return FALSE;
-		const AICombatFigures *f = AICombatModel::figures( obj->getTemplate() );
-		return f && f->m_armed && f->m_supportLevel == 0 && (f->m_canHitGround || f->m_canHitAir);
-	}
-
 	void findIdle( Object *obj, void *userData )
 	{
 		Found *found = (Found *)userData;
-		if (!isArmyUnit( obj ) || !obj->getAIUpdateInterface()->isIdle())
+		if (!PlayerAssist::isArmyUnit( obj ) || !obj->getAIUpdateInterface()->isIdle())
 			return;
 		if (dist2D( *obj->getPosition(), found->m_where ) > NEARBY_RADIUS)
 			return;

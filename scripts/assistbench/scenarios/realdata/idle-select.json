@@ -1,0 +1,39 @@
+{
+ "name": "idle-select",
+ "description": "idle hotkeys: three idle Battlemasters and a busy one (driving away); the next-idle key walks through the idle ones by id and starts again from the first, the busy one is never picked; the all-idle key selects the three. The starting dozers are removed, two are made and one drives away: the next-idle-worker key picks the other one every time.",
+ "map": "tournamenta",
+ "players": "human:China:-1:1,idle:America:-1:2",
+ "seed": 1,
+ "steps": [
+  "kill all:0:ChinaVehicleDozer",
+  "spawn army 0:ChinaTankBattleMaster:3 at=cc:0^450,-60",
+  "spawn busy 0:ChinaTankBattleMaster:1 at=cc:0^450,120",
+  "spawn dozers 0:ChinaVehicleDozer:2 at=cc:0^300,220",
+  "wait 5",
+  "ai busy move cc:0^1800,0",
+  "ai dozers[1] move cc:0^1600,300",
+  "wait 10",
+  "expect idle army",
+  "expect not idle busy",
+  "expect count all:0:ChinaVehicleDozer =2",
+  "idle army",
+  "expect selection army[0] exact=1",
+  "idle army",
+  "expect selection army[1] exact=1",
+  "idle army",
+  "expect selection army[2] exact=1",
+  "idle army",
+  "expect selection army[0] exact=1",
+  "idle all",
+  "expect selection army exact=1",
+  "idle workers",
+  "expect selection dozers[0] exact=1",
+  "idle workers",
+  "expect selection dozers[0] exact=1"
+ ],
+ "log": [
+  { "match": "^ASSIST idle army: 3 idle, selects unit \\d+ ChinaTankBattleMaster", "min": 4 },
+  "^ASSIST idle army: selects all 3$",
+  { "match": "^ASSIST idle workers: 1 idle, selects unit \\d+ ChinaVehicleDozer", "min": 2 }
+ ]
+}

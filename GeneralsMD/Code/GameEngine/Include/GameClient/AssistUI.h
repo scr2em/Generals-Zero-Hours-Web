@@ -121,6 +121,9 @@ public:
 	static Real scale();
 	static Int  px( Int designPixels );								///< designPixels * scale()
 	static Int  controlBarTop();											///< y of the top of the command bar (the panels sit above)
+	static Int  belowToolbar();												///< y just below the toolbar of the display assists (top right)
+	/// "Alt+3" for the key a meta message is mapped to (empty if none).
+	static UnicodeString hotkeyText( GameMessage::Type msg );
 	/// y of a panel of the left stack: above the command bar and the stack panels that were made before it and are shown.
 	static Int  stackY( const AssistPanel *panel, Int height );
 
@@ -242,6 +245,17 @@ public:
 //-------------------------------------------------------------------------------------------------
 /// The unit stances (AssistUIStance.cpp).
 class AssistStanceUI
+{
+public:
+	static void init();
+	static void reset();
+	static Bool translate( const GameMessage *msg );	///< true when the message is used up
+};
+
+
+//-------------------------------------------------------------------------------------------------
+/// The idle hotkeys and the idle counter (AssistUIIdle.cpp).
+class AssistIdleUI
 {
 public:
 	static void init();

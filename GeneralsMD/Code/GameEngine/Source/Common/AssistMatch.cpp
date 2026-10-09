@@ -49,6 +49,8 @@
 //     stop                                         MSG_DO_STOP
 //     protect <protectors> <protected>|group=<n>   MSG_ASSIST_PROTECT (hotkey group or -1, protectors, protected)
 //     unprotect                                    MSG_ASSIST_UNPROTECT for the selection
+//     idle army|all|workers                        what the idle hotkeys do: select the next idle army unit, all idle army units
+//                                                  or the next idle worker (PlayerAssist::pickIdle, MSG_CREATE_SELECTED_GROUP)
 //     send <command> [int:<n>|bool:<0|1>|real:<x>|pos:<pos>|obj:<objects>]...
 //                                                  any other command of the player by name (MSG_ASSIST_STANCE or ASSIST_STANCE),
 //                                                  with its arguments in order (obj: appends every object), e.g. the orders of
@@ -64,7 +66,7 @@
 //     expect [not] <condition>                     check now
 //
 // Objects: <name>, <name>[i] (the i-th, from 0), cc:<slot> (the command center of a player), sel (the selection),
-// joined with '+'. Positions: x,y (world), <objects> (their centre), map (the centre of the map), followed by an offset:
+// all:<slot>:<template> (every live object of that template the player owns, by id; may be none), joined with '+'. Positions: x,y (world), <objects> (their centre), map (the centre of the map), followed by an offset:
 // +dx,dy or -dx,dy (world), or ^f,l (f towards the centre of the map, l to the left of that).
 //
 // Conditions (on every unit; any=1: on one of them):
@@ -87,6 +89,8 @@
 //   apart <objects> min=<d>              no two of the units are closer than d
 //   health <objects> above|below <percent>
 //   alive / dead / damaged / idle <objects>
+//   selection <objects> [exact=1]        the units are in the selection the script made last (select, idle ...); exact=1: and nothing else
+//   count <objects> <op><n>              the number of live objects in the set compared with n (op: = <= >= < >; "4" is "=4")
 //
 // Every check is printed as "ASSISTMATCH_CHECK PASS|FAIL ..." and the end result as "ASSISTMATCH_RESULT {json}".
 //
@@ -106,6 +110,7 @@
 #include "Common/PlayerList.h"
 #include "Common/PlayerTemplate.h"
 #include "Common/RandomValue.h"
+#include "Common/ThingFactory.h"
 #include "Common/ThingTemplate.h"
 #include "GameClient/MapUtil.h"
 #include "GameLogic/AI.h"
@@ -163,6 +168,27 @@ Bool parseReal(const std::string &text, Real &out)
 		return FALSE;
 	out = (Real)v;
 	return TRUE;
+}
+
+/// "<=3", ">=10", "=0" or "4" (the same as "=4"): a comparison with a whole number.
+Bool parseCompare(const std::string &text, std::string &op, Int &value)
+{
+	size_t n = 0;
+	while (n < text.size() && (text[n] == '<' || text[n] == '>' || text[n] == '='))
+		++n;
+	op = n == 0 ? std::string("=") : text.substr(0, n);
+	if (op != "=" && op != "==" && op != "<=" && op != ">=" && op != "<" && op != ">")
+		return FALSE;
+	return parseSigned(text.substr(n), value);
+}
+
+Bool compare(Int have, const std::string &op, Int want)
+{
+	if (op == "<=") return have <= want;
+	if (op == ">=") return have >= want;
+	if (op == "<") return have < want;
+	if (op == ">") return have > want;
+	return have == want;
 }
 
 Real dist2D(const Coord3D &a, const Coord3D &b)
@@ -377,7 +403,7 @@ const VerbInfo kVerbs[] = {
 	{ "spawn", 2 }, { "name", 2 }, { "snapshot", 1 }, { "dump", 1 },
 	{ "select", 1 }, { "group", 1 }, { "selectgroup", 1 }, { "formation", 1 }, { "fmove", 1 },
 	{ "move", 1 }, { "attackmove", 1 }, { "guard", 1 }, { "attack", 1 }, { "stop", 0 },
-	{ "protect", 1 }, { "unprotect", 0 }, { "send", 1 },
+	{ "protect", 1 }, { "unprotect", 0 }, { "send", 1 }, { "idle", 1 },
 	{ "ai", 2 }, { "damage", 2 }, { "kill", 1 },
 	{ "wait", 1 }, { "until", 2 }, { "expect", 2 },
 };
@@ -392,6 +418,7 @@ const CondInfo kConds[] = {
 	{ "formation", 2 }, { "shape", 2 }, { "sameshape", 1 }, { "ahead", 2 }, { "nearline", 3 }, { "near", 2 },
 	{ "linked", 1 }, { "unlinked", 1 }, { "protects", 2 }, { "state", 2 }, { "athome", 1 }, { "homeat", 2 },
 	{ "alive", 1 }, { "dead", 1 }, { "damaged", 1 }, { "idle", 1 }, { "atsnapshot", 1 }, { "apart", 1 }, { "health", 3 },
+	{ "selection", 1 }, { "count", 2 },
 };
 
 Bool parseScript(const std::string &text, std::vector<Step> &out, std::string &error)
@@ -527,7 +554,10 @@ public:
 	Runner(const Config &cfg, const std::vector<Step> &steps)
 		: m_cfg(cfg), m_steps(steps), m_human(nullptr), m_updates(0), m_loadMs(0), m_simMs(0), m_startFrame(0),
 		  m_stepsDone(0), m_assistsAllowed(FALSE)
-	{}
+	{
+		for (Int i = 0; i < 3; ++i)
+			m_lastIdle[i] = INVALID_ID;
+	}
 
 	Bool setup(std::string &error);
 	Bool play(std::string &error);
@@ -559,6 +589,7 @@ private:
 	UnsignedInt m_startFrame;
 	Int m_stepsDone;
 	Bool m_assistsAllowed;
+	ObjectID m_lastIdle[3];		// the unit each idle pick chose last (PlayerAssist::IdlePick), as the hotkeys remember it
 
 	std::vector<Check> m_checks;
 	std::map<std::string, std::vector<ObjectID> > m_names;
@@ -728,6 +759,26 @@ Bool Runner::resolveObjects(const std::string &ref, std::vector<ObjectID> &ids, 
 		if (item == "sel")
 		{
 			ids.insert(ids.end(), m_selection.begin(), m_selection.end());
+			continue;
+		}
+		if (item.compare(0, 4, "all:") == 0)
+		{
+			// every live object of a template that a player owns, ordered by id
+			const size_t colon = item.find(':', 4);
+			Int slot = -1;
+			Player *player = colon != std::string::npos && parseSigned(item.substr(4, colon - 4), slot) ? ThePlayerList->getPlayerFromSlotIndex(slot) : nullptr;
+			const ThingTemplate *tt = colon != std::string::npos ? TheThingFactory->findTemplate(AsciiString(item.substr(colon + 1).c_str())) : nullptr;
+			if (player == nullptr || tt == nullptr)
+			{
+				error = "'" + item + "' is not all:<slot>:<template> of a player and a known template";
+				return FALSE;
+			}
+			std::vector<ObjectID> found;
+			for (Object *obj = TheGameLogic->getFirstObject(); obj; obj = obj->getNextObject())
+				if (obj->getControllingPlayer() == player && obj->getTemplate()->isEquivalentTo(tt) && !obj->isEffectivelyDead())
+					found.push_back(obj->getID());
+			std::sort(found.begin(), found.end());
+			ids.insert(ids.end(), found.begin(), found.end());
 			continue;
 		}
 		if (item.compare(0, 3, "cc:") == 0)
@@ -1245,6 +1296,43 @@ Eval Runner::evaluate(const Step &s, size_t first)
 		return e;
 	}
 
+	if (cond == "count")
+	{
+		Int live = 0;
+		for (size_t i = 0; i < ids.size(); ++i)
+		{
+			const Object *o = TheGameLogic->findObjectByID(ids[i]);
+			if (o && !o->isEffectivelyDead())
+				++live;
+		}
+		std::string op;
+		Int want = 0;
+		if (!parseCompare(a[1], op, want))
+		{
+			e.fail("count <objects> <op><n>, e.g. >=4");
+			return e;
+		}
+		e.num("count", live);
+		e.ok = compare(live, op, want);
+		e.detail = format("%d live objects (wanted %s%d)", live, op.c_str(), want);
+		return e;
+	}
+
+	if (cond == "selection")
+	{
+		Int in = 0;
+		for (size_t i = 0; i < ids.size(); ++i)
+			if (std::find(m_selection.begin(), m_selection.end(), ids[i]) != m_selection.end())
+				++in;
+		const Bool exact = s.opt("exact", "0") == "1";
+		e.num("units", (double)ids.size());
+		e.num("selected", in);
+		e.num("selectionSize", (double)m_selection.size());
+		e.ok = !ids.empty() && (any ? in > 0 : in == (Int)ids.size()) && (!exact || m_selection.size() == ids.size());
+		e.detail = format("%d of %d units are in the selection of %d", in, (int)ids.size(), (int)m_selection.size());
+		return e;
+	}
+
 	if (cond == "apart")
 	{
 		Real closest = 1e30f;
@@ -1682,6 +1770,30 @@ void Runner::runStep(Int index, const Step &s, std::string &fatal)
 	}
 	else if (verb == "unprotect")
 		message(GameMessage::MSG_ASSIST_UNPROTECT);
+	else if (verb == "idle")
+	{
+		// what an idle hotkey does (AssistUIIdle.cpp): the same pick, then a new selection as a click makes it
+		const std::string what = lowered(a[0]);
+		const Int pick = what == "army" ? PlayerAssist::IDLE_PICK_ARMY_NEXT : what == "all" ? PlayerAssist::IDLE_PICK_ARMY_ALL :
+			(what == "workers" || what == "worker") ? PlayerAssist::IDLE_PICK_WORKER_NEXT : -1;
+		if (pick < 0)
+			error = "idle army|all|workers";
+		else
+		{
+			std::vector<ObjectID> ids;
+			PlayerAssist::pickIdle(m_human, pick, m_lastIdle[pick], ids);
+			if (!ids.empty())		// nothing idle: the hotkey does nothing
+			{
+				GameMessage *msg = message(GameMessage::MSG_CREATE_SELECTED_GROUP);
+				msg->appendBooleanArgument(TRUE);
+				for (size_t i = 0; i < ids.size(); ++i)
+					msg->appendObjectIDArgument(ids[i]);
+				m_selection = ids;
+				if (pick != PlayerAssist::IDLE_PICK_ARMY_ALL)
+					m_lastIdle[pick] = ids[0];
+			}
+		}
+	}
 	else if (verb == "send")
 	{
 		// any command of the player by its name, with typed arguments: the orders of assists this script has no verb for

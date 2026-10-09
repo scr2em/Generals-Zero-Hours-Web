@@ -41,7 +41,7 @@ MENU="c:515,449"; PAUSE_EXIT="c:399,412"; YES="c:318,368"; OK_REPORT="c:699,566"
 REPLAY_ROW="c:62,100"; REPLAY_PLAY="c:124,502"
 ASSIST_CHECKBOX="c:565,480"		# "Player assists allowed" on the skirmish setup screen
 ASSIST_BUTTON="c:208,481"			# "Player assists..." on the Options screen
-OPT_FORMATIONS="c:400,67"; OPT_CLOSE="c:399,295"		# in the Player assists dialog
+OPT_FORMATIONS="c:400,67"; OPT_CLOSE="c:399,325"		# in the Player assists dialog
 
 # the units the matches start with: left of the base, in the first screen
 UNITS="0:IronwoodRifleman:6+0:IronwoodTank:3+0:IronwoodRocketeer:4+0:IronwoodScout:2"

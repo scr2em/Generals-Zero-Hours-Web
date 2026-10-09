@@ -134,6 +134,23 @@ public:
 	/// A unit a stance makes sense for: armed, mobile, on the ground.
 	static Bool stanceEligible( const Object *obj );
 
+	// ---- idle units (AssistIdle.cpp): questions for the idle hotkeys and the idle counter, no orders ------------------
+	enum IdleKind { IDLE_ARMY = 0, IDLE_WORKER = 1 };
+	/// A unit that can shoot, is not a worker, harvester or support unit nor a structure, and can be ordered about (the
+	/// definition of the "base under attack" response as well).
+	static Bool isArmyUnit( const Object *obj );
+	/// A builder (dozer, worker) or a supply gatherer.
+	static Bool isWorker( const Object *obj );
+	/// An army unit (IDLE_ARMY) or a worker (IDLE_WORKER) that stands idle: its AI is idle and, for a worker, it has no
+	/// building job pending and is not on a supply round.
+	static Bool isIdleUnit( Object *obj, Int kind );
+	/// The player's idle units of that kind, ordered by object id.
+	static void idleUnits( const Player *player, Int kind, std::vector<Object *> &out );
+	enum IdlePick { IDLE_PICK_ARMY_NEXT = 0, IDLE_PICK_ARMY_ALL, IDLE_PICK_WORKER_NEXT };
+	/// What an idle hotkey selects: the ids go to 'out' (empty when nothing is idle).  "Next" is the idle unit with the
+	/// smallest id above 'after' (the unit the hotkey picked last time), or the first one again.  Prints the ASSIST line of the pick (-assistDebug).  Used by the hotkeys and the test bench.
+	static void pickIdle( const Player *player, Int pick, ObjectID after, std::vector<ObjectID> &out );
+
 	// ---- formations (AssistFormation.cpp) ------------------------------------------------------
 	/// The formation set for this unit (AFORM_NONE if it has none).
 	Int formationOf( ObjectID id ) const;

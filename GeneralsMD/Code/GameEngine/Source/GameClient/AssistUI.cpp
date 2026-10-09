@@ -150,6 +150,44 @@ Int AssistUI::stackY( const AssistPanel *panel, Int height )
 }
 
 //-------------------------------------------------------------------------------------------------
+UnicodeString AssistUI::hotkeyText( GameMessage::Type msg )
+{
+	UnicodeString out;
+	if (TheMetaMap == nullptr)
+		return out;
+	const MetaMapRec *rec = nullptr;
+	for (const MetaMapRec *r = TheMetaMap->getFirstMetaMapRec(); r; r = r->m_next)
+	{
+		if (r->m_meta == msg)
+		{
+			rec = r;
+			break;
+		}
+	}
+	if (rec == nullptr || rec->m_key == MK_NONE)
+		return out;
+	const Int mods = (Int)rec->m_modState;
+	if (mods & CTRL)
+		out.concat( L"Ctrl+" );
+	if (mods & ALT)
+		out.concat( L"Alt+" );
+	if (mods & SHIFT)
+		out.concat( L"Shift+" );
+	WideChar c = 0;
+	if (rec->m_key >= MK_A && rec->m_key <= MK_Z)
+		c = (WideChar)(L'A' + (rec->m_key - MK_A));
+	else if (rec->m_key >= MK_1 && rec->m_key <= MK_9)
+		c = (WideChar)(L'1' + (rec->m_key - MK_1));
+	else if (rec->m_key == MK_0)
+		c = L'0';
+	if (c)
+		out.concat( c );
+	else
+		out.concat( L"key" );
+	return out;
+}
+
+//-------------------------------------------------------------------------------------------------
 void AssistUI::usePool( AssistTextPool *pool )
 {
 	s_pool = pool ? pool : &s_overlayPool;
@@ -564,43 +602,6 @@ namespace
 		GameMessage::MSG_META_ASSIST_FORM_KEEP
 	};
 
-	/// "Alt+3" for the key a meta message is mapped to.
-	UnicodeString hotkeyText( GameMessage::Type msg )
-	{
-		UnicodeString out;
-		if (TheMetaMap == nullptr)
-			return out;
-		const MetaMapRec *rec = nullptr;
-		for (const MetaMapRec *r = TheMetaMap->getFirstMetaMapRec(); r; r = r->m_next)
-		{
-			if (r->m_meta == msg)
-			{
-				rec = r;
-				break;
-			}
-		}
-		if (rec == nullptr || rec->m_key == MK_NONE)
-			return out;
-		const Int mods = (Int)rec->m_modState;
-		if (mods & CTRL)
-			out.concat( L"Ctrl+" );
-		if (mods & ALT)
-			out.concat( L"Alt+" );
-		if (mods & SHIFT)
-			out.concat( L"Shift+" );
-		WideChar c = 0;
-		if (rec->m_key >= MK_A && rec->m_key <= MK_Z)
-			c = (WideChar)(L'A' + (rec->m_key - MK_A));
-		else if (rec->m_key >= MK_1 && rec->m_key <= MK_9)
-			c = (WideChar)(L'1' + (rec->m_key - MK_1));
-		else if (rec->m_key == MK_0)
-			c = L'0';
-		if (c)
-			out.concat( c );
-		else
-			out.concat( L"key" );
-		return out;
-	}
 }
 
 class FormationPanel : public AssistPanel
@@ -625,7 +626,7 @@ public:
 			b.m_on = sel.m_formation == b.m_id;
 			UnicodeString tip;
 			tip.format( L"%ls", formationNames[b.m_id] );
-			const UnicodeString key = hotkeyText( formationKeys[b.m_id] );
+			const UnicodeString key = AssistUI::hotkeyText( formationKeys[b.m_id] );
 			if (!key.isEmpty())
 				tip.format( L"%ls  (%ls)", formationNames[b.m_id], key.str() );
 			b.m_tip = tip;
@@ -786,6 +787,19 @@ public:
 
 static ToolbarPanel *s_toolbar = nullptr;
 
+//-------------------------------------------------------------------------------------------------
+Int AssistUI::belowToolbar()
+{
+	if (s_toolbar && s_toolbar->isVisible())
+	{
+		Int x, y, w, h;
+		s_toolbar->window()->winGetScreenPosition( &x, &y );
+		s_toolbar->window()->winGetSize( &w, &h );
+		return y + h + px( 4 );
+	}
+	return px( 26 );
+}
+
 //=================================================================================================
 // the panels and overlays, once per frame
 //=================================================================================================
@@ -807,6 +821,7 @@ void AssistUI::reset()
 	AssistCoverageUI::reset();
 	AssistAlertUI::reset();
 	AssistOddsUI::reset();
+	AssistIdleUI::reset();
 	for (size_t i = 0; i < s_panels.size(); ++i)
 		s_panels[i]->destroy();
 	s_selection.m_valid = FALSE;
@@ -840,6 +855,7 @@ void AssistUI::update()
 	AssistOddsUI::init();
 	if (s_toolbar == nullptr)
 		s_toolbar = new ToolbarPanel;
+	AssistIdleUI::init();		// after the toolbar: it is placed below it
 
 	for (size_t i = 0; i < s_panels.size(); ++i)
 	{
@@ -968,7 +984,7 @@ void AssistUI::drawAim()
 
 namespace
 {
-	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_STANCES = 6, OPT_CLOSE = 100 };
+	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_STANCES = 6, OPT_IDLE = 7, OPT_CLOSE = 100 };
 
 	struct ToggleRow { Int id; const wchar_t *label; Bool *value; };
 }
@@ -987,6 +1003,7 @@ public:
 		addButton( OPT_STANCES, 0, L"Unit stances: kite, retreat when damaged, spread out, split fire", nullptr );
 		addButton( OPT_ODDS, 0, L"Odds meter: point at an enemy group to see who would win", nullptr );
 		addButton( OPT_ALERT, 0, L"Base under attack: one click sends idle army units to defend", nullptr );
+		addButton( OPT_IDLE, 0, L"Idle hotkeys: select idle army units and workers, idle counter", nullptr );
 		addButton( 200, 0, L"All assists are off until switched on here.", nullptr );
 		addButton( 201, 0, L"Those that give orders also need \"Player assists allowed\" in the match setup.", nullptr );
 		addButton( OPT_CLOSE, 0, L"Close", nullptr );
@@ -1024,6 +1041,7 @@ public:
 		find( OPT_ALERT )->m_on = TheAssistOptions.m_baseAlert;
 		find( OPT_ODDS )->m_on = TheAssistOptions.m_odds;
 		find( OPT_STANCES )->m_on = TheAssistOptions.m_stances;
+		find( OPT_IDLE )->m_on = TheAssistOptions.m_idleKeys;
 	}
 
 	virtual Bool refresh() override { return TRUE; }
@@ -1069,6 +1087,7 @@ public:
 			case OPT_ALERT: TheAssistOptions.m_baseAlert = !TheAssistOptions.m_baseAlert; break;
 			case OPT_ODDS: TheAssistOptions.m_odds = !TheAssistOptions.m_odds; break;
 			case OPT_STANCES: TheAssistOptions.m_stances = !TheAssistOptions.m_stances; break;
+			case OPT_IDLE: TheAssistOptions.m_idleKeys = !TheAssistOptions.m_idleKeys; break;
 			case OPT_CLOSE: closeDialog(); return;
 			default: return;
 		}
@@ -1250,7 +1269,8 @@ GameMessageDisposition AssistUI::translate( const GameMessage *msg )
 	if (t != GameMessage::MSG_RAW_MOUSE_POSITION)
 		invalidateSelection();	// the selection may have changed since the last frame
 
-	if (AssistProtectUI::translate( msg ) || AssistStanceUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ) || AssistOddsUI::translate( msg ))
+	if (AssistProtectUI::translate( msg ) || AssistStanceUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ) || AssistOddsUI::translate( msg ) ||
+			AssistIdleUI::translate( msg ))
 		return DESTROY_MESSAGE;
 
 	// ---- hotkeys -----------------------------------------------------------------------------
