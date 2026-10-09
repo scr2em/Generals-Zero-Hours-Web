@@ -108,7 +108,7 @@ void MiniDumper::TriggerMiniDump(DumpType dumpType)
 	// GCC/MinGW-w64 doesn't support MSVC's __try/__except syntax
 	// Trigger dump directly without SEH support
 	DEBUG_LOG(("MiniDumper::TriggerMiniDump: SEH not supported on this compiler, skipping manual dump trigger."));
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
 	// There are no structured exceptions on the web, and dbghelp.dll never loads.
 	DEBUG_LOG(("MiniDumper::TriggerMiniDump: Mini dumps are not supported on the web, skipping manual dump trigger."));
 #else

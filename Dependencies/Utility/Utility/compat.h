@@ -19,7 +19,7 @@
 // This file contains macros to help compiling on non-windows platforms.
 #pragma once
 
-#if defined(__EMSCRIPTEN__)
+#if defined(ZH_WEBCOMPAT)
 // The web build gets the full Win32 compatibility layer from Dependencies/WebCompat.
 #include <windows.h>
 #elif !defined(_WIN32)

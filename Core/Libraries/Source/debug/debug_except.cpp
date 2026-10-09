@@ -407,7 +407,7 @@ LONG __stdcall DebugExceptionhandler::ExceptionFilter(struct _EXCEPTION_POINTERS
   // Show a dialog box
   InitCommonControls();
   exPtrs=pExPtrs;
-  DialogBoxIndirect(NULL,(LPDLGTEMPLATE)rcException,nullptr,ExceptionDlgProc);
+  DialogBoxIndirect(NULL,(LPDLGTEMPLATE)rcException,nullptr,(DLGPROC)ExceptionDlgProc);
 
   // Now die
   return EXCEPTION_EXECUTE_HANDLER;

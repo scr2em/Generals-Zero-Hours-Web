@@ -381,7 +381,7 @@ int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *ctx)
 		  "mov %%esp, %2"
 		  : "=r" (reg_eip), "=r" (reg_ebp), "=r" (reg_esp)
 	  );
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
 	  // WebAssembly cannot read its registers or its call stack.
 	  reg_eip = reg_ebp = reg_esp = 0;
 #else

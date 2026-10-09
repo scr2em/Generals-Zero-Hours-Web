@@ -48,7 +48,7 @@
 //   but the fact that you can't call a function that uses strtok()
 //   during a series of strtok() calls is really annoying.
 //
-#ifndef _UNIX
+#if !defined(_UNIX) && !defined(ZH_NATIVE_HEADLESS) // the native headless build uses the C library's strtok_r
 char *strtok_r(char *strptr, const char *delimiters, char **lasts)
 {
 	if (strptr)

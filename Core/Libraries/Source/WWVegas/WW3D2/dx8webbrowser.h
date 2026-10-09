@@ -33,7 +33,7 @@
 #pragma once
 
 #include <windows.h>
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 #include <oaidl.h>	// LPDISPATCH
 #endif
 #include "d3d8.h"

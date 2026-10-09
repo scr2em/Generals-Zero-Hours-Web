@@ -29,6 +29,13 @@
 #define ZH_WEB 1
 #endif
 
+// The Win32 stand-ins of this library are in use. That is the web build and the native headless build
+// (cmake/native-headless.cmake), which runs the same code with the system compiler. Code that needs the
+// browser itself tests __EMSCRIPTEN__ instead.
+#ifndef ZH_WEBCOMPAT
+#define ZH_WEBCOMPAT 1
+#endif
+
 #include "windows.h"
 
 // The rest of the C runtime extensions, which on Windows come with the

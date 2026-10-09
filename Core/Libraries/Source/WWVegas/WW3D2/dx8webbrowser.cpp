@@ -34,7 +34,7 @@
 #include "ww3d.h"
 #include "dx8wrapper.h"
 
-#if ENABLE_EMBEDDED_BROWSER && defined(__EMSCRIPTEN__)
+#if ENABLE_EMBEDDED_BROWSER && defined(ZH_WEBCOMPAT)
 
 // The browser has no embedded Internet Explorer: there is never a browser to
 // create, so everything does nothing, as when the browser control is not

@@ -1356,7 +1356,7 @@ void IMEManager::updateCandidateList( Int candidateFlags  )
 		if ( candidateFlags & candidate )
 		{
 			Bool unicode = TRUE;
-			unsigned long listCount = 0;
+			DWORD listCount = 0;
 
 			Int size = ImmGetCandidateListCountW( m_context, &listCount );
 

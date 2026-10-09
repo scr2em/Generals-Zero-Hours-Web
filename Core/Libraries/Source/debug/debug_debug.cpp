@@ -53,7 +53,7 @@ void *Debug::PreStatic=&Debug::PreStaticInit;
 #pragma data_seg(".CRT$XCY")
 void *Debug::PostStatic=&Debug::PostStaticInit;
 #pragma data_seg()
-#elif defined(__GNUC__) && (defined(_WIN32) || defined(__EMSCRIPTEN__))
+#elif defined(__GNUC__) && (defined(_WIN32) || defined(ZH_WEBCOMPAT))
 // For GCC/MinGW-w64 targeting Windows and for WebAssembly, use constructor attributes
 // Use priority 101 for PreStatic (very early) and 65434 for PostStatic (very late)
 void __attribute__((constructor(101))) GccPreStaticInit() { Debug::PreStaticInit(); }
@@ -148,7 +148,8 @@ void Debug::PostStaticInit()
   if (h!=INVALID_HANDLE_VALUE)
   {
     char cmdBuffer[512];
-    unsigned long ioCur=0,ioUsed=0,cmdCur=0;
+    unsigned long ioCur=0,cmdCur=0;
+    DWORD ioUsed=0;
     ReadFile(h,ioBuffer,sizeof(ioBuffer),&ioUsed,nullptr);
     for (;;)
     {
@@ -286,7 +287,7 @@ static LONG WINAPI LocalVectoredExceptionHandler(struct _EXCEPTION_POINTERS *pEx
 
 void Debug::InstallExceptionHandler()
 {
-#if defined(__EMSCRIPTEN__)
+#if defined(ZH_WEBCOMPAT)
   // WebAssembly has no structured exceptions to catch.
 #elif defined(_MSC_VER)
   _set_se_translator(LocalSETranslator);
@@ -322,7 +323,7 @@ bool Debug::SkipNext()
     :
     : "memory"
   );
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
   // WebAssembly cannot read its call stack: all call sites share one frame.
   help=0;
 #else

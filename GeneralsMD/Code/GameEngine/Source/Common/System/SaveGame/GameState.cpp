@@ -709,7 +709,7 @@ SaveCode GameState::loadGame( AvailableGameInfo gameInfo )
 	// check for error
 	if( error == TRUE )
 	{
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 		fprintf( stderr, "The saved game '%s' could not be loaded\n", filepath.str() );
 #endif
 		// clear it out, again
@@ -1524,7 +1524,7 @@ void GameState::xferSaveData( Xfer *xfer, SnapshotType which )
 
 					DEBUG_CRASH(( "Error loading block '%s' in file '%s'",
 												blockInfo->blockName.str(), xfer->getIdentifier().str() ));
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 					// There is no debug log in the browser; the page shows what goes to stderr.
 					fprintf( stderr, "Error loading block '%s' in file '%s'\n", blockInfo->blockName.str(), xfer->getIdentifier().str() );
 #endif

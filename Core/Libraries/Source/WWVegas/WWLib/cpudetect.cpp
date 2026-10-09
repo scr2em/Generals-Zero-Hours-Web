@@ -158,7 +158,7 @@ static unsigned Calculate_Processor_Speed(sint64& ticks_per_second)
 
 void CPUDetectClass::Init_Processor_Speed()
 {
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 	// WebAssembly has no clock rate to measure. _rdtsc() counts nanoseconds here and the
 	// processor is reported as a modern one.
 	ProcessorTicksPerSecond=1000000000;
@@ -928,7 +928,7 @@ void CPUDetectClass::Init_Memory()
    AvailableVirtualMemory  = mem.ullAvailVirtual;
 #endif // defined(_MSC_VER) && _MSC_VER < 1300
 
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
 	MEMORYSTATUS mem;
 	mem.dwLength = sizeof(mem);
 	GlobalMemoryStatus(&mem);
@@ -987,7 +987,7 @@ void CPUDetectClass::Init_OS()
     OSVersionPlatformId = 2;
     OSVersionExtraInfo = "";
 #endif // defined(_MSC_VER) && _MSC_VER < 1300
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
 	OSVERSIONINFO os;
 	os.dwOSVersionInfoSize = sizeof(os);
 	GetVersionEx(&os);
@@ -1130,7 +1130,7 @@ void CPUDetectClass::Init_Compact_Log()
 {
 	StringClass work(0,true);
 
-#if defined(WIN32) || defined(__EMSCRIPTEN__)
+#if defined(WIN32) || defined(ZH_WEBCOMPAT)
    TIME_ZONE_INFORMATION time_zone;
    GetTimeZoneInformation(&time_zone);
    COMPACTLOG(("%d\t", time_zone.Bias));  // get diff between local time and UTC

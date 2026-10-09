@@ -148,10 +148,10 @@ struct Registry
 	void Seed()
 	{
 		// Zero Hour is installed in /game, the original game, whose data Zero
-		// Hour also reads, in /generals.
-		static const struct { const char *key; const char *installPath; } games[] = {
-			{ "SOFTWARE\\Electronic Arts\\EA Games\\Command and Conquer Generals Zero Hour", "/game/" },
-			{ "SOFTWARE\\Electronic Arts\\EA Games\\Generals", "/generals/" },
+		// Hour also reads, in /generals (unless webcompat_folders.h says otherwise).
+		const struct { const char *key; const char *installPath; } games[] = {
+			{ "SOFTWARE\\Electronic Arts\\EA Games\\Command and Conquer Generals Zero Hour", WebCompat::InstallFolder(false) },
+			{ "SOFTWARE\\Electronic Arts\\EA Games\\Generals", WebCompat::InstallFolder(true) },
 		};
 		for (size_t i = 0; i < sizeof(games) / sizeof(games[0]); ++i)
 		{

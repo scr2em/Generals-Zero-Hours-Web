@@ -95,16 +95,28 @@ extern "C" {
 #endif
 
 /* ---------------------------------------------------------------------------
-** Basic types (ILP32, the same as 32-bit Windows)
+** Basic types (ILP32, the same as 32-bit Windows). The native headless build
+** (cmake/native-headless.cmake) is 64-bit, where long has 64 bits on Linux and
+** macOS (LP64): it gets the types of 64-bit Windows (LLP64), where DWORD and
+** LONG keep 32 bits and only the pointer sized types grow.
 ** ------------------------------------------------------------------------- */
 typedef int                 BOOL;
 typedef unsigned char       BYTE;
 typedef unsigned short      WORD;
+#if defined(__LP64__)
+typedef unsigned int        DWORD;
+#else
 typedef unsigned long       DWORD;
+#endif
 typedef unsigned int        UINT;
 typedef int                 INT;
+#if defined(__LP64__)
+typedef int                 LONG;
+typedef unsigned int        ULONG;
+#else
 typedef long                LONG;
 typedef unsigned long       ULONG;
+#endif
 typedef short               SHORT;
 typedef unsigned short      USHORT;
 typedef char                CHAR;
@@ -131,11 +143,19 @@ typedef long long           LONG64;
 typedef unsigned long long  ULONG64;
 typedef unsigned long long  DWORD64;
 
+#if defined(__LP64__)
+/* The pointer sized types of 64-bit Windows. */
+typedef long long           INT_PTR;
+typedef unsigned long long  UINT_PTR;
+typedef long long           LONG_PTR;
+typedef unsigned long long  ULONG_PTR;
+#else
 /* The types of 32-bit Windows, which are not those of <stdint.h> on wasm32. */
 typedef int                 INT_PTR;
 typedef unsigned int        UINT_PTR;
 typedef long                LONG_PTR;
 typedef unsigned long       ULONG_PTR;
+#endif
 typedef ULONG_PTR           DWORD_PTR;
 typedef ULONG_PTR           SIZE_T;
 typedef LONG_PTR            SSIZE_T;
@@ -267,7 +287,7 @@ typedef struct tagMSG {
 } MSG, *PMSG, *LPMSG;
 
 typedef struct _GUID {
-	unsigned long  Data1;
+	DWORD          Data1;
 	unsigned short Data2;
 	unsigned short Data3;
 	unsigned char  Data4[8];
