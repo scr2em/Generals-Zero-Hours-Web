@@ -242,6 +242,7 @@ struct AISkillSettings
 	Bool m_useTeamWaves;				///< The army that a wave needs is reduced by the armed units of the allies (they fight on our side).
 	Real m_allyWaveWeight;			///< ... by this share of their value,
 	Real m_allyWaveFloor;				///< ... but not below this share of the army the wave would need alone.
+	Real m_baseDefenceMaxBlockSeconds;///< An alarm holds back the waves at most this long once nothing of ours has been hit for a while.
 };
 
 class AISideBuildList : public MemoryPoolObject

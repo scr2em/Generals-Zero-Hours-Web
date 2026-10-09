@@ -517,6 +517,8 @@ private:
 
 	// base defence priority (AIBaseDefence.cpp)
 	Bool baseDefenceOn() const;
+	Bool baseAlarmStale( UnsignedInt now ) const;
+	Bool baseAlarmBlocksWaves( UnsignedInt now ) const;
 	Bool teamWavesOn() const;
 	void noteBaseDamage( Object *victim, ObjectID attacker, Real amount );
 	Bool findBaseThreat( Coord3D *where, Real *value ) const;
@@ -645,6 +647,8 @@ private:
 	UnsignedInt		m_bdSince;
 	UnsignedInt		m_bdDamageFrame;								///< latest damage to one of our objects inside the zone by an enemy
 	UnsignedInt		m_nextBaseDefence;
+	UnsignedInt		m_bdMuteUntil;									///< a stale alarm is not raised again by the same force until this frame
+	Real					m_bdMuteValue;
 	UnsignedInt		m_bdWeakFrame;									///< last trace line about a threat that the teams at home do not go out to
 	AIBunkerRecord m_bunkerMen[MAX_BUNKER_MEN];			///< infantry that hold defensive structures for good
 	Int						m_numBunkerMen;

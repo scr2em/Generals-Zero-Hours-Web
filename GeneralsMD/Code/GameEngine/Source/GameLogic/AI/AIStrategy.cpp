@@ -156,6 +156,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bdSince(0),
 	m_bdDamageFrame(0),
 	m_nextBaseDefence(0),
+	m_bdMuteUntil(0),
+	m_bdMuteValue(0.0f),
 	m_bdWeakFrame(0),
 	m_numBunkerMen(0),
 	m_nextBunker(0),
@@ -307,7 +309,7 @@ void AIStrategy::applyVariant()
 		{ "ability", AIPlayer::AIF_ABILITY },
 		{ "airborne", AIPlayer::AIF_AIRBORNE },
 		{ "bunker", AIPlayer::AIF_BUNKER },
-		{ "team", AIPlayer::AIF_TEAM } };
+		{ "team", AIPlayer::AIF_TEAM }, { "bdcap", AIPlayer::AIF_BDCAP } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -1537,7 +1539,7 @@ void AIStrategy::updateArmy()
 		}
 		if (weight <= 0.0f)
 			return;
-		if (m_bdActive && baseDefenceOn())
+		if (baseAlarmBlocksWaves(now))
 			return;		// the base first
 		Real stallNeed = 0.0f;
 		const Real target = waveTarget(&stallNeed);
@@ -2243,7 +2245,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 12;
+	XferVersion currentVersion = 13;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2411,6 +2413,11 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferUnsignedInt(&m_nextBunkerTrain);
 		xfer->xferUnsignedInt(&m_bunkerQueueFrame);
 		xfer->xferInt(&m_bunkerQueued);
+	}
+	if (version >= 13)
+	{
+		xfer->xferUnsignedInt(&m_bdMuteUntil);
+		xfer->xferReal(&m_bdMuteValue);
 	}
 }
 
