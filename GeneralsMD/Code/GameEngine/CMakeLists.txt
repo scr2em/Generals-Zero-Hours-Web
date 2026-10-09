@@ -93,6 +93,7 @@ set(GAMEENGINE_SRC
 #    Include/Common/Radar.h
 #    Include/Common/RAMFile.h
 #    Include/Common/RandomValue.h
+    Include/Common/AIMatch.h
     Include/Common/Recorder.h
 #    Include/Common/ReplaySimulation.h
     Include/Common/Registry.h
@@ -235,6 +236,7 @@ set(GAMEENGINE_SRC
 #    Include/GameLogic/AIPathfind.h
     Include/GameLogic/AIPlayer.h
     Include/GameLogic/AISkirmishPlayer.h
+    Include/GameLogic/AIStrategy.h
     Include/GameLogic/AIStateMachine.h
     Include/GameLogic/AITNGuard.h
     Include/GameLogic/Armor.h
@@ -607,6 +609,7 @@ set(GAMEENGINE_SRC
     Source/Common/PartitionSolver.cpp
 #    Source/Common/PerfTimer.cpp
 #    Source/Common/RandomValue.cpp
+    Source/Common/AIMatch.cpp
     Source/Common/Recorder.cpp
 #    Source/Common/ReplaySimulation.cpp
 #    Source/Common/RTS/AcademyStats.cpp
@@ -832,6 +835,10 @@ set(GAMEENGINE_SRC
 #    Source/GameLogic/AI/AIPathfind.cpp
     Source/GameLogic/AI/AIPlayer.cpp
     Source/GameLogic/AI/AISkirmishPlayer.cpp
+    Source/GameLogic/AI/AIStrategy.cpp
+    Source/GameLogic/AI/AITactics.cpp
+    Source/GameLogic/AI/AICombatModel.cpp
+    Source/GameLogic/AI/AIEnemyModel.cpp
     Source/GameLogic/AI/AIStates.cpp
     Source/GameLogic/AI/AITNGuard.cpp
     Source/GameLogic/AI/Squad.cpp

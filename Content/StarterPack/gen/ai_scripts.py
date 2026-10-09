@@ -29,6 +29,14 @@ TEAMS = [
 
 def ai_scripts():
     scripts = []
+    # The build list of AIData.ini lets the engine rebuild what it has lost and raise power plants; everything else
+    # is started by script, as in a real skirmish setup: first the barracks, a little later the factory.
+    scripts.append(Script("IronwoodBuildBarracks", conditions=[[condition("CONDITION_TRUE")]],
+                          actions=[action("SKIRMISH_BUILD_BUILDING", "IronwoodBarracks")], one_shot=True,
+                          comment="Build order: barracks first."))
+    scripts.append(Script("IronwoodBuildFactory", conditions=[[condition("CONDITION_TRUE")]],
+                          actions=[action("SKIRMISH_BUILD_BUILDING", "IronwoodFactory")], one_shot=True,
+                          delay_seconds=40, comment="Build order: the factory after the barracks."))
     for _name, _units, _prio, _max, cond_script in TEAMS:
         # the production condition: always true. What limits the AI is money, an idle factory that can train the
         # units, and the number of live teams of that kind.

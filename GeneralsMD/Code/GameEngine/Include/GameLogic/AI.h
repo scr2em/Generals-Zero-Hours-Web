@@ -119,6 +119,52 @@ public:
 };
 EMPTY_DTOR(AISideInfo)
 
+/**
+ * How the Expert computer player plays.  Expert is the skirmish level above Hard: it uses exactly the
+ * economy, handicaps and data of Hard, but its strategic layer (AIStrategy) is switched on.  These
+ * numbers shape that layer by skill rather than by resource bonuses: how often it looks at the map, how
+ * long it takes to react, and how often it makes a plainly suboptimal choice.  The code supplies the
+ * defaults (TAiData::TAiData); an optional "ExpertSkill" block in AIData.ini can override any field, so
+ * the shipped game data keeps working unchanged.  Easy, Normal and Hard play as in the original game.
+ */
+struct AISkillSettings
+{
+	Real m_attentionSeconds;	///< Seconds between two strategic decisions (the AI's "actions per minute").
+	Real m_reactionSeconds;		///< A change in the situation (losing a fight, a new enemy composition) must persist this long before the AI acts on it.
+	Real m_scoutSeconds;			///< Seconds between two looks at the visible enemy objects (feeds the enemy model).
+	Real m_mistakeChance;			///< 0..1, chance that a strategic choice is replaced by the next-best one.
+	Real m_counterStrength;		///< How strongly team selection favours teams that counter the observed enemy army (0 = ignore the enemy).
+	Real m_engageAdvantage;		///< Estimated strength ratio (ours/theirs) above which a retreating team may return to the fight.
+	Real m_retreatAdvantage;	///< Estimated strength ratio below which a team pulls out of a fight.
+	Real m_waveHoldSeconds;		///< An army that has stopped growing waits this long, then goes with at least 60% of the wanted size.
+	Real m_minWaveValue;			///< Least army value (cost of the living units) that makes an attack wave, whatever has been seen of the enemy.
+	Real m_waveSizeScale;			///< Scales how big an attack wave must be compared to the enemy force it expects to meet.
+	Bool m_useRetreat;				///< Pull out of losing fights, regroup and come back.
+	Bool m_useFocusFire;			///< Concentrate fire on the most valuable target in range.
+	Bool m_useSpacing;				///< Keep long range and fragile units behind the front line.
+	Bool m_expandEconomy;			///< Build supply centers at further supply sources.
+	Bool m_smartPowers;				///< Fire ready superweapons at the best known target without waiting for a script.
+
+	// ---- tactics ----
+	Bool m_useSplitFire;			///< Do not send more fire at a target than it takes to kill it; the rest picks the next target.
+	Real m_splitWindowSeconds;///< How long the damage assigned to a target counts as on its way.
+	Bool m_useThreatTargets;	///< Pick targets by the damage they can do to our units nearby: threats, then support units, then artillery.
+	Bool m_useKiting;					///< Fast ranged units step back while their weapon reloads.
+	Real m_kiteMinReloadSeconds;	///< Shortest wait between two volleys that is worth a step back.
+	Real m_kiteRangeFactor;		///< A unit not slower than its enemy kites it when its range is this many times the enemy's ...
+	Real m_kiteSpeedFactor;		///< ... or, with a range not shorter than 0.95 times the enemy's, when it is this many times faster.
+	Real m_kiteGroupRadius;		///< A kiting unit stays within this distance of its team.
+	Real m_kiteMinThreat;			///< ... and only from an enemy that would destroy it in 1/this seconds (a single enemy unit's share of the kiter's health per second).
+	Bool m_useFightCheck;			///< Weigh the fight at the objective before a wave goes, and while it is out.
+	Real m_launchAdvantage;		///< Strength of the wave against what is known at its objective (ours/theirs) needed to launch.
+	Real m_pullbackAdvantage;	///< A wave on its way to a fight it is this much weaker than (ours/theirs) pulls back.
+	Real m_launchBlockSeconds;///< A wave held back by the fight check for this long goes anyway.
+	Bool m_useMerge;					///< New teams and reinforcements gather at the rally point and join the next wave, instead of going out one by one.
+	Bool m_useSpread;					///< Keep units apart against enemies with area weapons.
+	Real m_splashRadiusThreshold;	///< Enemy weapons with a blast at least this big make the army spread out.
+	Real m_maxSpacing;				///< Largest distance kept between units to avoid splash damage.
+};
+
 class AISideBuildList : public MemoryPoolObject
 {
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(AISideBuildList, "AISideBuildList")
@@ -229,6 +275,8 @@ public:
 	Real	m_retaliateFriendsRadius; // If we have friends within this radius, get them to help retaliate. [8/25/2003]
 
 
+	AISkillSettings m_expertSkill;	///< behaviour of the Expert level, see AISkillSettings
+
 	AISideInfo *m_sideInfo;
 
 	AISideBuildList *m_sideBuildLists;
@@ -294,6 +342,7 @@ public:
 	static void parseStructure( INI* ini, void *instance, void *store, const void *userData );					///< Parse the image part of the INI file
 	static void parseSkillSet( INI* ini, void *instance, void *store, const void *userData );					///< Parse the image part of the INI file
 	static void parseScience( INI* ini, void *instance, void *store, const void *userData );					///< Parse the image part of the INI file
+	static void parseSkillSettings( INI* ini, void *instance, void *store, const void *userData );		///< Parse the "ExpertSkill" block
 
 	UnsignedInt getNextGroupID() { return ++m_nextGroupID; }
 

@@ -65,6 +65,7 @@
 
 #include "GameLogic/AI.h"
 #include "GameLogic/AISkirmishPlayer.h"
+#include "GameLogic/AIStrategy.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/Module/AIUpdate.h"
 #include "GameLogic/Module/CaveContain.h"
@@ -5489,7 +5490,13 @@ void ScriptActions::doSkirmishAttackNearestGroupWithValue( const AsciiString& te
 	Coord3D loc;
 	Coord3D groupLoc;
 	theGroup->getCenter(&groupLoc);
-	if (comparison == Parameter::GREATER_EQUAL || comparison == Parameter::GREATER) {
+	loc = groupLoc;	// stays the target if nothing is found (it used to be left uninitialised)
+	// Expert looks for the best objective among what it has seen, instead of the nearest valuable cell of the (omniscient) value map.
+	Bool chosen = FALSE;
+	if (player->isExpertAIPlayer()) {
+		chosen = player->getAiAttackObjective(&groupLoc, AIStrategy::teamValue(team), &loc);
+	}
+	if (!chosen && (comparison == Parameter::GREATER_EQUAL || comparison == Parameter::GREATER)) {
 		ThePartitionManager->getNearestGroupWithValue(player->getPlayerIndex(), ALLOW_ENEMIES, VOT_CashValue,
 			&groupLoc, value, true, &loc);
 	}

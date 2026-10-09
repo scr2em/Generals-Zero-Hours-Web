@@ -423,6 +423,21 @@ Int parseHeadless(char *args[], int num)
 	return 1;
 }
 
+// TheSuperHackers @feature AI test bench: -aiMatch plays a skirmish between computer players without a user
+// interface (see AIMatch.h). The options of the match (map=... players=... seed=...) are read by the match itself.
+Int parseAIMatch(char *args[], int num)
+{
+	parseHeadless(args, num);
+	TheWritableGlobalData->m_shellMapOn = FALSE;
+	TheWritableGlobalData->m_useFpsLimit = FALSE;
+
+	// Matches run next to a running game and next to each other.
+	rts::ClientInstance::setMultiInstance(TRUE);
+	rts::ClientInstance::skipPrimaryInstance();
+
+	return 1;
+}
+
 Int parseReplay(char *args[], int num)
 {
 	if (num > 1)
@@ -1185,6 +1200,9 @@ static CommandLineParam paramsForStartup[] =
 	// TheSuperHackers @feature helmutbuhler 11/04/2025
 	// This runs the game without a window, graphics, input and audio. You can combine this with -replay
 	{ "-headless", parseHeadless },
+
+	// TheSuperHackers @feature AI test bench: play a match between computer players, see AIMatch.h.
+	{ "-aiMatch", parseAIMatch },
 
 	// TheSuperHackers @feature helmutbuhler 13/04/2025
 	// Play back a replay. Pass the filename including .rep afterwards.

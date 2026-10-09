@@ -33,6 +33,7 @@
 
 class BuildListInfo;
 class SpecialPowerTemplate;
+class AIStrategy;
 
 
 /**
@@ -45,6 +46,9 @@ class AISkirmishPlayer : public AIPlayer
 public:	 // AISkirmish specific methods.
 
 	AISkirmishPlayer( Player *p );							///< constructor
+	virtual void setExpert(Bool expert) override;				///< Expert: switches the strategic layer (AIStrategy) on
+	virtual Real expertAssignedDamage(ObjectID target) const override;
+	virtual void expertAssignDamage(ObjectID target, Real damage, Int flags) override;
 	virtual Bool computeSuperweaponTarget(const SpecialPowerTemplate *power, Coord3D *pos, Int playerNdx, Real weaponRadius) override; ///< Calculates best pos for weapon given radius.
 
 public:	// AIPlayer interface methods.
@@ -67,6 +71,7 @@ public:	// AIPlayer interface methods.
 	virtual void recruitSpecificAITeam(TeamPrototype *teamProto, Real recruitRadius) override; ///< Builds this team immediately.
 
 	virtual Bool isSkirmishAI() override {return true;}
+	virtual Bool chooseAttackObjective(const Coord3D *from, Real power, Coord3D *objective) override;
 
 	virtual Bool checkBridges(Object *unit, Waypoint *way) override;
 
@@ -89,10 +94,13 @@ protected:
 protected:
 
 	virtual Bool selectTeamToBuild() override;			///< determine the next team to build
+	Real teamCost( TeamPrototype *proto );					///< money needed to start the team
 	virtual Bool selectTeamToReinforce( Int minPriority ) override;			///< determine the next team to reinforce
 	virtual Bool startTraining( WorkOrder *order, Bool busyOK, AsciiString teamName) override;	///< find a production building that can handle the order, and start building
 
 	virtual Bool isAGoodIdeaToBuildTeam( TeamPrototype *proto ) override;		///< return true if team should be built
+	virtual TeamPrototype *pickTeamPrototype( const std::list<TeamPrototype *> &candidates, Int hiPri ) override;
+	virtual Int extraGatherers() const override;
 	virtual void processBaseBuilding() override;		///< do base-building behaviors
 	virtual void processTeamBuilding() override;		///< do team-building behaviors
 
@@ -113,5 +121,11 @@ protected:
 
 	UnsignedInt m_frameToCheckEnemy;
 	Player			*m_currentEnemy;
+
+	AIStrategy	*m_strategy;		///< the strategic layer; only exists for the Expert level
+
+	enum { MAX_UNAFFORDABLE = 16 };
+	TeamPrototype *m_unaffordable[MAX_UNAFFORDABLE];	///< teams that were ready to build but for money, in the current selection
+	Int					m_numUnaffordable;
 
 };

@@ -61,6 +61,7 @@
 #include "Common/MessageStream.h"
 #include "Common/PlayerList.h"
 #include "Common/ReplaySimulation.h"
+#include "Common/AIMatch.h"
 #include "Common/Registry.h"
 #include "Common/Team.h"
 #include "Common/WorkingDirectory.h"
@@ -541,7 +542,12 @@ static Bool runGame( Int &exitcode )
 	DEBUG_LOG(("Game engine initialized, starting the frame loop (fps limit %d, actual %d, enabled %d)",
 		TheFramePacer->getFramesPerSecondLimit(), TheFramePacer->getActualFramesPerSecondLimit(), (int)TheFramePacer->isActualFramesPerSecondLimitEnabled()));
 
-	if (!TheGlobalData->m_simulateReplays.empty())
+	if (AIMatch::isRequested())
+	{
+		// Headless: the test bench plays its match in a blocking loop.
+		exitcode = AIMatch::run();
+	}
+	else if (!TheGlobalData->m_simulateReplays.empty())
 	{
 		// Headless: nothing is shown, so the plain blocking loop is fine.
 		exitcode = ReplaySimulation::simulateReplays(TheGlobalData->m_simulateReplays, TheGlobalData->m_simulateReplayJobs);

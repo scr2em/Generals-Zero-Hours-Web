@@ -93,6 +93,13 @@ public:
 	Int getTotalFactionBuildingsCaptured() { return m_totalFactionBuildingsCaptured; }
 	Int getTotalObjectsBuilt( const ThingTemplate *pTemplate ); // get a count of objects built matching a specific thing template
 
+	// TheSuperHackers @feature AI test bench: read access to the per-template tallies (see AIMatch.cpp).
+	// The maps are keyed by pointer: sort by template name before using their order for output.
+	typedef std::map<const ThingTemplate *, Int> ObjectCountMap;
+	const ObjectCountMap &getObjectsBuilt() const { return m_objectsBuilt; }
+	const ObjectCountMap &getObjectsLost() const { return m_objectsLost; }
+	const ObjectCountMap &getObjectsDestroyed( Int victimPlayerIdx ) const { return m_objectsDestroyed[victimPlayerIdx]; }
+
 	// for battle honor calculation.  done once at the end of each online game
 	Int getTotalUnitsBuilt( KindOfMaskType validMask, KindOfMaskType invalidMask );
 
@@ -119,7 +126,6 @@ private:
 
 	Int m_myPlayerIdx;								///< We need to not score kills on ourselves... so we need to know who we are
 
-	typedef std::map<const ThingTemplate *, Int> ObjectCountMap;
 	typedef ObjectCountMap::iterator ObjectCountMapIt;
 	ObjectCountMap m_objectsBuilt;			///< How many and what kinds of objects did we build
 	ObjectCountMap m_objectsDestroyed[MAX_PLAYER_COUNT];		///< How many and what kinds and who's did we kill

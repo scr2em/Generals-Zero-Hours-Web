@@ -29,6 +29,7 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include "Common/AIMatch.h"
 #include "Common/AudioAffect.h"
 #include "Common/AudioHandleSpecialValues.h"
 #include "Common/BuildAssistant.h"
@@ -1333,7 +1334,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	//****************************//
 
 	// Get the m_loadScreen for this kind of game
-	if(!m_loadScreen && !(TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK))
+	if(!m_loadScreen && !(TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK) && !AIMatch::isActive())
 	{
 		m_loadScreen = getLoadScreen( loadingSaveGame );
 		if(m_loadScreen)
@@ -1509,6 +1510,8 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 					case SLOT_EASY_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_EASY); break;
 					case SLOT_MED_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_NORMAL); break;
 					case SLOT_BRUTAL_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_HARD); break;
+					// Expert: everything of Hard (economy, handicaps, data), plus the strategic AI.
+					case SLOT_EXPERT_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_HARD); d.setBool(NAMEKEY("skirmishExpert"), true); break;
 					default: break;	 // no setting.
 				}
 			}
@@ -3799,7 +3802,8 @@ void GameLogic::update()
 		// During replay simulation, we bypass TheMessageStream and instead put the CRC message
 		// directly into TheCommandList because we don't update TheMessageStream during simulation.
 		GameMessageList *messageList = TheMessageStream;
-		if (TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK)
+		// The AI test bench does not pump TheMessageStream either.
+		if ((TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK) || AIMatch::isActive())
 			messageList = TheCommandList;
 		messageList->appendMessage(msg);
 

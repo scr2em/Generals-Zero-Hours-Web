@@ -137,6 +137,9 @@ public:
 
 	void friend_setName(const AsciiString& n) { m_name = n; }
 
+	/// Top speed in world units per logic frame (undamaged).  For the AI's combat estimates.
+	Real getMaxSpeed() const { return m_maxSpeed; }
+
 	void validate();
 
 protected:

@@ -1,0 +1,52 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>mock engine page</title>
+<!-- Stands in for the game page in the runner's own tests: same elements and hooks the runner uses, and a "match"
+     that is a pure function of the command line (seed, players), so determinism checks and reports can be tested
+     without an engine. ?diverge=1 in the build name's page makes every second run differ (for the negative test). -->
+<button id="play">Play</button>
+<button id="download-starter">Download</button>
+<span id="state-starter">Not downloaded yet</span><span id="state-game"></span><span id="state-generals"></span>
+<script>
+const params = new URLSearchParams(location.search);
+let installed = null;
+try { installed = localStorage.getItem('mock-starter'); } catch (e) {}
+window.__zh = { refreshStatus: async () => {}, importer: { getStatus: async () => ({ game: installed ? { kind: 'starter', files: 3 } : null }) } };
+document.getElementById('download-starter').onclick = () => {
+	try { localStorage.setItem('mock-starter', '1'); } catch (e) {}
+	installed = '1';
+	document.getElementById('state-starter').textContent = 'Ready · 3 files';
+};
+document.getElementById('play').disabled = false;
+function hash(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
+document.getElementById('play').onclick = () => {
+	const args = params.getAll('arg');
+	const opt = Object.fromEntries(args.filter((a) => a.includes('=')).map((a) => [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)]));
+	const players = opt.players.split(',').map((p) => p.split(':'));
+	const seed = Number(opt.seed);
+	const rank = { easy: 0, normal: 1, hard: 2, expert: 3 };
+	// the stronger configuration wins 80% of the time (expert vs hard), mirror matches 50%; every 10th seed times out
+	const r = hash(opt.players + seed) % 100;
+	let winner = -1;
+	if (seed % 10 !== 0) {
+		const strong = rank[players[0][0]] >= rank[players[1][0]] ? 0 : 1;
+		const diff = Math.abs(rank[players[0][0]] - rank[players[1][0]]);
+		winner = r < (diff ? 80 : 50) ? strong : 1 - strong;
+	}
+	const frames = winner < 0 ? 36000 : 6000 + hash('f' + seed) % 9000;
+	const crcFrames = [], crcs = [];
+	for (let f = 0; f <= frames; f += 300) { crcFrames.push(f); crcs.push(hash(opt.players + seed + f).toString(16).toUpperCase().padStart(8, '0')); }
+	if (location.pathname.includes('/diverge/') && window.name === '' && seed % 2 === 1) crcs[crcs.length >> 1] = 'DEADBEEF';
+	const mk = (p, i) => ({
+		slot: i, difficulty: p[0], side: p[1], team: -1, startPos: Number((p[3] || i + 1)), outcome: winner < 0 ? 'timeout' : winner === i ? 'won' : 'lost',
+		defeatedFrame: winner < 0 || winner === i ? null : frames, money: { gathered: 9000, spent: 8000 }, peak: { armyValue: 3000 }, final: { armyValue: 1000 },
+		production: { idleFraction: 0.2 }, totals: { unitsBuilt: 20, structuresBuilt: 8, unitsLost: 6, objectsKilled: 9 },
+	});
+	const out = {
+		schema: 'zh-aibench-1', label: opt.label,
+		result: { outcome: winner < 0 ? 'timeout' : 'victory', frames, winners: winner < 0 ? [] : [winner], finalCRC: crcs[crcs.length - 1] },
+		players: players.map(mk), timeline: { frames: crcFrames }, crcTimeline: { interval: 300, frames: crcFrames, crc: crcs }, perf: { logicFps: 1000, setupMs: 50, simMs: 100 },
+	};
+	setTimeout(() => console.log('AIMATCH_RESULT ' + JSON.stringify(out)), 50);
+};
+</script>

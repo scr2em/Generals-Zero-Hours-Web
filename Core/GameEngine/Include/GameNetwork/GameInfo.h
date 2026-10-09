@@ -40,6 +40,7 @@ enum SlotState CPP_11(: Int)
 	SLOT_EASY_AI,
 	SLOT_MED_AI,
 	SLOT_BRUTAL_AI,
+	SLOT_EXPERT_AI,	// skirmish level above Hard: Hard's economy and data, plus the strategic AI (AIStrategy). Keep it before SLOT_PLAYER: the LAN setup combo uses the list position as the state.
 	SLOT_PLAYER
 };
 

@@ -31,6 +31,7 @@
 #include "Common/FramePacer.h"
 #include "Common/GameEngine.h"
 #include "Common/ReplaySimulation.h"
+#include "Common/AIMatch.h"
 
 
 /**
@@ -45,7 +46,11 @@ Int GameMain()
 	TheGameEngine = CreateGameEngine();
 	TheGameEngine->init();
 
-	if (!TheGlobalData->m_simulateReplays.empty())
+	if (AIMatch::isRequested())
+	{
+		exitcode = AIMatch::run();
+	}
+	else if (!TheGlobalData->m_simulateReplays.empty())
 	{
 		exitcode = ReplaySimulation::simulateReplays(TheGlobalData->m_simulateReplays, TheGlobalData->m_simulateReplayJobs);
 	}

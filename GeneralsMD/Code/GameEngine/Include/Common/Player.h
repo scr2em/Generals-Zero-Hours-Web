@@ -450,6 +450,15 @@ public:
 	/// Is this player a skirmish ai player?
 	Bool isSkirmishAIPlayer();
 
+	/// The Expert skirmish level: Hard's data plus the strategic layer (see AIStrategy).
+	Bool isExpertAIPlayer();
+	Bool isAiFeatureOff(Int feature);	///< test bench switch of an Expert feature
+	Real getAiAssignedDamage(ObjectID target);			///< Expert: damage other units already aim at 'target' (split fire)
+	void assignAiDamage(ObjectID target, Real damage, Int flags);	///< Expert: note damage a unit is about to deal to 'target'
+
+	/// Expert: the best objective for an attack by a group at 'from' (see AIPlayer::chooseAttackObjective).
+	Bool getAiAttackObjective(const Coord3D *from, Real power, Coord3D *objective);
+
 	/// Have the ai check for bridges.
 	virtual Bool checkBridges(Object *unit, Waypoint *way);
 

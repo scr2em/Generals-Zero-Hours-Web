@@ -68,6 +68,9 @@ public:
 	void init()
 	{
 		setStartingCash(0);
+		m_totalIncome = 0;
+		m_totalWithdrawn = 0;
+		m_totalOtherDeposits = 0;
 	}
 
 	UnsignedInt countMoney() const
@@ -82,6 +85,13 @@ public:
 	void setStartingCash(UnsignedInt amount);
 	void updateIncomeBucket();
 	UnsignedInt getCashPerMinute() const;
+
+	// TheSuperHackers @feature AI test bench: lifetime tallies of the tracked deposits (income: harvesting,
+	// bounties, ...), of all withdrawals, and of the untracked deposits (starting cash, refunds of cancelled
+	// production, sales). Statistics only: they are not part of the game state and not saved.
+	UnsignedInt getTotalIncome() const { return m_totalIncome; }
+	UnsignedInt getTotalWithdrawn() const { return m_totalWithdrawn; }
+	UnsignedInt getTotalOtherDeposits() const { return m_totalOtherDeposits; }
 
 	void setPlayerIndex(Int ndx) { m_playerIndex = ndx; }
 
@@ -109,4 +119,7 @@ private:
 	UnsignedInt m_incomeBuckets[60];	///< circular buffer of 60 seconds for income tracking
 	UnsignedInt m_currentBucket;
 	UnsignedInt m_cashPerMinute;
+	UnsignedInt m_totalIncome;	///< statistics only, see getTotalIncome()
+	UnsignedInt m_totalWithdrawn;	///< statistics only, see getTotalWithdrawn()
+	UnsignedInt m_totalOtherDeposits;	///< statistics only, see getTotalOtherDeposits()
 };

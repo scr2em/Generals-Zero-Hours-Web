@@ -1,0 +1,29 @@
+{
+ "description": "The power plant and the barracks are gun towers (range 200): static defences for the fight check.",
+ "edits": [
+  {
+   "file": "data/ini/weapon.ini",
+   "append": "\n; Bench overlay: a gun tower weapon.\nWeapon IronwoodTowerGun\n  PrimaryDamage = 16.0\n  PrimaryDamageRadius = 0.0\n  AttackRange = 200.0\n  DamageType = ARMOR_PIERCING\n  DeathType = NORMAL\n  WeaponSpeed = 999999.0\n  FireFX = FX_StarterCannonShot\n  ClipSize = 0\n  ClipReloadTime = 0\n  DelayBetweenShots = 700\n  AntiAirborneVehicle = No\n  AntiGround = Yes\nEnd"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "FS_POWER SCORE",
+   "replace": "FS_POWER CAN_ATTACK SCORE"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "FS_BARRACKS SCORE",
+   "replace": "FS_BARRACKS CAN_ATTACK SCORE"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  GeometryIsSmall = No\n  WeaponSet\n    Conditions = None\n  End\nEnd\n\nObject IronwoodBarracks",
+   "replace": "  GeometryIsSmall = No\n  WeaponSet\n    Conditions = None\n    Weapon = PRIMARY IronwoodTowerGun\n  End\n  Behavior = AIUpdateInterface ModuleTag_AI\n    Turret\n      TurretTurnRate = 180\n      TurretPitchRate = 60\n      ControlledWeaponSlots = PRIMARY\n      AllowsPitch = No\n    End\n    AutoAcquireEnemiesWhenIdle = Yes\n  End\nEnd\n\nObject IronwoodBarracks"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  GeometryIsSmall = No\n  WeaponSet\n    Conditions = None\n  End\nEnd\n\nObject IronwoodFactory",
+   "replace": "  GeometryIsSmall = No\n  WeaponSet\n    Conditions = None\n    Weapon = PRIMARY IronwoodTowerGun\n  End\n  Behavior = AIUpdateInterface ModuleTag_AI\n    Turret\n      TurretTurnRate = 180\n      TurretPitchRate = 60\n      ControlledWeaponSlots = PRIMARY\n      AllowsPitch = No\n    End\n    AutoAcquireEnemiesWhenIdle = Yes\n  End\nEnd\n\nObject IronwoodFactory"
+  }
+ ]
+}

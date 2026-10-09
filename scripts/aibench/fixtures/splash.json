@@ -1,0 +1,10 @@
+{
+ "description": "The rocketeer's weapon is artillery: range 220, blast radius 35/60, friendly fire on (splash weapons for the spread-out behaviour).",
+ "edits": [
+  {
+   "file": "data/ini/weapon.ini",
+   "find": "PrimaryDamage = 40.0\n  PrimaryDamageRadius = 6.0\n  SecondaryDamage = 15.0\n  SecondaryDamageRadius = 14.0\n  AttackRange = 160.0\n  MinimumAttackRange = 10.0",
+   "replace": "PrimaryDamage = 40.0\n  PrimaryDamageRadius = 35.0\n  SecondaryDamage = 20.0\n  SecondaryDamageRadius = 60.0\n  AttackRange = 220.0\n  MinimumAttackRange = 40.0"
+  }
+ ]
+}

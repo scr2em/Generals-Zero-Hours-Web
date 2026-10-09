@@ -1133,6 +1133,8 @@ void InitSkirmishGameGadgets()
       GadgetComboBoxSetItemData(comboBoxPlayer[i], 3, (void *)SLOT_MED_AI);
 			GadgetComboBoxAddEntry(comboBoxPlayer[i],TheGameText->fetch("GUI:HardAI"),white);
       GadgetComboBoxSetItemData(comboBoxPlayer[i], 4, (void *)SLOT_BRUTAL_AI);
+			GadgetComboBoxAddEntry(comboBoxPlayer[i],TheGameText->FETCH_OR_SUBSTITUTE("GUI:ExpertAI", L"Expert AI"),white);
+      GadgetComboBoxSetItemData(comboBoxPlayer[i], 5, (void *)SLOT_EXPERT_AI);
 			GadgetComboBoxSetSelectedPos(comboBoxPlayer[i],0);
 
 		}

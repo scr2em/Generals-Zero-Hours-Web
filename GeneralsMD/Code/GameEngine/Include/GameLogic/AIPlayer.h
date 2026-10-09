@@ -31,9 +31,12 @@
 #include "Common/GameMemory.h"
 #include "Common/Snapshot.h"
 
+#include <list>
+
 enum { INVALID_SKILLSET_SELECTION = -1 };
 
 class BuildListInfo;
+class AIStrategy;
 
 /**
  * When a team is selected for training, a list of these
@@ -179,6 +182,11 @@ public: // AIPlayer interface, may be overridden by AISkirmishPlayer.  jba.
 	virtual void recruitSpecificAITeam(TeamPrototype *teamProto, Real recruitRadius); ///< Builds this team immediately.
 
 	virtual Bool isSkirmishAI() {return false;}
+	/// Expert: where a group at 'from' with strength 'power' should attack next (value against defence); false if the player has no opinion.
+	virtual Bool chooseAttackObjective(const Coord3D *from, Real power, Coord3D *objective) {return false;}
+	/// Expert: damage already assigned to a target by units that picked it a moment ago (split fire), and a new assignment.
+	virtual Real expertAssignedDamage(ObjectID target) const {return 0.0f;}
+	virtual void expertAssignDamage(ObjectID target, Real damage, Int flags) {}
 	virtual Player *getAiEnemy() {return nullptr;}	///< Solo AI attacks based on scripting.  Only skirmish auto-acquires an enemy at this point.  jba.
 	virtual Bool checkBridges(Object *unit, Waypoint *way) {return false;}
 	virtual void repairStructure(ObjectID structure);
@@ -190,6 +198,18 @@ public:
 	/// Difficulty level for this player.
 	GameDifficulty getAIDifficulty() const;
 	void setAIDifficulty(GameDifficulty difficulty) {m_difficulty = difficulty;}
+	/// Expert: the skirmish level above Hard.  It runs with the data of Hard but uses the strategic layer (AIStrategy).
+	virtual void setExpert(Bool expert) {m_expert = expert;}
+	Bool isExpert() const {return m_expert;}
+	/// Switches of single Expert features, for A/B tests on the test bench (player variant "off:focus+wave..."; AIFeature bits). Not saved: only the bench sets them.
+	enum AIFeature { AIF_FOCUS = 1, AIF_WAVE = 2, AIF_RETREAT = 4, AIF_SCOUT = 8, AIF_COUNTER = 16, AIF_SAVE = 32, AIF_STARVE = 64, AIF_SIEGE = 128, AIF_DEFEND = 256, AIF_SPLIT = 512, AIF_THREAT = 1024, AIF_KITE = 2048, AIF_FIGHT = 4096, AIF_MERGE = 8192, AIF_SPREAD = 16384 };
+	/// What a target pick of the Expert target selection was like (bits of the 'flags' of expertAssignDamage; for the trace statistics).
+	enum { PICK_SPLIT = 1, PICK_THREAT = 2, PICK_SUPPORT = 4, PICK_LONGRANGE = 8 };
+	Bool isFeatureOff(Int f) const {return (m_featureOff & f) != 0;}
+	void setFeaturesOff(UnsignedInt mask) {m_featureOff = mask;}
+	/// Features that are off by default in the skill settings can be switched on for a test (player variant "on-kite").
+	Bool isFeatureForced(Int f) const {return (m_featureOn & f) != 0;}
+	void setFeaturesOn(UnsignedInt mask) {m_featureOn = mask;}
 	void buildBySupplies(Int minimumCash, const AsciiString &thingName ); ///< Builds a building by supplies.
 	void buildSpecificBuildingNearestTeam( const AsciiString &thingName, const Team *team );
 	void buildUpgrade(const AsciiString &upgrade ); ///< Builds an upgrade.
@@ -210,6 +230,8 @@ public:
 	/// Calculates the closest construction zone location based on a template.
 	Bool calcClosestConstructionZoneLocation( const ThingTemplate *constructTemplate, Coord3D *location );
 
+	friend class AIStrategy;
+
 protected:
 
 	// snapshot methods
@@ -228,6 +250,10 @@ protected:
 	virtual Bool selectTeamToReinforce( Int minPriority );			///< determine the next team to reinforce
 	virtual Bool startTraining( WorkOrder *order, Bool busyOK, AsciiString teamName);	///< find a production building that can handle the order, and start building
 	virtual Bool isAGoodIdeaToBuildTeam( TeamPrototype *proto );		///< return true if team should be built
+	/// Choose the team to build among the candidates (all buildable now); hiPri is the highest production priority among them.
+	virtual TeamPrototype *pickTeamPrototype( const std::list<TeamPrototype *> &candidates, Int hiPri );
+	/// Resource gatherers wanted on top of the count the game data asks for (economy that grows with the game).
+	virtual Int extraGatherers() const { return 0; }
 	virtual void processBaseBuilding();		///< do base-building behaviors
 	virtual void processTeamBuilding();		///< do team-building behaviors
  	static Int getPlayerSuperweaponValue( Coord3D *center, Int playerNdx, Real radius, Bool includeMilitaryUnits = TRUE );
@@ -269,6 +295,9 @@ protected:
 	Int			m_frameLastBuildingBuilt;	///< When we built the last building.
 
 	GameDifficulty m_difficulty;
+	Bool		m_expert;									///< Expert level (see setExpert).
+	UnsignedInt	m_featureOn;						///< test switches, see isFeatureForced
+	UnsignedInt	m_featureOff;						///< test switches, see isFeatureOff
 
 	Int			m_skillsetSelector;
 
