@@ -18,7 +18,10 @@ Builds (the web build directories that contain z_generals.html):
   --build NAME=DIR        any number of named builds (repeatable); the first is the baseline of the comparison
 Game data:
   --data starter|DIR      "starter" (default): the free starter content built next to the page (starterpack/);
-                          DIR: a folder holding ZeroHour/ (and optionally Generals/) of an installed game
+                          DIR: a Zero Hour install (the folder with INIZH.big), or a folder holding ZeroHour/ (and optionally
+                          Generals/) of an installed game
+  --zh DIR                the Zero Hour install (default: $ZH_PATH); implies own game data
+  --generals DIR          the original Generals install, optional (default: $GENERALS_PATH)
   --overlay NAME[,NAME]   play on the starter content edited by scripts/aibench/fixtures/NAME.json (bench-only data that exercises
                           behaviour the starter units cannot show); uses its own browser profile
   --profile DIR           browser profile that keeps the imported game data between runs
@@ -62,7 +65,9 @@ function parseArgs(argv) {
 			case '--site': o.builds.push({ name: 'candidate', dir: next(), site: true }); break;
 			case '--baseline': o.builds.unshift({ name: 'baseline', dir: next() }); break;
 			case '--build': { const v = next(); const eq = v.indexOf('='); if (eq < 1) throw new Error('--build NAME=DIR'); o.builds.push({ name: v.slice(0, eq), dir: v.slice(eq + 1) }); break; }
-			case '--data': o.data = next(); break;
+			case '--data': o.data = next(); o.dataGiven = true; break;
+			case '--zh': o.zh = next(); break;
+			case '--generals': o.generals = next(); break;
 			case '--profile': o.profile = next(); break;
 			case '--overlay': o.overlay = next(); break;
 			case '--map': o.maps.push(next()); break;
@@ -97,7 +102,21 @@ function parseArgs(argv) {
 		b.dir = path.resolve(b.dir);
 		if (!fs.existsSync(path.join(b.dir, 'z_generals.html'))) throw new Error(`${b.dir} has no z_generals.html (is it the web build directory, e.g. build/bench/GeneralsMD?)`);
 	}
-	if (o.data !== 'starter') o.data = path.resolve(o.data);
+	// Own game data as { zeroHour, generals }: from --zh/--generals ($ZH_PATH/$GENERALS_PATH), or from --data DIR.
+	const zh = o.zh || (o.dataGiven ? null : process.env.ZH_PATH);
+	const generals = o.generals || process.env.GENERALS_PATH;
+	if (zh) {
+		if (o.dataGiven) throw new Error('give the game data with --data or with --zh, not both');
+		o.data = { zeroHour: path.resolve(zh), generals: generals ? path.resolve(generals) : null };
+	} else if (o.data !== 'starter') {
+		const dir = path.resolve(o.data);
+		const isInstall = fs.existsSync(path.join(dir, 'INIZH.big'));
+		o.data = {
+			zeroHour: isInstall ? dir : path.join(dir, 'ZeroHour'),
+			generals: o.generals ? path.resolve(o.generals) : isInstall ? (generals ? path.resolve(generals) : null) : path.join(dir, 'Generals'),
+		};
+	}
+	if (o.data !== 'starter' && (o.generals || process.env.GENERALS_PATH) && !fs.existsSync(o.data.generals)) throw new Error(`${o.data.generals} does not exist (--generals / $GENERALS_PATH)`);
 	if (!o.maps.length && o.data === 'starter') o.maps.push('Ironwood Crossing');
 	if (!o.matchups.length && o.data === 'starter') o.matchups.push('hard:Ironwood,hard:Ironwood');
 	if (!o.probe && (!o.maps.length || !o.matchups.length)) throw new Error('--map and --matchup are required with your own game data');

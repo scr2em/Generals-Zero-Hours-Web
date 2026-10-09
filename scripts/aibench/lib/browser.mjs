@@ -44,7 +44,7 @@ export class Browser {
 	url(build, query) { return `http://127.0.0.1:${this.o.port}/${build}/z_generals.html?${query}`; }
 
 	// Makes sure the game data is in the browser: the starter content downloaded from the build, or the files of a
-	// Zero Hour install copied from `dataDir` (a folder with ZeroHour/ and optionally Generals/ in it). Done once; the
+	// Zero Hour install copied from `data` ({ zeroHour, generals }; generals may be null). Done once; the
 	// browser profile keeps it between runs.
 	async prepareData(build, data, log) {
 		const page = await this.context.newPage();
@@ -64,10 +64,9 @@ export class Browser {
 				return;
 			}
 			if (have && have.kind !== 'starter') { log(`[${build}] game data already in the browser (${have.files} files)`); return; }
-			for (const [btn, id, dir] of [['#pick-game', 'state-game', 'ZeroHour'], ['#pick-generals', 'state-generals', 'Generals']]) {
-				const full = path.join(data, dir);
-				if (!fs.existsSync(full)) {
-					if (dir === 'ZeroHour') throw new Error(`${full} does not exist: --data must contain a ZeroHour folder (and optionally Generals)`);
+			for (const [btn, id, full] of [['#pick-game', 'state-game', data.zeroHour], ['#pick-generals', 'state-generals', data.generals]]) {
+				if (!full || !fs.existsSync(full)) {
+					if (id === 'state-game') throw new Error(`${full} does not exist: give the Zero Hour install with --zh (or $ZH_PATH), or --data with a ZeroHour folder in it`);
 					continue;
 				}
 				log(`[${build}] copying ${full} into the browser (once; this takes a while) ...`);

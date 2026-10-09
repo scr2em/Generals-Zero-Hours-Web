@@ -44,7 +44,8 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
 | `--site DIR` | the build under test (reported as `candidate`) |
 | `--baseline DIR` | a second build to compare against (reported as `baseline`); both are played with identical matches |
 | `--build NAME=DIR` | any number of named builds; the first one is the baseline of the comparison |
-| `--data starter\|DIR` | the free starter content (default), or a folder holding `ZeroHour/` (+ optional `Generals/`) |
+| `--data starter\|DIR` | the free starter content (default), a Zero Hour install, or a folder holding `ZeroHour/` (+ optional `Generals/`) |
+| `--zh DIR` / `--generals DIR` | the Zero Hour install and (optional) the original Generals install; default `$ZH_PATH` / `$GENERALS_PATH` |
 | `--map NAME` | repeatable. Folder/file name, display name or path of the map |
 | `--matchup "d:side,d:side"` | repeatable. Players of one match, see below |
 | `--seeds N`, `--seed-start N` | seeds `start..start+N-1` per matchup and map |
@@ -168,15 +169,16 @@ use `eliminate=` to test the end of a match, and the real game data for AI measu
 1. Get the web build: build it (`emsdk`, `cmake --preset emscripten ...` as above, which also works on macOS), or take
    the build artifact of the project's web build. You need the directory with `z_generals.html`, `z_generals.js`,
    `z_generals.wasm` (and workers).
-2. Make a folder with your installs, e.g. `~/zh-data/ZeroHour` (the Zero Hour install: it contains `INIZH.big`,
-   `W3DZH.big`, `TexturesZH.big`, ...) and `~/zh-data/Generals` (optional: the original Generals install with `INI.big`,
-   `W3D.big`, ... Zero Hour loads its archives too; videos and installers are skipped).
+2. Point the bench at your installs: `export ZH_PATH="/path/to/Zero Hour"` (the folder with `INIZH.big`, `W3DZH.big`,
+   ...) and, optionally, `export GENERALS_PATH="/path/to/Generals"` (the original Generals install with `INI.big`,
+   `W3D.big`, ... Zero Hour loads its archives too; videos and installers are skipped). `--zh` / `--generals` do the
+   same on the command line; `--data DIR` with `DIR/ZeroHour` (+ `DIR/Generals`) in it still works. With `ZH_PATH`
+   set, the bench uses your game data unless you pass `--data starter`.
 3. Install Playwright (`npm i -g playwright && npx playwright install chromium`) and run, for example:
 
 ```
-node scripts/aibench/aibench.mjs --site build/web/GeneralsMD --data ~/zh-data \
-     --profile ~/.cache/zh-aibench-profile --probe
-node scripts/aibench/aibench.mjs --baseline build/web-old/GeneralsMD --site build/web/GeneralsMD --data ~/zh-data \
+node scripts/aibench/aibench.mjs --site build/web/GeneralsMD --profile ~/.cache/zh-aibench-profile --probe
+node scripts/aibench/aibench.mjs --baseline build/web-old/GeneralsMD --site build/web/GeneralsMD \
      --map "Tournament Desert" --map "Tournament Island" \
      --matchup "expert:America,hard:America" --matchup "expert:China,hard:GLA" \
      --seeds 10 --workers 3 --timeout 25 --target "expert:America>hard:America=0.8"
