@@ -14,6 +14,7 @@ recomputed after an edit unless the case is about the hash. Standard library onl
 
 import argparse
 import hashlib
+import zlib
 import json
 import os
 import struct
@@ -29,7 +30,7 @@ def content_hash(files):
     h = hashlib.sha256()
     for name in sorted(n.lower() for n in files if n.lower() != "manifest.json"):
         data = next(d for n, d in files.items() if n.lower() == name)
-        h.update(name.encode("utf-8") + b"\0" + struct.pack("<Q", len(data)) + data)
+        h.update(name.encode("utf-8") + b"\0" + struct.pack("<Q", len(data)) + struct.pack("<I", zlib.crc32(data) & 0xFFFFFFFF))
     return "sha256:" + h.hexdigest()
 
 

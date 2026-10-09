@@ -15,6 +15,7 @@ simple and specific to the starter pack on purpose; it is not the converter.
 
 import argparse
 import hashlib
+import zlib
 import json
 import os
 import re
@@ -419,7 +420,7 @@ class Builder:
         digest = hashlib.sha256()
         for name in sorted(n for n in self.files if n.lower() != "manifest.json" and not n.endswith("/")):
             data = self.files[name]
-            digest.update(name.lower().encode("utf-8") + b"\0" + struct.pack("<Q", len(data)) + data)
+            digest.update(name.lower().encode("utf-8") + b"\0" + struct.pack("<Q", len(data)) + struct.pack("<I", zlib.crc32(data) & 0xFFFFFFFF))
         h = digest.hexdigest()
         if "badhash" in tweaks:
             h = "0" * 63 + "1"

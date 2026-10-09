@@ -10,6 +10,7 @@ and the data.
 """
 
 import hashlib
+import zlib
 import json
 import struct
 import zipfile
@@ -39,7 +40,20 @@ def content_hash(files):
         h.update(name.encode("utf-8"))
         h.update(b"\0")
         h.update(struct.pack("<Q", len(data)))
-        h.update(data)
+        h.update(struct.pack("<I", zlib.crc32(data) & 0xFFFFFFFF))
+    return "sha256:" + h.hexdigest()
+
+
+def content_hash_from_zip(zf):
+    """The same hash computed from a ZIP file's directory only (names, sizes, CRC-32s), the way the engine
+    computes it; the data is not read."""
+    h = hashlib.sha256()
+    infos = sorted((i for i in zf.infolist() if i.filename.lower() != "manifest.json"), key=lambda i: i.filename.lower())
+    for i in infos:
+        h.update(i.filename.lower().encode("utf-8"))
+        h.update(b"\0")
+        h.update(struct.pack("<Q", i.file_size))
+        h.update(struct.pack("<I", i.CRC & 0xFFFFFFFF))
     return "sha256:" + h.hexdigest()
 
 
@@ -127,7 +141,11 @@ class Package:
         return {n: self.read(n) for n in self.names()}
 
     def compute_hash(self):
-        return content_hash({n: self.read(n) for n in self.names() if n != "manifest.json"})
+        return content_hash_from_zip(self._zip)
+
+    def damaged_entry(self):
+        """The first entry whose data does not match its CRC-32 (or None)."""
+        return self._zip.testzip()
 
     def close(self):
         self._zip.close()

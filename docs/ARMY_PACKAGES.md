@@ -103,10 +103,12 @@ Engine rules for the entries (the engine refuses a package that breaks one):
   and the engine does not offer it to AI slots.
 - `contentHash`: required, `sha256:` and 64 hex digits. SHA-256 over all entries except
   `manifest.json`, sorted by lower-cased entry name (byte order), each hashed as
-  `name \0 size(le64) data` where `name` is the lower-cased entry name and `size` is the
-  uncompressed size. Used to detect edits and, later, to check that all multiplayer peers have
-  the same package. The engine checks it on every load; it also accepts the hash computed with
-  the entry names as stored (not lower-cased), because both readings of this sentence exist.
+  `name \0 size(le64) crc32(le32)` where `name` is the lower-cased entry name, `size` the
+  uncompressed size and `crc32` the entry's CRC-32 from the ZIP directory. The data itself is not
+  hashed, so the check costs nothing at load time even for packages of hundreds of MB; the data
+  is checked against its CRC-32 whenever an entry is read. Used to detect edits and, later, to
+  check that all multiplayer peers have the same package. The engine checks it on every load; it
+  also accepts the hash computed with the entry names as stored (not lower-cased).
 
 ## Definitions
 

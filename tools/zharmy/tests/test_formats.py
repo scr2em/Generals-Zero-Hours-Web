@@ -287,9 +287,10 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(pkg.manifest()["contentHash"], pkg.compute_hash())
             # the documented definition, computed independently
             import hashlib
+            import zlib
             h = hashlib.sha256()
             for n, data in (("army/ini/object.ini", b"Object T_A\nEnd\n"), ("art/w3d/t001.w3d", b"\0" * 10)):
-                h.update(n.encode() + b"\0" + struct.pack("<Q", len(data)) + data)
+                h.update(n.encode() + b"\0" + struct.pack("<Q", len(data)) + struct.pack("<I", zlib.crc32(data)))
             self.assertEqual(w1["contentHash"], "sha256:" + h.hexdigest())
 
 

@@ -77,6 +77,7 @@
 
 static Xfer *s_xfer = nullptr;
 static INIBlockGuard *s_blockGuard = nullptr;
+static char s_lastLine[INI_MAX_CHARS_PER_LINE + 1] = "";
 
 void INI::setBlockGuard( INIBlockGuard *guard )
 {
@@ -471,8 +472,16 @@ UnsignedInt INI::loadPrepared()
 					} catch (...) {
 						DEBUG_CRASH(("Error parsing block '%s' in INI file '%s'", token, m_filename.str()) );
 						char buff[1024];
-						snprintf(buff, ARRAY_SIZE(buff), "Error parsing INI file '%s' (Line: '%s')\n",
-							m_filename.str(), currentLine.str());
+						// the line the block parser was on when it failed (a field inside the block), trimmed
+						const char *failed = s_lastLine;
+						while (*failed == ' ')
+							++failed;
+						if (strcmp(failed, currentLine.str()) == 0 || *failed == 0)
+							snprintf(buff, ARRAY_SIZE(buff), "Error parsing INI file '%s' (Line: '%s')\n",
+								m_filename.str(), currentLine.str());
+						else
+							snprintf(buff, ARRAY_SIZE(buff), "Error parsing INI file '%s' (Line: '%s'), at line %u: '%s'\n",
+								m_filename.str(), currentLine.str(), getLineNum(), failed);
 
 						throw INIException(buff);
 					}
@@ -566,6 +575,10 @@ void INI::readLine()
 
 		// increase our line count
 		m_lineNum++;
+
+		// keep the text of the line: the field parsers cut m_buffer into tokens, and an error message
+		// should show the line as it was
+		strlcpy(s_lastLine, m_buffer, ARRAY_SIZE(s_lastLine));
 
 		// check for at the max
 		if ( p == m_buffer+INI_MAX_CHARS_PER_LINE )

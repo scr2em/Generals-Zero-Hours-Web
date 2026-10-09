@@ -1227,6 +1227,9 @@ void ArmyPackages::loadPackage(ArmyPackage &pkg, Xfer *pXfer)
 	}
 
 	// ---- content hash (detects a package that was edited after the converter wrote it)
+	// It covers each entry's name, size and CRC-32 from the ZIP directory, not the data: reading and
+	// hashing every byte of every package took minutes for large mods. The data itself is checked
+	// against its CRC-32 whenever the engine reads an entry (ZipArchiveFile::readEntry).
 	{
 		Sha256 hashLower, hashStored;
 		Bool needStored = FALSE;
@@ -1240,28 +1243,24 @@ void ArmyPackages::loadPackage(ArmyPackage &pkg, Xfer *pXfer)
 			const ZipArchiveFile::Entry &e = entries[i];
 			if (strcmp(e.m_name.str(), "manifest.json") == 0)
 				continue;
-			Char *data = zip->readEntry(e, error);
-			if (data == nullptr)
-			{
-				skip(pkg, AsciiString("corrupt package: ") + error);
-				return;
-			}
 			unsigned char zero = 0;
 			unsigned char size8[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 			size8[0] = (unsigned char)(e.m_size); size8[1] = (unsigned char)(e.m_size >> 8);
 			size8[2] = (unsigned char)(e.m_size >> 16); size8[3] = (unsigned char)(e.m_size >> 24);
+			unsigned char crc4[4];
+			crc4[0] = (unsigned char)(e.m_crc32); crc4[1] = (unsigned char)(e.m_crc32 >> 8);
+			crc4[2] = (unsigned char)(e.m_crc32 >> 16); crc4[3] = (unsigned char)(e.m_crc32 >> 24);
 			hashLower.update(e.m_name.str(), e.m_name.getLength());
 			hashLower.update(&zero, 1);
 			hashLower.update(size8, 8);
-			hashLower.update(data, e.m_size);
+			hashLower.update(crc4, 4);
 			if (needStored)
 			{
 				hashStored.update(e.m_originalName.str(), e.m_originalName.getLength());
 				hashStored.update(&zero, 1);
 				hashStored.update(size8, 8);
-				hashStored.update(data, e.m_size);
+				hashStored.update(crc4, 4);
 			}
-			delete[] data;
 		}
 		AsciiString a = AsciiString("sha256:") + hashLower.finish();
 		AsciiString b = needStored ? (AsciiString("sha256:") + hashStored.finish()) : a;

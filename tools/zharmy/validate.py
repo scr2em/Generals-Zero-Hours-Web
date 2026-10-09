@@ -269,6 +269,9 @@ def _check_manifest(pkg, m, res):
         res.error("manifest", "contentHash must be 'sha256:<64 hex digits>'")
     else:
         actual = pkg.compute_hash()
+        bad = pkg.damaged_entry()
+        if bad:
+            res.error("manifest", "entry %s is damaged (its data does not match its CRC-32)" % bad)
         if actual != h:
             res.error("manifest", "contentHash does not match the contents (the package was edited or damaged): "
                                   "manifest %s, actual %s" % (h[:22] + "...", actual[:22] + "..."))
