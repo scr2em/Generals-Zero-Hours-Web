@@ -47,11 +47,14 @@
 #include "GameClient/KeyDefs.h"
 #include "GameClient/View.h"
 #include "GameClient/Drawable.h"
+#include "GameClient/AssistHooks.h"
 #include "GameClient/LookAtXlat.h"
 #include "GameLogic/Module/UpdateModule.h"
 #include "GameLogic/GameLogic.h"
 
 #include "Common/GlobalData.h"			// for camera pitch angle only
+
+AssistRightDragHook TheAssistRightDragHook = nullptr;
 
 LookAtTranslator *TheLookAtTranslator = nullptr;
 
@@ -263,7 +266,10 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 
 			const Bool userWantsRMBScroll = !TheGlobalData->m_useAlternateMouse || TheGlobalData->m_useRightMouseScrollWithAlternateMouse;
 
-			if (userWantsRMBScroll && !TheInGameUI->isSelecting() && !m_isScrolling)
+			// the player assists may take a right button drag (aiming a formation) instead of the scroll
+			const Bool assistTakesDrag = TheAssistRightDragHook && TheAssistRightDragHook();
+
+			if (userWantsRMBScroll && !TheInGameUI->isSelecting() && !m_isScrolling && !assistTakesDrag)
 			{
 				setScrolling(SCROLL_RMB);
 			}

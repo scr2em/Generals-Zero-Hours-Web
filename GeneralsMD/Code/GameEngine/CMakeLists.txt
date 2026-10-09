@@ -239,6 +239,9 @@ set(GAMEENGINE_SRC
     Include/GameLogic/AIProtect.h
     Include/GameLogic/AIRoute.h
     Include/GameLogic/AIStrategy.h
+    Include/GameLogic/PlayerAssist.h
+    Include/GameClient/AssistUI.h
+    Include/Common/AssistOptions.h
     Include/GameLogic/AIStateMachine.h
     Include/GameLogic/AITNGuard.h
     Include/GameLogic/Armor.h
@@ -849,6 +852,11 @@ set(GAMEENGINE_SRC
     Source/GameLogic/AI/AIRoute.cpp
     Source/GameLogic/AI/AIRepair.cpp
     Source/GameLogic/AI/AICombatModel.cpp
+    Source/GameLogic/PlayerAssist.cpp
+    Source/GameLogic/AssistTest.cpp
+    Source/GameClient/AssistUI.cpp
+    Source/Common/AssistOptions.cpp
+    Source/GameLogic/AssistFormation.cpp
     Source/GameLogic/AI/AIEnemyModel.cpp
     Source/GameLogic/AI/AIStates.cpp
     Source/GameLogic/AI/AITNGuard.cpp

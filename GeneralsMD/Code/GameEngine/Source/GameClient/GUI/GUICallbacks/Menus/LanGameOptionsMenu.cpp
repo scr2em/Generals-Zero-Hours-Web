@@ -34,6 +34,8 @@
 #include "Common/GameEngine.h"
 #include "Common/UserPreferences.h"
 #include "Common/QuotedPrintable.h"
+#include "Common/AssistOptions.h"
+#include "GameClient/AssistUI.h"
 #include "GameClient/AnimateWindowManager.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/Gadget.h"
@@ -124,6 +126,8 @@ static GameWindow *buttonChat = nullptr;
 static GameWindow *textEntryChat = nullptr;
 static GameWindow *textEntryMapDisplay = nullptr;
 static GameWindow *checkboxLimitSuperweapons = nullptr;
+static GameWindow *checkboxPlayerAssists = nullptr;			// the match allows the player assists
+static NameKeyType checkboxPlayerAssistsID = NAMEKEY_INVALID;
 static GameWindow *comboBoxStartingCash = nullptr;
 static GameWindow *windowMap = nullptr;
 
@@ -655,6 +659,27 @@ static void handleLimitSuperweaponsClick()
   }
 }
 
+static void handlePlayerAssistsClick()
+{
+  LANGameInfo *myGame = TheLAN->GetMyGame();
+
+  if (myGame && checkboxPlayerAssists)
+  {
+    myGame->setPlayerAssistsAllowed( GadgetCheckBoxIsChecked( checkboxPlayerAssists ) );
+    myGame->resetAccepted();
+
+    if (myGame->amIHost())
+    {
+      if (!s_isIniting)
+      {
+        // send around the new setting
+        TheLAN->RequestGameOptions(GenerateGameOptionsString(), true);
+        lanUpdateSlotList(); // Update the accepted button UI
+      }
+    }
+  }
+}
+
 void lanUpdateSlotList()
 {
 	if(!AreSlotListUpdatesEnabled() || s_isIniting)
@@ -702,6 +727,8 @@ void InitLanGameGadgets()
 	DEBUG_ASSERTCRASH(textEntryMapDisplay, ("Could not find the textEntryMapDisplay"));
   checkboxLimitSuperweapons = TheWindowManager->winGetWindowFromId( parentLanGameOptions, checkboxLimitSuperweaponsID );
   DEBUG_ASSERTCRASH(checkboxLimitSuperweapons, ("Could not find the checkboxLimitSuperweapons"));
+  checkboxPlayerAssistsID = AssistUI::setupCheckboxId( "LanGameOptionsMenu.wnd" );
+  checkboxPlayerAssists = AssistUI::setupCheckbox( parentLanGameOptions, "LanGameOptionsMenu.wnd", checkboxLimitSuperweapons );
   comboBoxStartingCash = TheWindowManager->winGetWindowFromId( parentLanGameOptions, comboBoxStartingCashID );
   DEBUG_ASSERTCRASH(comboBoxStartingCash, ("Could not find the comboBoxStartingCash"));
 	PopulateStartingCashComboBox(comboBoxStartingCash, TheLAN->GetMyGame());
@@ -800,6 +827,7 @@ void DeinitLanGameGadgets()
 	textEntryChat = nullptr;
 	textEntryMapDisplay = nullptr;
   checkboxLimitSuperweapons = nullptr;
+  checkboxPlayerAssists = nullptr;
   comboBoxStartingCash = nullptr;
 	if (windowMap)
 	{
@@ -860,6 +888,7 @@ void LanGameOptionsMenuInit( WindowLayout *layout, void *userData )
 		game->setMap( pref.getPreferredMap() );
     game->setStartingCash( pref.getStartingCash() );
     game->setSuperweaponRestriction( pref.getSuperweaponRestricted() ? 1 : 0 );
+    game->setPlayerAssistsAllowed( TheAssistOptions.anyOrderAssist() );
 		AsciiString lowerMap = pref.getPreferredMap();
 		lowerMap.toLower();
 		std::map<AsciiString, MapMetaData>::iterator it = TheMapCache->find(lowerMap);
@@ -887,6 +916,8 @@ void LanGameOptionsMenuInit( WindowLayout *layout, void *userData )
 		buttonStart->winSetText(TheGameText->fetch("GUI:Accept"));
 		buttonSelectMap->winEnable( FALSE );
     checkboxLimitSuperweapons->winEnable( FALSE ); // Can look but only host can touch
+    if ( checkboxPlayerAssists )
+      checkboxPlayerAssists->winEnable( FALSE );
     comboBoxStartingCash->winEnable( FALSE );      // Ditto
 		TheLAN->GetMyGame()->setMapCRC( TheLAN->GetMyGame()->getMapCRC() );		// force a recheck
 		TheLAN->GetMyGame()->setMapSize( TheLAN->GetMyGame()->getMapSize() ); // of if we have the map
@@ -964,6 +995,8 @@ void updateGameOptions()
 		GadgetStaticTextSetText(textEntryMapDisplay, mapDisplayName);
 
     GadgetCheckBoxSetChecked( checkboxLimitSuperweapons, theGame->getSuperweaponRestriction() != 0 );
+    if ( checkboxPlayerAssists )
+      GadgetCheckBoxSetChecked( checkboxPlayerAssists, theGame->getPlayerAssistsAllowed() );
 		Int itemCount = GadgetComboBoxGetLength(comboBoxStartingCash);
     Int index = 0;
     for ( ; index < itemCount; index++ )
@@ -1281,6 +1314,10 @@ WindowMsgHandledType LanGameOptionsMenuSystem( GameWindow *window, UnsignedInt m
         else if ( controlID == checkboxLimitSuperweaponsID )
         {
           handleLimitSuperweaponsClick();
+        }
+        else if ( controlID == checkboxPlayerAssistsID && checkboxPlayerAssists )
+        {
+          handlePlayerAssistsClick();
         }
 				else
 				{

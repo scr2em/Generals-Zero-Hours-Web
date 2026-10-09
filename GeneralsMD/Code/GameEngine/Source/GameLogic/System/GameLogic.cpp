@@ -86,6 +86,7 @@
 #include "GameLogic/CrateSystem.h"
 #include "GameLogic/FPUControl.h"
 #include "GameLogic/GameLogic.h"
+#include "GameLogic/PlayerAssist.h"
 #include "GameLogic/Locomotor.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/Module/AIUpdate.h"
@@ -438,6 +439,8 @@ void GameLogic::reset()
 	ThePartitionManager->reset();
 	TheTerrainLogic->reset();
 	TheAI->reset();
+	if (ThePlayerAssist)
+		ThePlayerAssist->reset();
 	TheScriptEngine->reset();
 
 	m_CRC = 0;
@@ -1288,6 +1291,10 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
       // ??? Apparently this is legit? Oh well, use defaults
       m_superweaponRestriction = 0;
     }
+
+    // player assists are allowed when the game settings say so (replays carry the setting in their header)
+    if ( ThePlayerAssist )
+      ThePlayerAssist->startMatch( TheGameInfo && TheGameInfo->getPlayerAssistsAllowed() );
   }
 
 	checkForDuplicateColors( TheGameInfo );
@@ -3917,6 +3924,10 @@ void GameLogic::update()
 		TheAI->UPDATE();
 	}
 
+	// player assists (protect links, stances ...); they do nothing unless the match allows them
+	if (ThePlayerAssist)
+		ThePlayerAssist->logicUpdate();
+
 	// production updates
 	{
 		TheBuildAssistant->UPDATE();
@@ -4265,6 +4276,14 @@ UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 	marker = "MARKER:TheAI";
 	xferCRC->xferAsciiString(&marker);
 	xferCRC->xferSnapshot( TheAI );
+
+	// player assists: only part of the CRC when the match allows them
+	if (ThePlayerAssist && ThePlayerAssist->allowed())
+	{
+		marker = "MARKER:ThePlayerAssist";
+		xferCRC->xferAsciiString(&marker);
+		xferCRC->xferSnapshot( ThePlayerAssist );
+	}
 	if (isInGameLogicUpdate())
 	{
 		CRCGEN_LOG(("CRC after AI for frame %d is 0x%8.8X", m_frame, xferCRC->getCRC()));

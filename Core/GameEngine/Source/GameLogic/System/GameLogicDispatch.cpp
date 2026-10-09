@@ -84,6 +84,9 @@
 #include "GameClient/LookAtXlat.h"
 
 #include "GameNetwork/NetworkInterface.h"
+#if RTS_ZEROHOUR
+#include "GameLogic/PlayerAssist.h"
+#endif
 
 
 
@@ -555,6 +558,23 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_CREATE_FORMATION:
 		{
 			onCreateFormation(msg, currentlySelectedGroup);
+			break;
+		}
+		case GameMessage::MSG_ASSIST_FORMATION:
+		case GameMessage::MSG_ASSIST_FORMATION_MOVE:
+		{
+#if RTS_ZEROHOUR
+			// player assists: only carried out when the match allows them
+			if (ThePlayerAssist)
+			{
+#if RETAIL_COMPATIBLE_AIGROUP
+				AIGroup *selected = currentlySelectedGroup;
+#else
+				AIGroup *selected = currentlySelectedGroup.Peek();
+#endif
+				ThePlayerAssist->onMessage(msg, msgPlayer, selected);
+			}
+#endif
 			break;
 		}
 		case GameMessage::MSG_CLEAR_INGAME_POPUP_MESSAGE:

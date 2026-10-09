@@ -5,7 +5,7 @@
 //   --steps-file FILE  read the steps from a file ('#' starts a comment); --repl FILE  keep the session open after the steps and run the
 //                      lines appended to FILE ('quit' ends it), for steering a match by hand
 //   node starter_flow.mjs --site <build/GeneralsMD> [--pack <built starterpack dir>] [--steps "<steps>"] [--out <dir>]
-//                         [--port 8941] [--arg -noshellmap] [--wait 60] [--log boot.log] [--profile <dir>] [--size 1100x800]
+//                         [--options Key=Value,Key=Value] [--port 8941] [--arg -noshellmap] [--wait 60] [--log boot.log] [--profile <dir>] [--size 1100x800]
 //                         [--dpr 2] [--resolution auto|fit|fitsharp|1280x720 ...] [--expect-trap]
 //
 // --profile  keep the browser profile (OPFS: saves, options, the downloaded starter content) in this directory, so that
@@ -28,6 +28,7 @@
 //              e:EXPR  like v:, but the step fails (exit code 1) unless the result is truthy
 //              u:EXPR  wait (30 s) until the expression is truthy, else the step fails
 //              F:N     wait for N more logic frames (the log shows a frame every 100)   f:N     wait (up to 40 min) until the game has reached logic frame N     W:RE   wait (up to 40 min) until a log line matches
+//              K:N:REGEX  fail unless at least N log lines match
 //              t:ID=REGEX   wait (30 s) until the text of element #ID matches, else the step fails
 //              reload  reload the page (same browser profile: OPFS, localStorage stay) and press Play again
 //              size:W,H   resize the browser window (viewport)
@@ -68,6 +69,7 @@ const opt = { port: 8941, wait: 60, out: '.', steps: 'm:300,300 w:1 s:menu', arg
 			case '--size': opt.size = a[++i].split('x').map(Number); break;
 			case '--dpr': opt.dpr = Number(a[++i]); break;
 			case '--resolution': opt.resolution = a[++i]; break;
+			case '--options': opt.options = a[++i]; break;
 			case '--expect-trap': opt.expectTrap = true; break;
 			default: console.error('unknown option ' + a[i]); process.exit(2);
 		}
@@ -136,6 +138,23 @@ await page.click('#download-starter');
 await page.waitForFunction(() => /^(Ready|Download failed|Could not|This server)/.test(document.getElementById('state-starter').textContent), null, { timeout: 180000 });
 console.log('starter content: ' + (await page.textContent('#state-starter')));
 
+// --options: write Options.ini lines (the game reads them when it starts) before the first Play
+async function writeOptions() {
+	if (!opt.options) return;
+	const text = opt.options.split(',').map((kv) => kv.replace('=', ' = ')).join('\r\n') + '\r\n';
+	await page.evaluate(async (t) => {
+		let dir = await navigator.storage.getDirectory();
+		dir = await dir.getDirectoryHandle('userdata', { create: true });
+		dir = await dir.getDirectoryHandle('command and conquer generals zero hour data', { create: true });
+		const h = await dir.getFileHandle('options.ini', { create: true });
+		const w = await h.createWritable();
+		await w.write(t);
+		await w.close();
+	}, text);
+	console.log('options.ini: ' + opt.options);
+}
+await writeOptions();
+
 // Presses Play on the launcher and waits for the engine to render frames.
 async function startGame() {
 	await page.waitForFunction(() => !document.getElementById('play').disabled, null, { timeout: 30000 });
@@ -156,7 +175,7 @@ function matchEnded() { return logs.some((l) => /Shell:push\(Menus\/ScoreScreen/
 
 function lastFrame() {
 	for (let i = logs.length - 1; i >= 0 && i > logs.length - 4000; --i) {
-		const m = /Appended CRC on frame (\d+)/.exec(logs[i]);
+		const m = /(?:Appended CRC on frame|ASSIST frame) (\d+)/.exec(logs[i]);
 		if (m) return Number(m[1]);
 	}
 	return 0;
@@ -299,6 +318,12 @@ async function runStep(step) {
 		}
 		case 'x': await page.waitForTimeout(Number(arg) * 1000); break;
 		case 'L': arg = arg.replace(/~/g, ' '); if (!logs.some((l) => new RegExp(arg).test(l))) fail('no log line matches /' + arg + '/'); break;
+		case 'K': {	// K:N:REGEX  fail unless at least N log lines match
+			const m = /^(\d+):(.*)$/.exec(arg.replace(/~/g, ' '));
+			const n = logs.filter((l) => new RegExp(m[2]).test(l)).length;
+			if (n < Number(m[1])) fail('only ' + n + ' log lines match /' + m[2] + '/, expected ' + m[1]);
+			break;
+		}
 		case 'N': { arg = arg.replace(/~/g, ' '); const bad = logs.find((l) => new RegExp(arg).test(l)); if (bad) fail('unexpected log line: ' + bad.slice(0, 200)); break; }
 		default: console.log('unknown step ' + step);
 	}

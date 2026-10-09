@@ -78,6 +78,7 @@
 #include "GameClient/GameText.h"
 
 #include "GameLogic/AI.h"
+#include "GameLogic/PlayerAssist.h"
 #include "GameLogic/AIPathfind.h"
 #include "GameLogic/AISkirmishPlayer.h"
 #include "GameLogic/ExperienceTracker.h"
@@ -3759,6 +3760,10 @@ void Player::processCreateTeamGameMessage(Int hotkeyNum, const GameMessage *msg)
 			m_squads[hotkeyNum]->addObject(obj);
 		}
 	}
+
+	// player assists: the units of a new hotkey group share one formation
+	if (ThePlayerAssist && ThePlayerAssist->allowed())
+		ThePlayerAssist->onTeamCreated(m_squads[hotkeyNum]->getLiveObjects());
 }
 
 //-------------------------------------------------------------------------------------------------

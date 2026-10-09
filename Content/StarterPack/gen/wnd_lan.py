@@ -136,6 +136,7 @@ def _game_options():
                           style=MUTED_STYLE))
     children.append(combo("ComboBoxStartingCash", (548, 416, 784, 442), display=5))
     children.append(checkbox("CheckboxLimitSuperweapons", (548, 452, 784, 476), text("GUI:LimitSuperweapons", "Limit superweapons")))
+    children.append(checkbox("CheckboxPlayerAssists", (548, 480, 784, 504), text("GUI:PlayerAssists", "Player assists allowed")))
     # chat
     children.append(listbox("ListboxChatWindowLanGame", (24, 410, 530, 520), rows=7, columns=1, widths=[100], size=11,
                             autoscroll=True))

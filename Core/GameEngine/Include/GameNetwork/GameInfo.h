@@ -233,6 +233,10 @@ public:
   inline Bool oldFactionsOnly() const;
   inline void setOldFactionsOnly( Bool oldFactionsOnly );
 
+  // Player assists (optional helpers for the player, see GameLogic/PlayerAssist.h): a setting of the match, the same for all players.
+  inline Bool getPlayerAssistsAllowed() const;
+  inline void setPlayerAssistsAllowed( Bool allowed );
+
 protected:
 	Int m_preorderMask;
 	Int m_crcInterval;
@@ -254,6 +258,7 @@ protected:
   Money         m_startingCash;
   UnsignedShort m_superweaponRestriction;
   Bool m_oldFactionsOnly; // Only USA, China, GLA -- not USA Air Force General, GLA Toxic General, et al
+  Bool m_playerAssistsAllowed; // the match allows the player assists (order issuing helpers)
 };
 
 extern GameInfo *TheGameInfo;
@@ -275,6 +280,8 @@ const Money&GameInfo::getStartingCash() const         { return m_startingCash; }
 UnsignedShort GameInfo::getSuperweaponRestriction() const { return m_superweaponRestriction; }
 Bool        GameInfo::oldFactionsOnly() const           { return m_oldFactionsOnly; }
 void        GameInfo::setOldFactionsOnly( Bool oldFactionsOnly ) { m_oldFactionsOnly = oldFactionsOnly; }
+Bool        GameInfo::getPlayerAssistsAllowed() const   { return m_playerAssistsAllowed; }
+void        GameInfo::setPlayerAssistsAllowed( Bool allowed ) { m_playerAssistsAllowed = allowed; }
 
 AsciiString GameInfoToAsciiString( const GameInfo *game );
 Bool ParseAsciiStringToGameInfo( GameInfo *game, AsciiString options );

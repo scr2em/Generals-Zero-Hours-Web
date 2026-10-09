@@ -44,6 +44,7 @@
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/W3DGUICallbacks.h"
 #include "W3DDevice/GameClient/W3DInGameUI.h"
+#include "GameClient/AssistUI.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
 #include "W3DDevice/GameClient/W3DScene.h"
 #include "W3DDevice/Common/W3DConvert.h"
@@ -413,6 +414,9 @@ void W3DInGameUI::draw()
 
 			// draw placement angle selection if needed
 			drawPlaceAngle( view );
+
+			// player assist overlays
+			AssistUI::drawOverlays( view );
 
 		}
 

@@ -166,11 +166,12 @@ def skirmish_options():
     children.append(label("StaticTextStartingCash", (548, 392, 700, 414), text("GUI:StartingCash", "Starting cash"), size=11,
                           style=MUTED_STYLE))
     children.append(combo("ComboBoxStartingCash", (548, 416, 784, 442), display=5))
-    children.append(checkbox("CheckboxLimitSuperweapons", (548, 452, 784, 476), text("GUI:LimitSuperweapons", "Limit superweapons")))
-    children.append(label("StaticTextGameSpeedLabel", (548, 484, 700, 506), text("GUI:GameSpeed", "Game speed limit (fps)"), size=11,
+    children.append(checkbox("CheckboxLimitSuperweapons", (548, 446, 784, 468), text("GUI:LimitSuperweapons", "Limit superweapons")))
+    children.append(checkbox("CheckboxPlayerAssists", (548, 470, 784, 492), text("GUI:PlayerAssists", "Player assists allowed")))
+    children.append(label("StaticTextGameSpeedLabel", (548, 496, 700, 514), text("GUI:GameSpeed", "Game speed limit (fps)"), size=11,
                           style=MUTED_STYLE))
-    children.append(hslider("SliderGameSpeed", (548, 508, 740, 528), 15, 61))
-    children.append(static("StaticTextGameSpeed", (746, 506, 784, 530), None, size=12, bold=True))
+    children.append(hslider("SliderGameSpeed", (548, 516, 740, 534), 15, 61))
+    children.append(static("StaticTextGameSpeed", (746, 514, 784, 536), None, size=12, bold=True))
     # record of the player's games against the computer
     children.append(label("StaticTextWins", (24, 436, 120, 458), text("GUI:Wins", "Wins"), size=11, style=MUTED_STYLE))
     children.append(static("StaticTextWinsValue", (120, 434, 180, 458), None, size=12, bold=True))

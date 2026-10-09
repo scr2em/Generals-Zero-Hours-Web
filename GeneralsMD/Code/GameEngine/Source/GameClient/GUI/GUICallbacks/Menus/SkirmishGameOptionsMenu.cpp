@@ -41,6 +41,8 @@
 #include "Common/SkirmishBattleHonors.h"
 #include "Common/SkirmishPreferences.h"
 #include "GameLogic/GameLogic.h"
+#include "Common/AssistOptions.h"
+#include "GameClient/AssistUI.h"
 #include "GameClient/AnimateWindowManager.h"
 #include "GameClient/ClientInstance.h"
 #include "GameClient/WindowLayout.h"
@@ -128,6 +130,8 @@ static GameWindow *buttonReset = nullptr;
 static GameWindow *windowMap = nullptr;
 static GameWindow *textEntryPlayerName = nullptr;
 static GameWindow *checkBoxLimitSuperweapons = nullptr;
+static GameWindow *checkBoxPlayerAssists = nullptr;			// the match allows the player assists
+static NameKeyType checkBoxPlayerAssistsID = NAMEKEY_INVALID;
 static GameWindow *comboBoxStartingCash = nullptr;
 static GameWindow *comboBoxPlayer[MAX_SLOTS] = {0};
 
@@ -1088,6 +1092,8 @@ void InitSkirmishGameGadgets()
 	DEBUG_ASSERTCRASH(staticTextGameSpeed, ("Could not find the staticTextGameSpeed"));
   checkBoxLimitSuperweapons = TheWindowManager->winGetWindowFromId( parentSkirmishGameOptions, checkBoxLimitSuperweaponsID );
   DEBUG_ASSERTCRASH(checkBoxLimitSuperweapons, ("Could not find the checkBoxLimitSuperweapons"));
+  checkBoxPlayerAssistsID = AssistUI::setupCheckboxId( "SkirmishGameOptionsMenu.wnd" );
+  checkBoxPlayerAssists = AssistUI::setupCheckbox( parentSkirmishGameOptions, "SkirmishGameOptionsMenu.wnd", checkBoxLimitSuperweapons );
   comboBoxStartingCash = TheWindowManager->winGetWindowFromId( parentSkirmishGameOptions, comboBoxStartingCashID );
   DEBUG_ASSERTCRASH(comboBoxStartingCash, ("Could not find the comboBoxStartingCash"));
   PopulateStartingCashComboBox(comboBoxStartingCash, TheSkirmishGameInfo );
@@ -1273,6 +1279,8 @@ void updateSkirmishGameOptions()
 	}
 
   GadgetCheckBoxSetChecked( checkBoxLimitSuperweapons, TheSkirmishGameInfo->getSuperweaponRestriction() != 0 );
+  if ( checkBoxPlayerAssists )
+    GadgetCheckBoxSetChecked( checkBoxPlayerAssists, TheSkirmishGameInfo->getPlayerAssistsAllowed() );
   Int itemCount = GadgetComboBoxGetLength(comboBoxStartingCash);
   Int index = 0;
   for ( ; index < itemCount; index++ )
@@ -1364,6 +1372,8 @@ void SkirmishGameOptionsMenuInit( WindowLayout *layout, void *userData )
 
   TheSkirmishGameInfo->setStartingCash( prefs.getStartingCash() );
   TheSkirmishGameInfo->setSuperweaponRestriction( prefs.getSuperweaponRestricted() ? 1 : 0 );
+  // the player assists are allowed in a new skirmish when the player has switched some on in the Options
+  TheSkirmishGameInfo->setPlayerAssistsAllowed( TheAssistOptions.anyOrderAssist() );
 
   TheSkirmishGameInfo->setMap(prefs.getPreferredMap());
 	const MapMetaData *md = TheMapCache->findMap(TheSkirmishGameInfo->getMap());
@@ -1693,6 +1703,10 @@ WindowMsgHandledType SkirmishGameOptionsMenuSystem( GameWindow *window, Unsigned
         else if ( controlID == checkBoxLimitSuperweaponsID )
         {
           handleLimitSuperweaponsClick();
+        }
+        else if ( controlID == checkBoxPlayerAssistsID && checkBoxPlayerAssists )
+        {
+          TheSkirmishGameInfo->setPlayerAssistsAllowed( GadgetCheckBoxIsChecked( checkBoxPlayerAssists ) );
         }
 				else
 				{

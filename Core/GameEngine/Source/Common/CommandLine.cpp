@@ -27,6 +27,9 @@
 
 #include "Common/ArchiveFileSystem.h"
 #include "Common/CommandLine.h"
+#if RTS_ZEROHOUR
+#include "Common/AssistOptions.h"
+#endif
 #include "Common/CRCDebug.h"
 #include "Common/LocalFileSystem.h"
 #include "Common/version.h"
@@ -407,6 +410,23 @@ Int parseMapName(char *args[], int num)
 	}
 	return 1;
 }
+
+#if RTS_ZEROHOUR
+// Player assist tests: -assistTest "spec" creates units at the start of a match (see GameLogic/AssistTest.cpp),
+// -assistDebug prints what the assists decide.  Both are for the automated tests and do nothing unless given.
+Int parseAssistTest(char *args[], int num)
+{
+	if (num > 1)
+		TheAssistOptions.m_testSpec = args[1];
+	return 2;
+}
+
+Int parseAssistDebug(char *args[], int num)
+{
+	TheAssistOptions.m_debug = TRUE;
+	return 1;
+}
+#endif
 
 Int parseHeadless(char *args[], int num)
 {
@@ -1203,6 +1223,11 @@ static CommandLineParam paramsForStartup[] =
 
 	// TheSuperHackers @feature AI test bench: play a match between computer players, see AIMatch.h.
 	{ "-aiMatch", parseAIMatch },
+
+#if RTS_ZEROHOUR
+	{ "-assistTest", parseAssistTest },
+	{ "-assistDebug", parseAssistDebug },
+#endif
 
 	// TheSuperHackers @feature helmutbuhler 13/04/2025
 	// Play back a replay. Pass the filename including .rep afterwards.

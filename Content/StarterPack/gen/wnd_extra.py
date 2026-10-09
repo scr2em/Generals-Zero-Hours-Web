@@ -167,7 +167,8 @@ def options_menu():
         y += 34
     kids.append(label("LabelScroll", (40, y + 8, 380, y + 30), text("GUI:OptionsScrollSpeed", "Scroll speed"), size=11, style=MUTED_STYLE))
     kids.append(hslider("SliderScrollSpeed", (40, y + 34, 380, y + 54), 1, 100))
-    kids.append(button("ButtonKeyboardOptions", (40, y + 70, 380, y + 100), text("GUI:OptionsKeyboard", "Keyboard shortcuts..."), size=12))
+    kids.append(button("ButtonKeyboardOptions", (40, y + 66, 380, y + 92), text("GUI:OptionsKeyboard", "Keyboard shortcuts..."), size=12))
+    kids.append(button("ButtonAssistOptions", (40, y + 98, 380, y + 124), text("GUI:OptionsAssists", "Player assists..."), size=12))
 
     # --- right: sound and picture
     kids.append(panel("PanelAudio", (408, 62, 776, 500), fill=PANEL, border=AMBER_DIM))
