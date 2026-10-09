@@ -55,6 +55,12 @@ string(APPEND CMAKE_CXX_FLAGS " -pthread")
 
 add_subdirectory(Dependencies/WebCompat)
 target_link_libraries(webcompat PUBLIC Threads::Threads)
+target_compile_definitions(webcompat PRIVATE ZH_NATIVE_HEADLESS=1)
+if(NOT APPLE)
+    # libstdc++ undefines WebCompat's fopen/freopen macros (which resolve Windows paths); the linker sends the
+    # calls to WebCompat instead (Dependencies/WebCompat/src/crt_io.cpp).
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--wrap=fopen -Wl,--wrap=freopen")
+endif()
 
 # Flags for every game target: the same as for the web build (see cmake/emscripten.cmake for the reasons).
 target_compile_options(deps_config INTERFACE
