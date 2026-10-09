@@ -222,6 +222,16 @@ struct AISkillSettings
 	Bool m_useAbilities;			///< Units with targeted special powers use them on good targets.
 	Real m_abilityRange;			///< Targets are looked for this far from the unit.
 	Real m_abilityMinValue;		///< Least value of a target (cost of the enemy, or of the hurt friend scaled by its damage) that a power is used on.
+
+	// ---- batch 2: airborne insertion ----
+	Bool m_useAirborne;				///< A transport aircraft drops a strike squad next to a soft target behind the enemy lines.
+	Real m_airMargin;					///< Distance added to the range of a seen anti-air weapon for the area the flight stays out of.
+	Real m_airGuardShare;			///< A drop zone is safe when the armed units seen near it are worth less than this share of the squad.
+	Real m_airMinSquadValue;	///< Least value of a squad worth the flight.
+	Real m_airMaxDetour;			///< A flight path around anti-air coverage is accepted when it is at most this many times the straight line.
+	Real m_airMaxSeconds;			///< Longest flight to the drop point.
+	Real m_airAssaultSeconds;	///< The squad is on its own for this long after the drop.
+	Real m_airCooldownSeconds;///< Pause between two missions.
 };
 
 class AISideBuildList : public MemoryPoolObject

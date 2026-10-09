@@ -1,0 +1,24 @@
+{
+ "description": "Use with 'haulers': the parked hauler carries a surface-to-air launcher (range 220, hits aircraft only): seen anti-air coverage away from the base.",
+ "edits": [
+  {
+   "file": "data/ini/weapon.ini",
+   "append": "\n; Bench overlay: a surface-to-air weapon (hits aircraft only).\nWeapon IronwoodSamLauncher\n  PrimaryDamage = 30.0\n  PrimaryDamageRadius = 0.0\n  AttackRange = 220.0\n  DamageType = ARMOR_PIERCING\n  DeathType = NORMAL\n  WeaponSpeed = 999999.0\n  FireFX = FX_StarterCannonShot\n  ClipSize = 0\n  ClipReloadTime = 0\n  DelayBetweenShots = 900\n  AntiAirborneVehicle = Yes\n  AntiGround = No\nEnd"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  KindOf = SELECTABLE VEHICLE HARVESTER\n  Body = ActiveBody ModuleTag_Body\n    MaxHealth = 160.0",
+   "replace": "  KindOf = SELECTABLE VEHICLE HARVESTER CAN_ATTACK\n  Body = ActiveBody ModuleTag_Body\n    MaxHealth = 160.0"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  Behavior = AIUpdateInterface ModuleTag_AI\n  End\n  Behavior = LifetimeUpdate ModuleTag_Life",
+   "replace": "  Behavior = AIUpdateInterface ModuleTag_AI\n    AutoAcquireEnemiesWhenIdle = Yes\n  End\n  Behavior = LifetimeUpdate ModuleTag_Life"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  GeometryIsSmall = Yes\n  WeaponSet\n    Conditions = None\n  End\n  Behavior = PhysicsBehavior ModuleTag_Physics\n  End\nEnd\n",
+   "replace": "  GeometryIsSmall = Yes\n  WeaponSet\n    Conditions = None\n    Weapon = PRIMARY IronwoodSamLauncher\n  End\n  Behavior = PhysicsBehavior ModuleTag_Physics\n  End\nEnd\n"
+  }
+ ]
+}

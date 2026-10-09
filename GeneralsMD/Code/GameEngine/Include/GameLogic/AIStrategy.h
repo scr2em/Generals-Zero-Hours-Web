@@ -457,6 +457,17 @@ private:
 	void tryStartRepairs();
 	void updateRepair();
 
+	// airborne insertion (AIAirborne.cpp)
+	enum { MAX_SQUAD = 8 };
+	Bool airborneOn() const;
+	Bool isAirborne( ObjectID id ) const;
+	Int collectAntiAirCircles( AIRouteCircle *circles, Int maxCircles ) const;
+	Bool dropZoneSafe( const Coord3D &p, Real squadValue ) const;
+	void endAirMission( const char *why );
+	void tryStartAirMission();
+	void updateAirMission();
+	void updateAirborne();
+
 	// unit abilities (AIAbility.cpp)
 	enum { ABILITY_MEMORY = 12 };
 	Bool abilityOn() const;
@@ -616,6 +627,28 @@ private:
 	UnsignedInt		m_bdDamageFrame;								///< latest damage to one of our objects inside the zone by an enemy
 	UnsignedInt		m_nextBaseDefence;
 	UnsignedInt		m_bdWeakFrame;									///< last trace line about a threat that the teams at home do not go out to
+	Int						m_airPhase;											///< airborne insertion: 0 = no mission
+	ObjectID			m_airTransport;
+	ObjectID			m_squad[MAX_SQUAD];
+	Int						m_numSquad;
+	Coord3D				m_airPath[AIROUTE_MAX_POINTS];	///< waypoints out, the last is the drop point
+	Int						m_airPathLen;
+	Int						m_airPathIdx;
+	Coord3D				m_airBack[AIROUTE_MAX_POINTS];	///< waypoints back, the last is the rally point
+	Int						m_airBackLen;
+	Coord3D				m_airTarget;
+	ObjectID			m_airTargetID;
+	UnsignedInt		m_airPhaseFrame;
+	UnsignedInt		m_airStart;
+	UnsignedInt		m_airAssaultStart;
+	UnsignedInt		m_airCooldown;
+	UnsignedInt		m_nextAirCheck;
+	UnsignedInt		m_airNoteFrame;
+	Int						m_airMissions;									///< statistics for the trace
+	Int						m_airDrops;
+	Int						m_airKills;
+	Int						m_airLost;
+	Int						m_airNoPath;
 	AIAbilityUse	m_abilityUsed[ABILITY_MEMORY];
 	Int						m_abilityTeam;									///< round robin over the units of the field teams
 	Int						m_abilityUnit;

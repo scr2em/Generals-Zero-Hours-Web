@@ -322,6 +322,14 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "UnitAbilities",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAbilities ) },
 			{ "AbilityRange",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityRange ) },
 			{ "AbilityMinValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityMinValue ) },
+			{ "AirborneInsertion",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAirborne ) },
+			{ "AirMargin",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMargin ) },
+			{ "AirGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airGuardShare ) },
+			{ "AirMinSquadValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMinSquadValue ) },
+			{ "AirMaxDetour",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMaxDetour ) },
+			{ "AirMaxSeconds",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMaxSeconds ) },
+			{ "AirAssaultSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airAssaultSeconds ) },
+			{ "AirCooldownSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airCooldownSeconds ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1317,6 +1325,14 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_useAbilities = true;
 	ex.m_abilityRange = 400.0f;
 	ex.m_abilityMinValue = 150.0f;
+	ex.m_useAirborne = false;
+	ex.m_airMargin = 50.0f;
+	ex.m_airGuardShare = 0.8f;
+	ex.m_airMinSquadValue = 350.0f;
+	ex.m_airMaxDetour = 2.2f;
+	ex.m_airMaxSeconds = 100.0f;
+	ex.m_airAssaultSeconds = 90.0f;
+	ex.m_airCooldownSeconds = 45.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1424,6 +1440,14 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferBool( &sk.m_useAbilities );
 		xfer->xferReal( &sk.m_abilityRange );
 		xfer->xferReal( &sk.m_abilityMinValue );
+		xfer->xferBool( &sk.m_useAirborne );
+		xfer->xferReal( &sk.m_airMargin );
+		xfer->xferReal( &sk.m_airGuardShare );
+		xfer->xferReal( &sk.m_airMinSquadValue );
+		xfer->xferReal( &sk.m_airMaxDetour );
+		xfer->xferReal( &sk.m_airMaxSeconds );
+		xfer->xferReal( &sk.m_airAssaultSeconds );
+		xfer->xferReal( &sk.m_airCooldownSeconds );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

@@ -157,6 +157,24 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bdDamageFrame(0),
 	m_nextBaseDefence(0),
 	m_bdWeakFrame(0),
+	m_airPhase(0),
+	m_airTransport(INVALID_ID),
+	m_numSquad(0),
+	m_airPathLen(0),
+	m_airPathIdx(0),
+	m_airBackLen(0),
+	m_airTargetID(INVALID_ID),
+	m_airPhaseFrame(0),
+	m_airStart(0),
+	m_airAssaultStart(0),
+	m_airCooldown(0),
+	m_nextAirCheck(0),
+	m_airNoteFrame(0),
+	m_airMissions(0),
+	m_airDrops(0),
+	m_airKills(0),
+	m_airLost(0),
+	m_airNoPath(0),
 	m_abilityTeam(0),
 	m_abilityUnit(0),
 	m_nextAbility(0),
@@ -235,6 +253,10 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_entrances, 0, sizeof(m_entrances));
 	memset(m_garrisoned, 0, sizeof(m_garrisoned));
 	memset(m_abilityUsed, 0, sizeof(m_abilityUsed));
+	memset(m_squad, 0, sizeof(m_squad));
+	memset(m_airPath, 0, sizeof(m_airPath));
+	memset(m_airBack, 0, sizeof(m_airBack));
+	m_airTarget.zero();
 	memset(m_cleaners, 0, sizeof(m_cleaners));
 	memset(m_geoSites, 0, sizeof(m_geoSites));
 	m_bdDamagePos.zero();
@@ -273,7 +295,8 @@ void AIStrategy::applyVariant()
 		{ "geo", AIPlayer::AIF_GEO }, { "layout", AIPlayer::AIF_LAYOUT },
 		{ "georally", AIPlayer::AIF_GEORALLY }, { "geosites", AIPlayer::AIF_GEOSITES },
 		{ "garrison", AIPlayer::AIF_GARRISON }, { "clear", AIPlayer::AIF_CLEAR },
-		{ "ability", AIPlayer::AIF_ABILITY } };
+		{ "ability", AIPlayer::AIF_ABILITY },
+		{ "airborne", AIPlayer::AIF_AIRBORNE } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -404,6 +427,7 @@ void AIStrategy::update()
 				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
 				AI_TRACE("garrisons: %d infantry entered (%d unit-seconds inside, %d of them firing), %d structures of the enemy attacked (%d brought down), %d holding now", m_garrisonEntered, m_garrisonSeconds, m_garrisonFiring, m_garrisonClearJobs, m_garrisonClears, m_numGarrisoned);
 				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
+				AI_TRACE("airborne: %d missions, %d drops, %d targets destroyed, %d aircraft lost, %d times no safe way", m_airMissions, m_airDrops, m_airKills, m_airLost, m_airNoPath);
 				AI_TRACE("routes: %d waves routed around defences, %d breaches started (%d with the defences down)", m_routesPlanned, m_breachesStarted, m_breachKills);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
@@ -418,6 +442,7 @@ void AIStrategy::update()
 	updateGeo();
 	updateGarrison();
 	updateAbilities();
+	updateAirborne();
 
 	if (now >= m_nextTeamEval)
 	{
@@ -1126,6 +1151,9 @@ Bool AIStrategy::isManageableTeam( Team *team ) const
 	{
 		Object *obj = it.cur();
 		if (obj == nullptr || obj->isEffectivelyDead())
+			continue;
+		// A transport aircraft is the airborne missions' (isAirborne); it does not stop the rest of the team being an army.
+		if (obj->isKindOf(KINDOF_TRANSPORT) && obj->isKindOf(KINDOF_AIRCRAFT) && airborneOn())
 			continue;
 		if (obj->isKindOf(KINDOF_DOZER) || obj->isKindOf(KINDOF_HARVESTER) || obj->isKindOf(KINDOF_STRUCTURE) ||
 				obj->isKindOf(KINDOF_TRANSPORT))
@@ -2195,7 +2223,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 10;
+	XferVersion currentVersion = 11;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2335,6 +2363,25 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferInt(&m_abilityTeam);
 		xfer->xferInt(&m_abilityUnit);
 		xfer->xferUnsignedInt(&m_nextAbility);
+	}
+	if (version >= 11)
+	{
+		xfer->xferInt(&m_airPhase);
+		xfer->xferObjectID(&m_airTransport);
+		xfer->xferUser(m_squad, sizeof(m_squad));
+		xfer->xferInt(&m_numSquad);
+		xfer->xferUser(m_airPath, sizeof(m_airPath));
+		xfer->xferInt(&m_airPathLen);
+		xfer->xferInt(&m_airPathIdx);
+		xfer->xferUser(m_airBack, sizeof(m_airBack));
+		xfer->xferInt(&m_airBackLen);
+		xfer->xferCoord3D(&m_airTarget);
+		xfer->xferObjectID(&m_airTargetID);
+		xfer->xferUnsignedInt(&m_airPhaseFrame);
+		xfer->xferUnsignedInt(&m_airStart);
+		xfer->xferUnsignedInt(&m_airAssaultStart);
+		xfer->xferUnsignedInt(&m_airCooldown);
+		xfer->xferUnsignedInt(&m_nextAirCheck);
 	}
 }
 
