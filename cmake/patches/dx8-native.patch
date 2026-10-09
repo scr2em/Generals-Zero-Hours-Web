@@ -15,15 +15,6 @@ diff --git a/d3d8types.h b/d3d8types.h
 index 0ee0021..300cb2f 100644
 --- a/d3d8types.h
 +++ b/d3d8types.h
-@@ -20,7 +20,7 @@
- #include <float.h>
- 
- #pragma warning(disable:4201) // anonymous unions warning
--#if defined (_WIN32) && !defined (_WIN64)
-+#if (defined (_WIN32) || defined (ZH_NATIVE_HEADLESS)) && !defined (_WIN64)
- #pragma pack(4)
- #endif
- 
 @@ -1587,7 +1587,7 @@ typedef struct _D3DADAPTER_IDENTIFIER8
      char            Driver[MAX_DEVICE_IDENTIFIER_STRING];
      char            Description[MAX_DEVICE_IDENTIFIER_STRING];

@@ -80,6 +80,9 @@ target_compile_options(deps_config INTERFACE
     # aligned behind its 64-bit block headers; the compiler must not assume the 16 bytes of the x86-64 ABI
     # (it would store with aligned SSE instructions).
     -fnew-alignment=8
+    # No fused multiply-add (arm64 has it, the WebAssembly build and x86-64 without -mfma do not): keeps the
+    # floating point results of the platforms closer together.
+    -ffp-contract=off
 )
 target_compile_definitions(deps_config INTERFACE ZH_NATIVE_HEADLESS=1)
 if(APPLE)

@@ -32,6 +32,8 @@
 
 #include "WebDevice/Platform/WebPlatform.h"
 
+#include <string.h>
+
 #include <condition_variable>
 #include <deque>
 #include <mutex>

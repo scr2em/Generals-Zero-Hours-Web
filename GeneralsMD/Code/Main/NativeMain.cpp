@@ -40,6 +40,7 @@
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 #include <windows.h>
 #include <webcompat_folders.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
