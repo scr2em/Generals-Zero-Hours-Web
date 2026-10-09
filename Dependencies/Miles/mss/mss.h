@@ -27,7 +27,7 @@
 #define STRICT
 #endif
 
-#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+#if defined(_WIN32) || defined(ZH_WEBCOMPAT)
 #include <windows.h>
 #include <mmsystem.h>
 #else

@@ -58,6 +58,8 @@ void AIEnemyModel::reset()
 	m_lastScanFrame = 0;
 	m_scanStartFrame = 0;
 	m_armedValue = 0.0f;
+	m_allyValue = 0.0f;
+	m_scanAlly = 0.0f;
 	for (Int i = 0; i < AIROLE_COUNT; ++i)
 	{
 		m_roleValue[i] = 0.0f;
@@ -83,6 +85,17 @@ void AIEnemyModel::noteObject(Object *obj, Player *me, UnsignedInt now)
 	Player *owner = obj->getControllingPlayer();
 	if (owner == nullptr || owner == me)
 		return;
+	if (me->getRelationship(obj->getTeam()) == ALLIES)
+	{
+		// The armed units of the allies (team games): their army fights on our side.
+		if (obj->isKindOf(KINDOF_STRUCTURE) || obj->isKindOf(KINDOF_HARVESTER) || obj->isKindOf(KINDOF_DOZER) || obj->isKindOf(KINDOF_PROJECTILE) ||
+				obj->isKindOf(KINDOF_MINE) || obj->isKindOf(KINDOF_INERT) || obj->isKindOf(KINDOF_UNATTACKABLE))
+			return;
+		const AICombatFigures *af = AICombatModel::figures(obj->getTemplate());
+		if (af != nullptr && af->m_armed && af->m_role <= AIROLE_AIRCRAFT)
+			m_scanAlly += af->m_cost;
+		return;
+	}
 	if (me->getRelationship(obj->getTeam()) != ENEMIES)
 		return;
 
@@ -167,6 +180,7 @@ Bool AIEnemyModel::scan(Player *me, Int maxObjects)
 		// Start a new pass.  (An object that disappeared under the cursor also lands here: the pass restarts, nothing breaks.)
 		obj = TheGameLogic->getFirstObject();
 		m_scanStartFrame = now;
+		m_scanAlly = 0.0f;
 	}
 
 	Int budget = maxObjects;
@@ -184,6 +198,7 @@ Bool AIEnemyModel::scan(Player *me, Int maxObjects)
 
 	m_scanResume = INVALID_ID;
 	m_lastScanFrame = now;
+	m_allyValue = m_scanAlly;
 	return TRUE;
 }
 

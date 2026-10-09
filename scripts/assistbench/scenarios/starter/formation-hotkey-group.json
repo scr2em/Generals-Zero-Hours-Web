@@ -1,0 +1,26 @@
+{
+ "name": "starter-formation-hotkey-group",
+ "description": "Smoke check only (starter content, says nothing about gameplay): a hotkey group made of units with a formation keeps it: select the group again and click: they move in that formation.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn tanks 0:IronwoodTank:3 at=cc:0^220,-150",
+  "spawn rifles 0:IronwoodRifleman:4 at=cc:0^220,0",
+  "spawn rockets 0:IronwoodRocketeer:3 at=cc:0^220,150",
+  "name army tanks+rifles+rockets",
+  "wait 5",
+  "select army",
+  "formation wedge",
+  "wait 1",
+  "group 1",
+  "select tanks",
+  "wait 1",
+  "selectgroup 1",
+  "wait 1",
+  "expect formation army wedge",
+  "move cc:0^600,0",
+  "wait 1200",
+  "expect shape army wedge"
+ ]
+}

@@ -20,6 +20,16 @@
 
 #include <string.h>
 #include <ctype.h>
+#include <wctype.h>
+
+// glibc 2.38 and later declare strlcpy, strlcat, wcslcpy and wcslcat (as not throwing); the definitions below
+// must match. The ones below are still the ones used: wcslcpy and wcslcat must work on the 16-bit wchar_t of
+// the builds that use -fshort-wchar.
+#if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 38))
+#define STRINGEX_LIBC_DECL noexcept
+#else
+#define STRINGEX_LIBC_DECL
+#endif
 
 
 // Declaration
@@ -35,10 +45,10 @@ size_t wcsnlen(const wchar_t *str, size_t maxlen);
 template<typename T> size_t strlcpy_t(T *dst, const T *src, size_t dstsize);
 template<typename T> size_t strlcat_t(T *dst, const T *src, size_t dstsize);
 
-size_t strlcpy(char *dst, const char *src, size_t dstsize);
-size_t strlcat(char *dst, const char *src, size_t dstsize);
-size_t wcslcpy(wchar_t *dst, const wchar_t *src, size_t dstsize);
-size_t wcslcat(wchar_t *dst, const wchar_t *src, size_t dstsize);
+size_t strlcpy(char *dst, const char *src, size_t dstsize) STRINGEX_LIBC_DECL;
+size_t strlcat(char *dst, const char *src, size_t dstsize) STRINGEX_LIBC_DECL;
+size_t wcslcpy(wchar_t *dst, const wchar_t *src, size_t dstsize) STRINGEX_LIBC_DECL;
+size_t wcslcat(wchar_t *dst, const wchar_t *src, size_t dstsize) STRINGEX_LIBC_DECL;
 
 template<typename T> size_t strlmove_t(T *dst, const T *src, size_t dstsize);
 template<typename T> size_t strlmcat_t(T *dst, const T *src, size_t dstsize);
@@ -132,13 +142,13 @@ template<typename T> size_t strlcat_t(T *dst, const T *src, size_t dstsize)
 }
 
 #ifndef HAVE_STRLCPY
-inline size_t strlcpy(char *dst, const char *src, size_t dstsize) { return strlcpy_t(dst, src, dstsize); }
+inline size_t strlcpy(char *dst, const char *src, size_t dstsize) STRINGEX_LIBC_DECL { return strlcpy_t(dst, src, dstsize); }
 #endif
 #ifndef HAVE_STRLCAT
-inline size_t strlcat(char *dst, const char *src, size_t dstsize) { return strlcat_t(dst, src, dstsize); }
+inline size_t strlcat(char *dst, const char *src, size_t dstsize) STRINGEX_LIBC_DECL { return strlcat_t(dst, src, dstsize); }
 #endif
-inline size_t wcslcpy(wchar_t *dst, const wchar_t *src, size_t dstsize) { return strlcpy_t(dst, src, dstsize); }
-inline size_t wcslcat(wchar_t *dst, const wchar_t *src, size_t dstsize) { return strlcat_t(dst, src, dstsize); }
+inline size_t wcslcpy(wchar_t *dst, const wchar_t *src, size_t dstsize) STRINGEX_LIBC_DECL { return strlcpy_t(dst, src, dstsize); }
+inline size_t wcslcat(wchar_t *dst, const wchar_t *src, size_t dstsize) STRINGEX_LIBC_DECL { return strlcat_t(dst, src, dstsize); }
 
 // Templated strlmove. Prefer using this over strlcpy if dst and src overlap.
 // Moves src into dst until dstsize minus one. Always null terminates.

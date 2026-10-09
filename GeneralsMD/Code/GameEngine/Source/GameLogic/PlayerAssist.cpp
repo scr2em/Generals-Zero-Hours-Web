@@ -29,6 +29,7 @@
 #include "Common/PlayerList.h"
 #include "Common/Xfer.h"
 #include "GameLogic/AI.h"
+#include "GameLogic/AITacticsCore.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/PlayerAssist.h"
@@ -62,6 +63,11 @@ void PlayerAssist::reset()
 	m_allowed = FALSE;
 	m_units.clear();
 	m_protect.reset();
+	m_stances.clear();
+	for (Int i = 0; i < MAX_LEDGERS; ++i)
+		m_ledgers[i].clear();
+	for (Int i = 0; i < MAX_DEFEND; ++i)
+		m_defend[i] = DefendState();
 	m_aimValid = FALSE;
 	m_pruneFrame = 0;
 }
@@ -102,6 +108,7 @@ void PlayerAssist::logicUpdate()
 
 	const UnsignedInt now = TheGameLogic->getFrame();
 	m_protect.update( now );
+	updateStances( now );
 	if (now >= m_pruneFrame)
 	{
 		m_pruneFrame = now + 2 * LOGICFRAMES_PER_SECOND;
@@ -172,6 +179,19 @@ Bool PlayerAssist::onMessage( GameMessage *msg, Player *player, AIGroup *group )
 			return TRUE;
 		}
 
+		case GameMessage::MSG_ASSIST_STANCE:
+			if (group)
+				setStance( player, group, msg->getArgument( 0 )->integer, msg->getArgument( 1 )->integer, msg->getArgument( 2 )->integer );
+			return TRUE;
+
+		case GameMessage::MSG_ASSIST_BASE_DEFEND:
+			baseDefend( player, msg->getArgument( 0 )->location );
+			return TRUE;
+
+		case GameMessage::MSG_ASSIST_BASE_RETURN:
+			baseReturn( player );
+			return TRUE;
+
 		default:
 			break;
 	}
@@ -222,7 +242,7 @@ void PlayerAssist::crc( Xfer *x )
 //-------------------------------------------------------------------------------------------------
 void PlayerAssist::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 2;
+	XferVersion currentVersion = 4;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -230,6 +250,31 @@ void PlayerAssist::xfer( Xfer *xfer )
 	xfer->xferBool( &m_allowed );
 	if (version >= 2)
 		m_protect.xfer( xfer );
+	if (version >= 3)
+	{
+		for (Int i = 0; i < MAX_DEFEND; ++i)
+		{
+			DefendState &d = m_defend[i];
+			xfer->xferBool( &d.m_active );
+			xfer->xferCoord3D( &d.m_location );
+			xfer->xferUnsignedInt( &d.m_frame );
+			UnsignedInt n = (UnsignedInt)d.m_units.size();
+			xfer->xferUnsignedInt( &n );
+			if (loading)
+			{
+				d.m_units.resize( n );
+				d.m_origins.resize( n );
+			}
+			for (UnsignedInt u = 0; u < n; ++u)
+			{
+				xfer->xferObjectID( &d.m_units[u] );
+				xfer->xferCoord3D( &d.m_origins[u] );
+			}
+		}
+	}
+
+	if (version >= 4)
+		xferStances( xfer );
 
 	UnsignedInt count = (UnsignedInt)m_units.size();
 	xfer->xferUnsignedInt( &count );

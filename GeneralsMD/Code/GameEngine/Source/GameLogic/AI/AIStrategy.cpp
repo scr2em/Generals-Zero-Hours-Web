@@ -156,6 +156,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bdSince(0),
 	m_bdDamageFrame(0),
 	m_nextBaseDefence(0),
+	m_bdMuteUntil(0),
+	m_bdMuteValue(0.0f),
 	m_bdWeakFrame(0),
 	m_numBunkerMen(0),
 	m_nextBunker(0),
@@ -252,7 +254,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_nextStatus(0)
 {
 	memset(m_teams, 0, sizeof(m_teams));
-	memset(m_ledger, 0, sizeof(m_ledger));
+	m_ledger.clear();
 	memset(m_steps, 0, sizeof(m_steps));
 	memset(m_raiders, 0, sizeof(m_raiders));
 	memset(m_patients, 0, sizeof(m_patients));
@@ -306,7 +308,8 @@ void AIStrategy::applyVariant()
 		{ "garrison", AIPlayer::AIF_GARRISON }, { "clear", AIPlayer::AIF_CLEAR },
 		{ "ability", AIPlayer::AIF_ABILITY },
 		{ "airborne", AIPlayer::AIF_AIRBORNE },
-		{ "bunker", AIPlayer::AIF_BUNKER } };
+		{ "bunker", AIPlayer::AIF_BUNKER },
+		{ "team", AIPlayer::AIF_TEAM }, { "bdcap", AIPlayer::AIF_BDCAP } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -386,13 +389,7 @@ Bool AIStrategy::enemyStartPosition( Coord3D *pos ) const
 	if (enemy == nullptr)
 		return FALSE;
 	// The start positions of a map are public knowledge in a skirmish.
-	AsciiString name;
-	name.format("Player_%d_Start", enemy->getMpStartIndex() + 1);
-	Waypoint *way = TheTerrainLogic->getWaypointByName(name);
-	if (way == nullptr)
-		return FALSE;
-	*pos = *way->getLocation();
-	return TRUE;
+	return AITactics::playerStart(enemy, pos);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -439,6 +436,10 @@ void AIStrategy::update()
 				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
 				AI_TRACE("bunkers: %d posts, %d men inside or on the way, %d entered so far, %d infantry trained for them", m_bunkerPosts, m_numBunkerMen, m_bunkerEntered, m_bunkerTrained);
 				AI_TRACE("airborne: %d missions, %d drops, %d targets destroyed, %d aircraft lost, %d times no safe way", m_airMissions, m_airDrops, m_airKills, m_airLost, m_airNoPath);
+				Real stallShown = 0.0f;
+				const Real targetShown = waveTarget(&stallShown);
+				AI_TRACE("waves: army %.0f of %.0f needed (%.0f once it has stopped growing; enemy seen %.0f, defences %.0f, allies %.0f), army state %s, %d alarm(s) so far", m_armyValue, targetShown, stallShown, m_enemy.armyValue(),
+					m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE), m_enemy.allyValue(), m_armyState == ARMY_GATHER ? "gather" : "wave out", m_bdAlarms);
 				AI_TRACE("routes: %d waves routed around defences, %d breaches started (%d with the defences down)", m_routesPlanned, m_breachesStarted, m_breachKills);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
@@ -1273,16 +1274,7 @@ Bool AIStrategy::rallyPoint( Coord3D *pos )
 			toward.y = (extent.lo.y + extent.hi.y) * 0.5f;
 			toward.z = 0.0f;
 		}
-		Real dx = toward.x - base.x, dy = toward.y - base.y;
-		Real len = sqrtf(dx * dx + dy * dy);
-		if (len < 1.0f)
-		{
-			dx = 1.0f; dy = 0.0f; len = 1.0f;
-		}
-		const Real out = m_ai->m_baseRadius + 140.0f;
-		m_rally.x = base.x + dx / len * out;
-		m_rally.y = base.y + dy / len * out;
-		m_rally.z = TheTerrainLogic->getGroundHeight(m_rally.x, m_rally.y);
+		AITactics::rallyAhead(base, m_ai->m_baseRadius, toward, &m_rally);
 		Coord3D geoPos;
 		if (geoRally(&geoPos))
 			m_rally = geoPos;
@@ -1293,12 +1285,29 @@ Bool AIStrategy::rallyPoint( Coord3D *pos )
 }
 
 /// The army value the AI wants before it attacks: enough to beat what it has seen, and a minimum of its own.
-Real AIStrategy::waveTarget() const
+Real AIStrategy::waveTarget( Real *stallNeed ) const
 {
 	const AISkillSettings &sk = skill();
-	Real target = sk.m_waveSizeScale * (1.5f * m_enemy.armyValue() + 0.8f * (m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE)));
+	const Real full = sk.m_waveSizeScale * (1.5f * m_enemy.armyValue() + 0.8f * (m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE)));
+	Real target = full;
+	// An army that has stopped growing launches at this share of the target.
+	Real stall = 0.6f * full;
+	// Team games: the enemy model holds all the enemies (and, with shared vision, what the allies found of them), but the army of
+	// the allies fights them too: our wave only has to make up the difference.
+	if (teamWavesOn() && m_enemy.allyValue() > 0.0f)
+	{
+		const Real help = sk.m_allyWaveWeight * m_enemy.allyValue();
+		target = full - help > sk.m_allyWaveFloor * full ? full - help : sk.m_allyWaveFloor * full;
+		stall = 0.6f * full - help > sk.m_allyWaveFloor * 0.6f * full ? 0.6f * full - help : sk.m_allyWaveFloor * 0.6f * full;
+	}
 	if (target < sk.m_minWaveValue)
 		target = sk.m_minWaveValue;
+	if (stall < 0.6f * sk.m_minWaveValue)
+		stall = 0.6f * sk.m_minWaveValue;
+	if (stall > target)
+		stall = target;
+	if (stallNeed)
+		*stallNeed = stall;
 	return target;
 }
 
@@ -1530,14 +1539,15 @@ void AIStrategy::updateArmy()
 		}
 		if (weight <= 0.0f)
 			return;
-		if (m_bdActive && baseDefenceOn())
+		if (baseAlarmBlocksWaves(now))
 			return;		// the base first
-		const Real target = waveTarget();
+		Real stallNeed = 0.0f;
+		const Real target = waveTarget(&stallNeed);
 		// An army that has stopped growing (all teams alive, money spent elsewhere) does not wait for ever.
 		const Bool stalled = now - m_armyGrowthFrame >= secondsToFrames(sk.m_waveHoldSeconds);
 		// The army must be able to take buildings down, too (or have waited for it long enough).
 		const Bool equipped = m_siegeShortage <= 0.5f || now - m_armyGrowthFrame >= 2 * secondsToFrames(sk.m_waveHoldSeconds);
-		if ((value >= target && equipped) || (stalled && value >= 0.6f * target && equipped))
+		if ((value >= target && equipped) || (stalled && value >= stallNeed && equipped))
 		{
 			if (m_launchBlockedSince != 0 && now < m_nextLaunchCheck)
 				return;	// held back by the fight check: look again in a moment
@@ -2235,7 +2245,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 12;
+	XferVersion currentVersion = 13;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2271,7 +2281,7 @@ void AIStrategy::xfer( Xfer *xfer )
 	xfer->xferCoord3D(&m_scoutTarget);
 	xfer->xferUnsignedInt(&m_savingSince);
 	xfer->xferUnsignedInt(&m_noSavingUntil);
-	xfer->xferUser(m_ledger, sizeof(m_ledger));
+	xfer->xferUser(&m_ledger, sizeof(m_ledger));
 	xfer->xferInt(&m_numSteps);
 	xfer->xferUser(m_steps, sizeof(m_steps));
 	xfer->xferInt(&m_tacticTeam);
@@ -2403,6 +2413,11 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferUnsignedInt(&m_nextBunkerTrain);
 		xfer->xferUnsignedInt(&m_bunkerQueueFrame);
 		xfer->xferInt(&m_bunkerQueued);
+	}
+	if (version >= 13)
+	{
+		xfer->xferUnsignedInt(&m_bdMuteUntil);
+		xfer->xferReal(&m_bdMuteValue);
 	}
 }
 

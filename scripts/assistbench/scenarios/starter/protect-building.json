@@ -1,0 +1,43 @@
+{
+ "name": "starter-protect-building",
+ "description": "Smoke check only (starter content, says nothing about gameplay): four riflemen protect the command center; an enemy attacks it; they answer, return home after the fight; a move by hand moves their home; unprotect removes the links.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn guards 0:IronwoodRifleman:4 at=cc:0^220,-60",
+  "wait 5",
+  "select guards",
+  "protect guards cc:0",
+  "wait 2",
+  "expect linked guards",
+  "expect protects guards cc:0",
+  "expect state guards home",
+  "snapshot guards",
+  "spawn raider 1:IronwoodRifleman:1 at=cc:0^120,220",
+  "ai raider attack cc:0",
+  "until damaged cc:0 max=450",
+  "until state guards responding any=1 max=300",
+  "until dead raider max=600",
+  "kill raider",
+  "until state guards returning any=1 max=600",
+  "until athome guards max=1200",
+  "expect atsnapshot guards tol=45",
+  "select guards",
+  "move cc:0^350,-200",
+  "wait 2",
+  "expect homeat guards cc:0^350,-200 tol=60",
+  "until athome guards max=900",
+  "select guards",
+  "unprotect",
+  "wait 2",
+  "expect unlinked guards"
+ ],
+ "log": [
+  "^ASSIST protect link \\d+ protects",
+  "^ASSIST protect \\d+ answers the alarm",
+  "^ASSIST protect \\d+ goes home",
+  "^ASSIST protect \\d+ is home",
+  "^ASSIST protect link \\d+ removed"
+ ]
+}

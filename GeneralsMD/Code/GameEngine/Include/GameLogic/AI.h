@@ -237,6 +237,12 @@ struct AISkillSettings
 	Bool m_useBunkers;				///< Defensive structures that hold infantry are filled and kept filled.
 	Real m_bunkerReserve;			///< Infantry for the posts is trained only when the money left is at least this.
 	Real m_bunkerArmyShare;		///< The men in the posts are at most this share of the army (the field army and the posts together), but always two.
+
+	// ---- team games ----
+	Bool m_useTeamWaves;				///< The army that a wave needs is reduced by the armed units of the allies (they fight on our side).
+	Real m_allyWaveWeight;			///< ... by this share of their value,
+	Real m_allyWaveFloor;				///< ... but not below this share of the army the wave would need alone.
+	Real m_baseDefenceMaxBlockSeconds;///< An alarm holds back the waves at most this long once nothing of ours has been hit for a while.
 };
 
 class AISideBuildList : public MemoryPoolObject

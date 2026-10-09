@@ -32,10 +32,26 @@ string(APPEND CMAKE_C_FLAGS " -fwasm-exceptions")
 string(APPEND CMAKE_CXX_FLAGS " -fwasm-exceptions")
 string(APPEND CMAKE_EXE_LINKER_FLAGS " -fwasm-exceptions")
 
+# AddressSanitizer: every memory access is checked and the first bad write or read is reported with the stack of
+# the code that did it (and of where the memory was allocated or freed). Slower and needs more memory; for finding
+# memory corruption ("function signature mismatch" or crashes far from their cause). scripts/web/run.sh --asan.
+option(RTS_WEB_ASAN "Build the WebAssembly game with AddressSanitizer" OFF)
+if(RTS_WEB_ASAN)
+    message(STATUS "Emscripten AddressSanitizer build (RTS_WEB_ASAN)")
+    foreach(lang C CXX)
+        string(APPEND CMAKE_${lang}_FLAGS " -fsanitize=address")
+    endforeach()
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -fsanitize=address")
+endif()
+
 # Win32 treats any pointer below 64 KB as an integer resource id
 # (IS_INTRESOURCE). Wasm places static data from address 1024, so string
-# literals would look like resource ids. Start static data at 1 MB.
-string(APPEND CMAKE_EXE_LINKER_FLAGS " -sGLOBAL_BASE=1048576")
+# literals would look like resource ids. Start static data at 1 MB. (With ASan the
+# shadow memory comes first, so the static data is far above 64 KB anyway; ASan
+# does not allow a custom GLOBAL_BASE.)
+if(NOT RTS_WEB_ASAN)
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -sGLOBAL_BASE=1048576")
+endif()
 
 # Debug-friendly variant for finding runtime failures:
 #   cmake --preset emscripten -B build/em-dbg -DRTS_WEB_DEBUG=ON -DRTS_DEBUG_LOGGING=ON
@@ -67,6 +83,7 @@ else()
     endforeach()
     string(APPEND CMAKE_EXE_LINKER_FLAGS " --profiling-funcs")
 endif()
+
 # Every build: an engine thread that dies prints its stack to the page's log (see the file).
 string(APPEND CMAKE_EXE_LINKER_FLAGS " --pre-js ${CMAKE_CURRENT_LIST_DIR}/web_crash_prejs.js")
 

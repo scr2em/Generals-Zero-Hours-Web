@@ -250,16 +250,21 @@ const AssistUI::Selection &AssistUI::selection()
 }
 
 //-------------------------------------------------------------------------------------------------
-Bool AssistUI::active()
+Bool AssistUI::playing()
 {
-	if (ThePlayerAssist == nullptr || !ThePlayerAssist->allowed())
-		return FALSE;
 	if (TheGameLogic == nullptr || !TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
 		return FALSE;
 	if (TheRecorder && TheRecorder->isPlaybackMode())
 		return FALSE;
 	Player *local = ThePlayerList ? ThePlayerList->getLocalPlayer() : nullptr;
 	return local != nullptr && local->isPlayerActive();
+}
+
+//-------------------------------------------------------------------------------------------------
+/// The assists that give orders work when the match allows them.
+Bool AssistUI::active()
+{
+	return ThePlayerAssist != nullptr && ThePlayerAssist->allowed() && playing();
 }
 
 //=================================================================================================
@@ -709,6 +714,79 @@ public:
 static FormationPanel *s_formationPanel = nullptr;
 
 //=================================================================================================
+// the toolbar: switches of the display assists
+//=================================================================================================
+
+namespace
+{
+	std::vector<AssistUI::ToolbarEntry> s_toolbarEntries;
+}
+
+//-------------------------------------------------------------------------------------------------
+void AssistUI::addToolbarEntry( const ToolbarEntry &entry )
+{
+	for (size_t i = 0; i < s_toolbarEntries.size(); ++i)
+	{
+		if (s_toolbarEntries[i].m_id == entry.m_id)
+			return;
+	}
+	s_toolbarEntries.push_back( entry );
+}
+
+//-------------------------------------------------------------------------------------------------
+class ToolbarPanel : public AssistPanel
+{
+public:
+	ToolbarPanel() : AssistPanel( "Toolbar" )
+	{
+		m_title = L"Assists";
+	}
+
+	virtual Bool refresh() override
+	{
+		if (!AssistUI::playing())
+			return FALSE;
+		// one button per entry whose option is switched on
+		if (m_buttons.size() != s_toolbarEntries.size())
+		{
+			m_buttons.clear();
+			for (size_t i = 0; i < s_toolbarEntries.size(); ++i)
+				addButton( s_toolbarEntries[i].m_id, 0, s_toolbarEntries[i].m_label, s_toolbarEntries[i].m_tip );
+		}
+		Bool any = FALSE;
+		for (size_t i = 0; i < s_toolbarEntries.size(); ++i)
+		{
+			const AssistUI::ToolbarEntry &e = s_toolbarEntries[i];
+			m_buttons[i].m_visible = *e.m_option;
+			m_buttons[i].m_on = e.m_isOn();
+			any = any || *e.m_option;
+		}
+		return any;
+	}
+
+	virtual void place( Int *x, Int *y, Int *w, Int *h ) override
+	{
+		Int visible = 0;
+		for (size_t i = 0; i < m_buttons.size(); ++i)
+			visible += m_buttons[i].m_visible ? 1 : 0;
+		flow( visible > 0 ? visible : 1, AssistUI::px( 74 ), AssistUI::px( 22 ), AssistUI::px( 3 ), w, h );
+		*x = (Int)TheDisplay->getWidth() - *w - AssistUI::px( 6 );
+		*y = AssistUI::px( 26 );
+	}
+
+	virtual void clicked( Int id ) override
+	{
+		for (size_t i = 0; i < s_toolbarEntries.size(); ++i)
+		{
+			if (s_toolbarEntries[i].m_id == id)
+				s_toolbarEntries[i].m_toggle();
+		}
+	}
+};
+
+static ToolbarPanel *s_toolbar = nullptr;
+
+//=================================================================================================
 // the panels and overlays, once per frame
 //=================================================================================================
 
@@ -725,6 +803,10 @@ void AssistUI::init()
 void AssistUI::reset()
 {
 	AssistProtectUI::reset();
+	AssistStanceUI::reset();
+	AssistCoverageUI::reset();
+	AssistAlertUI::reset();
+	AssistOddsUI::reset();
 	for (size_t i = 0; i < s_panels.size(); ++i)
 		s_panels[i]->destroy();
 	s_selection.m_valid = FALSE;
@@ -739,7 +821,7 @@ void AssistUI::update()
 	init();
 	invalidateSelection();
 
-	if (!AssistUI::active())
+	if (!AssistUI::playing())
 	{
 		for (size_t i = 0; i < s_panels.size(); ++i)
 		{
@@ -752,6 +834,12 @@ void AssistUI::update()
 	if (s_formationPanel == nullptr)
 		s_formationPanel = new FormationPanel;
 	AssistProtectUI::init();
+	AssistStanceUI::init();
+	AssistCoverageUI::init();
+	AssistAlertUI::init();
+	AssistOddsUI::init();
+	if (s_toolbar == nullptr)
+		s_toolbar = new ToolbarPanel;
 
 	for (size_t i = 0; i < s_panels.size(); ++i)
 	{
@@ -772,10 +860,13 @@ void AssistUI::update()
 void AssistUI::drawOverlays( View *view )
 {
 	beginFrame();
-	if (!AssistUI::active())
+	if (!AssistUI::playing())
 		return;
 	drawAim();
 	AssistProtectUI::drawOverlays( view );
+	AssistCoverageUI::drawOverlays( view );
+	AssistAlertUI::drawOverlays( view );
+	AssistOddsUI::drawOverlays( view );
 }
 
 //=================================================================================================
@@ -877,7 +968,7 @@ void AssistUI::drawAim()
 
 namespace
 {
-	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_CLOSE = 100 };
+	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_STANCES = 6, OPT_CLOSE = 100 };
 
 	struct ToggleRow { Int id; const wchar_t *label; Bool *value; };
 }
@@ -892,6 +983,10 @@ public:
 		m_title = L"Player assists";
 		addButton( OPT_FORMATIONS, 0, L"Formations: picker, hotkeys, drag to aim", nullptr );
 		addButton( OPT_PROTECT, 0, L"Protect: units guard other units, buildings and groups", nullptr );
+		addButton( OPT_COVERAGE, 0, L"Defence coverage view: range rings and gaps in the base edge", nullptr );
+		addButton( OPT_STANCES, 0, L"Unit stances: kite, retreat when damaged, spread out, split fire", nullptr );
+		addButton( OPT_ODDS, 0, L"Odds meter: point at an enemy group to see who would win", nullptr );
+		addButton( OPT_ALERT, 0, L"Base under attack: one click sends idle army units to defend", nullptr );
 		addButton( 200, 0, L"All assists are off until switched on here.", nullptr );
 		addButton( 201, 0, L"Those that give orders also need \"Player assists allowed\" in the match setup.", nullptr );
 		addButton( OPT_CLOSE, 0, L"Close", nullptr );
@@ -925,6 +1020,10 @@ public:
 	{
 		find( OPT_FORMATIONS )->m_on = TheAssistOptions.m_formations;
 		find( OPT_PROTECT )->m_on = TheAssistOptions.m_protect;
+		find( OPT_COVERAGE )->m_on = TheAssistOptions.m_coverage;
+		find( OPT_ALERT )->m_on = TheAssistOptions.m_baseAlert;
+		find( OPT_ODDS )->m_on = TheAssistOptions.m_odds;
+		find( OPT_STANCES )->m_on = TheAssistOptions.m_stances;
 	}
 
 	virtual Bool refresh() override { return TRUE; }
@@ -957,7 +1056,7 @@ public:
 		}
 		*h = yy + AssistUI::px( 4 );
 		*x = ((Int)TheDisplay->getWidth() - *w) / 2;
-		*y = ((Int)TheDisplay->getHeight() - *h) / 3;
+		*y = AssistUI::px( 30 );		// at a fixed place near the top, so that the rows stay where they are when rows are added
 	}
 
 	virtual void clicked( Int id ) override
@@ -966,6 +1065,10 @@ public:
 		{
 			case OPT_FORMATIONS: TheAssistOptions.m_formations = !TheAssistOptions.m_formations; break;
 			case OPT_PROTECT: TheAssistOptions.m_protect = !TheAssistOptions.m_protect; break;
+			case OPT_COVERAGE: TheAssistOptions.m_coverage = !TheAssistOptions.m_coverage; break;
+			case OPT_ALERT: TheAssistOptions.m_baseAlert = !TheAssistOptions.m_baseAlert; break;
+			case OPT_ODDS: TheAssistOptions.m_odds = !TheAssistOptions.m_odds; break;
+			case OPT_STANCES: TheAssistOptions.m_stances = !TheAssistOptions.m_stances; break;
 			case OPT_CLOSE: closeDialog(); return;
 			default: return;
 		}
@@ -1015,6 +1118,18 @@ NameKeyType AssistUI::optionsButtonId( const char *layoutName )
 }
 
 //-------------------------------------------------------------------------------------------------
+// The look of an existing window for a new one. The copy must not take the window's own display strings or video
+// buffer: ~WinInstanceData frees them, which would leave the original window drawing freed memory (and corrupt the
+// heap when that memory is reused).
+static void copyLook( WinInstanceData *out, GameWindow *from )
+{
+	*out = *from->winGetInstanceData();
+	out->m_text = nullptr;
+	out->m_tooltip = nullptr;
+	out->m_videoBuffer = nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
 void AssistUI::setupOptionsButton( const char *layoutName, const char *likeButton )
 {
 	if (TheWindowManager == nullptr)
@@ -1023,19 +1138,47 @@ void AssistUI::setupOptionsButton( const char *layoutName, const char *likeButto
 	if (TheWindowManager->winGetWindowFromId( nullptr, id ))
 		return;
 
-	AsciiString likeName;
-	likeName.format( "%s:%s", layoutName, likeButton );
-	GameWindow *like = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( likeName ) );
-	if (like == nullptr)
-		return;
+	// A button of the layout that is shown (a hidden one, or one in a hidden panel, is no place for ours; the screen
+	// itself may still be hidden while the menu is being set up, so it is not asked).
+	auto find = [layoutName]( const char *name ) -> GameWindow *
+	{
+		AsciiString full;
+		full.format( "%s:%s", layoutName, name );
+		GameWindow *win = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( full ) );
+		for (GameWindow *w = win; w && w->winGetParent(); w = w->winGetParent())
+			if (w->winIsHidden())
+				return nullptr;
+		return win;
+	};
 
-	WinInstanceData inst = *like->winGetInstanceData();
+	// Where it goes: under the given button; layouts without it (some community patches drop the keyboard shortcuts
+	// button) get it under the firewall "Refresh" button, or else just above "Defaults". It looks like "Defaults" where
+	// that exists (the anchor may be a disabled button).
+	GameWindow *defaults = find( "ButtonDefaults" );
+	GameWindow *anchor = find( likeButton );
+	Bool above = FALSE;
+	if (anchor == nullptr)
+		anchor = find( "ButtonFirewallRefresh" );
+	if (anchor == nullptr && defaults)
+	{
+		anchor = defaults;
+		above = TRUE;
+	}
+	if (anchor == nullptr)
+		return;
+	GameWindow *like = defaults ? defaults : anchor;
+
+	WinInstanceData inst;
+	copyLook( &inst, like );
 	inst.m_id = id;
 	Int x, y, w, h;
-	like->winGetPosition( &x, &y );
-	like->winGetSize( &w, &h );
-	GameWindow *button = TheWindowManager->gogoGadgetPushButton( like->winGetParent(), like->winGetStatus(),
-		x, y + h + 4, w, h, &inst, like->winGetFont(), FALSE );
+	anchor->winGetPosition( &x, &y );
+	anchor->winGetSize( &w, &h );
+	if (anchor != like && like->winGetParent() == anchor->winGetParent())
+		like->winGetSize( &w, &h );
+	y = above ? y - h - 6 : y + h + 4;
+	GameWindow *button = TheWindowManager->gogoGadgetPushButton( anchor->winGetParent(), like->winGetStatus(),
+		x, y, w, h, &inst, like->winGetFont(), FALSE );
 	if (button)
 	{
 		button->winSetWindowId( id );
@@ -1068,7 +1211,8 @@ GameWindow *AssistUI::setupCheckbox( GameWindow *parent, const char *layoutName,
 		return nullptr;
 
 	// a copy of the "limit superweapons" check box, one row lower
-	WinInstanceData inst = *like->winGetInstanceData();
+	WinInstanceData inst;
+	copyLook( &inst, like );
 	inst.m_id = id;
 	Int x, y, w, h;
 	like->winGetPosition( &x, &y );
@@ -1106,7 +1250,7 @@ GameMessageDisposition AssistUI::translate( const GameMessage *msg )
 	if (t != GameMessage::MSG_RAW_MOUSE_POSITION)
 		invalidateSelection();	// the selection may have changed since the last frame
 
-	if (AssistProtectUI::translate( msg ))
+	if (AssistProtectUI::translate( msg ) || AssistStanceUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ) || AssistOddsUI::translate( msg ))
 		return DESTROY_MESSAGE;
 
 	// ---- hotkeys -----------------------------------------------------------------------------

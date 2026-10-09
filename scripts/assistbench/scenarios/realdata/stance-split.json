@@ -1,0 +1,21 @@
+{
+ "name": "stance-split",
+ "description": "split fire: eight rangers told to attack one of three enemies spread their shots once it has enough fire on it. (Needs the commits with MSG_ASSIST_BASE_DEFEND / MSG_ASSIST_STANCE; until then \"this build has no command\".)",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn rangers 0:AmericaInfantryRanger:8 at=cc:0^450,0",
+  "wait 5",
+  "select rangers",
+  "send ASSIST_STANCE int:8 int:8 int:0",
+  "wait 2",
+  "spawn enemies 1:ChinaInfantryRedguard:3 at=cc:0^600,0",
+  "attack enemies[0]",
+  "wait 600"
+ ],
+ "log": [
+  "^ASSIST stance set mask=8 value=8 percent=0 for 8 units",
+  "^ASSIST stance split: unit \\d+ leaves \\d+ \\(enough on its way\\) for \\d+"
+ ]
+}

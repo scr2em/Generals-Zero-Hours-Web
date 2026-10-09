@@ -200,7 +200,12 @@ static Bool theMainInitFlag = false;
 // ----------------------------------------------------------------------------
 
 /// @todo srj -- make this work for 8
+#if defined(__LP64__) || defined(_WIN64)
+// TheSuperHackers @fix 64-bit builds (the native headless build): blocks hold 8-byte pointers, keep them aligned.
+#define MEM_BOUND_ALIGNMENT 8
+#else
 #define MEM_BOUND_ALIGNMENT 4
+#endif
 
 static Int roundUpMemBound(Int i);
 static void *sysAllocateDoNotZero(Int numBytes);
@@ -3549,7 +3554,7 @@ static NOINLINE void preMainInitMemoryManagerImpl()
 		userMemoryManagerInitPools();
 		thePreMainInitFlag = true;
 
-#ifndef __EMSCRIPTEN__
+#ifndef ZH_WEBCOMPAT
 		DEBUG_INIT(DEBUG_FLAGS_DEFAULT);
 		DEBUG_LOG(("*** Initialized the Memory Manager prior to main!"));
 #else

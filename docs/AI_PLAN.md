@@ -312,3 +312,57 @@ On the plain starter content (no overlay) the features of the table do not trigg
 Replays were identical in the determinism checks (40 seeds: 4 of 4; 80 seeds: 2 of 2; the 10-seed runs after each feature: 2 of 2). What could not be tested here: airborne insertion against anti-air in the sky of a real map (the fixture's
 anti-air `antiair` is only a trace check), the script action "build base defence" (the starter scripts never call it; the hook is the same placement function as for the
 build list), bridges and ramps as chokepoints (only the code path; the bench maps have none), abilities other than the defector kind, and everything with the retail game data.
+
+## Team games (a user report: Expert allies did not attack)
+
+The report (retail data, a 27 minute game with 50,000 cash: the human and two Expert allies against two Expert enemies): the human did all the
+attacking, the Expert allies none. Team play had not been tested: the bench had only two start positions. The overlays `teams` (the map
+Ironwood Teams, six starts in two team areas, 2240 x 2240 units, made by `fixtures/maps/teams.py`) and `sprawl` (eight more build list
+entries, so that the base radius is about 430 as in a real game) and `--engine-arg cash=50000` are quick development checks only; the starter pack
+says nothing about gameplay (CLAUDE.md), so the real-data checks are given at the end.
+
+What the traces showed (`teams,sprawl,openmap`, four Experts, `--starts 1,2,5,6 --no-rotate`, the status line `waves: army A of N needed ...` is new):
+
+* The size of the army that a wave needs (`waveTarget`: 1.5 times the enemy army seen plus 0.8 times the defences, times `WaveSizeScale`) counted
+  every enemy at once, and with shared vision everything the allies saw, but only the Expert's own army was set against it. In a 2 against 2
+  with full vision the trace reads `waves: army 12000 of 39600 needed (enemy seen 24000, allies 12000)`: a wave needs 3.3 times the army of
+  the player, who sits on 48,000 cash for the whole game and never launches (45,000 frames, no `WAVE launches` line). The same holds in a
+  1 against 1 with full vision (the Experts see each other's armies and neither moves); the second enemy and the allies' army that does
+  the fighting just make it worse in a team game. This was not caused by the base defence of the earlier snapshot: with each of the
+  new words off in turn (`off-basedef`, `off-geo`, `off-layout`, `off-bunker` ...) the stall stayed.
+* The ways into the base (`geo`) were wrong for a large base: the flooded window was +-560 units, the ring around a base of radius 434 lies at
+  494 and more, so the part of the ring outside the window counted as closed by terrain (`terrain closes the perimeter ... 1 way(s) in`, army waiting on
+  the wrong side). The window is now +-1250 units and ground beyond it is not taken for a wall (`open ground around the base ... 2 way(s) in`,
+  one per enemy start).
+* The base alarm can hold the waves for long (a harassing scout or a force that stands about near the base: alarms of 217 s in a 1 against 1 with the
+  bunker overlay). Now the alarm is stale after `BaseDefenceMaxBlockSeconds` (60) if nothing of ours was hit for 15 s: the teams go back to their role,
+  the same force is ignored for 90 s unless it hits something (`BASEDEF clear after N s ... (stale: ...)`), and a small force (a third of the army) that has not
+  hit anything for 8 s does not hold the waves back (`baseAlarmBlocksWaves`).
+
+The fix for the team games is in `waveTarget`: the armed units of the allies (`AIEnemyModel::allyValue`, summed in the sweep over the objects) take
+`AllyWaveWeight` (0.6) of their value off the army that the wave needs, and off the army that an army that has stopped growing launches at
+(0.6 of the target), but not below `AllyWaveFloor` (0.4) of it (word `team`, `TeamWaves`). With no allies nothing changes.
+
+Measured on the bench (team 0 = the two Experts with the new behaviour, `off-team+bdcap` for the old; team 1: Expert with the old behaviour and an Easy; `openmap`, 6 seeds each):
+
+| setup | wave size / alarm cap | first wave of the Experts | victories (mean frames) |
+|---|---|---|---|
+| 2 Experts against Expert + Easy, full vision | old | frame 15,600 - 29,500 | 6 of 6 (27,463) |
+| | new | frame 6,800 - 9,200 | 6 of 6 (15,722) |
+| the same without full vision | old / new | frame 3,800 - 5,500 | 6 of 6 (17,703 / 17,596) |
+| Expert + Easy (the passive ally) against 2 Experts, full vision | old | no wave in 6 games | 1 of 6, 5 timeouts |
+| | new | waves in 3 of 6 games | 2 of 6, 4 timeouts |
+| 2 Experts against 2 Experts, full vision (equal, symmetrical) | old / new | no wave | timeouts (equal armies do not attack each other by design) |
+
+Plain Expert against Hard on Ironwood Crossing, seeds 1-40, after all the changes: 24/40 = 60% (CI 45-74%), Hard won 0, 16 timeouts, determinism 4 of 4, the same as before (no allies and no stale alarms in these games).
+
+Expert allies do not guard the base of the human ally; the fight check counts allied units around the objective, and the wave relief above lets the allies
+join the fronts of the human. Sending teams to an allied base under attack (damage reports for the objects of the allies) is not done: it needs a hook
+for the victims of other players and could hold the army at the wrong base; left for later.
+
+Real-data checks (Mac, `ZH_PATH`): map `hostile dawn`, four Experts, `--matchup "expert:China:trace@0,expert:China:trace@0,expert:China:trace@1,expert:China:trace@1"
+--starts 1,2,4,6 --no-rotate --engine-arg cash=50000 --timeout 27 --keep-logs` (three allies, starts 1-3 against 4 and 6, with `--starts 1,2,3,4,6`, is the user's game),
+and the same on `tournamenta` (4 starts: `--starts 1,2,3,4`). In the logs of every Expert: `WAVE launches` appears (a pass: at least one in the first 11 minutes, about 20,000
+frames); `waves: army A of N needed` shows `allies` above 0 once the allies have an army and N below the value without the allies;
+`BASEDEF clear after` seconds summed stay below a quarter of the game and an alarm of more than 90 s ends with `(stale:`; `GEO: ... way(s) in` for a large base does not say
+`terrain closes the perimeter` on open ground. The old behaviour for comparison: `expert:China:trace+off-team+bdcap@0`.

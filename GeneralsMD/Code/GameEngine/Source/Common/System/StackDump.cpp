@@ -91,7 +91,7 @@ MYEIP1:
 		:
 		: "memory"
 	);
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
 	// WebAssembly has no registers to read, and the debug help library that would walk the stack never loads.
 	myeip = 0;
 	myesp = 0;
@@ -358,7 +358,7 @@ MYEIP2:
 		:
 		: "eax", "memory"
 	);
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
 	// WebAssembly has no registers to read, and the debug help library that would walk the stack never loads.
 	myeip = 0;
 	myesp = 0;
@@ -569,7 +569,7 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 	{
 		DOUBLE_DEBUG (("Exception code is %x", e_info->ExceptionRecord->ExceptionCode));
 	}
-#ifndef __EMSCRIPTEN__
+#ifndef ZH_WEBCOMPAT
 	Int *winMainAddr = (Int *)WinMain;
 	DOUBLE_DEBUG(("WinMain at %x", winMainAddr));
 #endif

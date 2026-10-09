@@ -25,6 +25,8 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
 * The game data stays in the browser profile (OPFS): the starter content is downloaded from the build once, a real
   install is copied once. Use the same `--profile` (and the same `--port`, which is part of the browser origin) and
   later runs start at once.
+* **Native runner** (`--native`): the same matches without a browser, with the native headless build (`zh_headless`,
+  see below). Each match is its own process that reads the game data in place; there is nothing to import.
 
 ## Requirements
 
@@ -35,6 +37,41 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
   On the Linux sandbox: `NODE_PATH=/opt/node22/lib/node_modules`, Chromium from `/opt/pw-browsers`. Elsewhere
   `npm i playwright && npx playwright install chromium`, or `--chromium /path/to/chrome`.
 
+## The native headless build (`--native`)
+
+`zh_headless` is the game logic of the web build compiled for Linux or macOS with the system's clang: the same engine
+and the same Win32 stand-ins (`Dependencies/WebCompat`), without window, renderer, audio or video
+(`cmake/native-headless.cmake`, `GeneralsMD/Code/Main/NativeMain.cpp`). It is a 64-bit program. It runs `-aiMatch`
+(and `-simulateReplay`) and prints the same `AIMATCH_RESULT` line.
+
+Install: Linux: `clang`, `cmake` (3.28 or newer), `ninja`, `python3` (`apt install clang cmake ninja-build python3`).
+macOS: the Xcode command line tools (`xcode-select --install`), and `brew install cmake ninja`.
+
+```
+cmake --preset native-headless                      # build/native-headless
+cmake --build build/native-headless --target zh_headless starter_pack
+build/native-headless/GeneralsMD/zh_headless --zh build/native-headless/GeneralsMD/starterpack \
+    -aiMatch "map=Ironwood Crossing" players=hard:Ironwood,hard:Ironwood seed=1 timeout=5
+```
+
+`--zh DIR` is the Zero Hour folder (default `$ZH_PATH`), `--generals DIR` the original Generals (default
+`$GENERALS_PATH`, optional), `--userdata DIR` where the options and replays go (default: a temporary folder that is
+removed at the end, so parallel matches do not share it). The files are read in place with the Windows file names
+matched case-insensitively. The bench:
+
+```
+node scripts/aibench/aibench.mjs --native build/native-headless/GeneralsMD/zh_headless --data starter --seeds 8 --workers 2
+node scripts/aibench/aibench.mjs --native build/native-headless --zh "$ZH_PATH" --map tournamenta --matchup "expert:China,hard:China"
+```
+
+`--data starter` uses `starterpack/` next to the executable (the `starter_pack` target). `--native` can be combined with
+`--site` to play the same matches in both. Their results are not bit-identical: the game calls the C library's `sinf`,
+`cosf`, `acosf` ... and those of glibc or macOS differ in the last bit from Emscripten's (musl), which changes the
+CRC from the first frame on (the game state has the same layout in both builds; only such float values differ).
+Each build is deterministic on its own, and Linux and macOS may differ from each other for the same reason.
+`--boot` needs a web build.
+`scripts/gameplay/realdata_tests.sh` uses the native build when `build/native-headless` exists.
+
 ## Options
 
 `node aibench.mjs --help` lists them all. The important ones:
@@ -44,6 +81,7 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
 | `--site DIR` | the build under test (reported as `candidate`) |
 | `--baseline DIR` | a second build to compare against (reported as `baseline`); both are played with identical matches |
 | `--build NAME=DIR` | any number of named builds; the first one is the baseline of the comparison |
+| `--native PATH` | the native headless build (`zh_headless` or its directory), reported as `native`; no browser needed |
 | `--data starter\|DIR` | the free starter content (default), a Zero Hour install, or a folder holding `ZeroHour/` (+ optional `Generals/`) |
 | `--zh DIR` / `--generals DIR` | the Zero Hour install and (optional) the original Generals install; default `$ZH_PATH` / `$GENERALS_PATH` |
 | `--map NAME` | repeatable. Folder/file name, display name or path of the map |
@@ -72,7 +110,7 @@ node scripts/aibench/aibench.mjs --site build/bench/GeneralsMD --data starter \
   `off-split+kite` switches single Expert features off for an A/B run (`expert:Ironwood:off-merge` against `expert:Ironwood`),
   `on-kite` switches on a feature whose default is off. The words are `focus wave retreat scout counter save starve siege defend`
   and the tactics `split threat kite fight merge spread`. Batch 2: `raid protect repair route basedef geo layout garrison clear ability
-  airborne bunker` (`geo` has two parts that can be switched off on their own: `georally` and `geosites`).
+  airborne bunker team bdcap` (`geo` has two parts that can be switched off on their own: `georally` and `geosites`).
 * team: `@N` after the player (`expert:China:trace@1`) puts it on team N; players of a team are allies. Without it every
   player is on his own team.
 * More than two players: list them all, the map must have room. Team games: use `--no-rotate --starts a,b,c,d` so each
@@ -155,6 +193,8 @@ the bench serves (find/replace or append on the pack's INI files; the repository
 | `airlift` | the scout is an unarmed transport helicopter (KindOf AIRCRAFT TRANSPORT, `TransportContain` for 4 infantry, hovers 10 units up); the infantry get a transport slot | airborne insertion |
 | `antiair` | with `haulers`: the hauler carries a surface-to-air launcher (range 220, hits aircraft only) | seen anti-air coverage for the flight path |
 | `geotowers` | three defence towers (range 200; KindOf FS_BASE_DEFENSE and FS_POWER, so that the skirmish build code builds them by itself) on the Ironwood build list at fixed places, and a build button in the worker's command set | where defence structures are put: terrain-aware defence (`geo`) |
+| `teams` | adds the map **Ironwood Teams** (`--map ironwood_teams`, `fixtures/maps/teams.py`): six start positions in two team areas on a 2240 x 2240 field, no cliffs | team games: `--starts 1,2,5,6 --no-rotate`, players with `@team` |
+| `sprawl` | eight more entries on the Ironwood build list (power plants, barracks, factories) 250-420 units from the headquarters: the base radius becomes about 430 | big bases as in a long game with a lot of cash (use with `--engine-arg cash=50000`) |
 | `gates` | adds the map **Ironwood Gates** (`--map ironwood_gates`, generated by `fixtures/maps/gates.py`): each base lies in a basin with a cliff rim and four gaps (a wide one facing the enemy, two narrow ones at the sides, a dead end behind) | ways into the base and chokepoints: terrain-aware defence |
 
 An edit can also be `{ "generate": "maps/gates.py" }`: the script is run with an output folder, and the files it writes there are added to the
@@ -214,12 +254,21 @@ node scripts/aibench/aibench.mjs --baseline build/web-old/GeneralsMD --site buil
 Notes: use the same `--port` and `--profile` every time (browser storage belongs to the origin and profile); close
 other copies of the page; each worker needs memory for a full game (roughly 1 GB) and a core.
 
+## Player assists: the sibling bench
+
+`-assistMatch` is the same kind of mode for the player assists: a skirmish with one human player, driven by a script of
+timed steps (create units, select them, send assist and ordinary orders as the user interface does, let an enemy attack)
+with checks on the game state, at full logic speed. Its runner, `scripts/assistbench/assistbench.mjs`, takes the same game
+data options and reuses `lib/server.mjs` and `lib/browser.mjs` (`runMatch(..., 'ASSISTMATCH')`). The real-data scenarios
+run in `scripts/gameplay/realdata_tests.sh assists`. See `scripts/assistbench/README.md`.
+
 ## Files
 
 ```
 scripts/aibench/aibench.mjs       the command line runner
 scripts/aibench/lib/server.mjs    static server for the builds (one origin, isolation headers)
 scripts/aibench/lib/browser.mjs   Playwright: data import, one match per page, result capture
+scripts/aibench/lib/native.mjs    --native: one zh_headless process per match, result capture
 scripts/aibench/lib/stats.mjs     win rates, Wilson intervals, Elo, determinism comparison
 scripts/aibench/lib/overlay.mjs   --overlay: an edited copy of the starter pack
 scripts/aibench/fixtures/*.json   the overlays
@@ -227,8 +276,9 @@ scripts/aibench/fixtures/maps/     generators of overlay maps (gates.py)
 scripts/aibench/lib/report.mjs    report.json / report.md
 scripts/aibench/test/stats.test.mjs   tests of the statistics:  node --test scripts/aibench/test
 GeneralsMD/Code/GameEngine/Source/Common/AIMatch.cpp, Include/Common/AIMatch.h   the engine mode
+GeneralsMD/Code/GameEngine/Include/Common/AIMatchShared.h   its parts that -assistMatch reuses (map/side lookup, JSON, bench flag)
 ```
 
-Engine hooks outside the module: `-aiMatch` in `CommandLine.cpp` (implies headless), `GameMain.cpp` and `WebMain.cpp`
-(start the mode), `GameLogic.cpp` (no load screen; CRC messages into the command list), `Recorder.cpp` (no replay
+Engine hooks outside the module: `-aiMatch` in `CommandLine.cpp` (implies headless), `GameMain.cpp`, `WebMain.cpp` and
+`NativeMain.cpp` (start the mode), `GameLogic.cpp` (no load screen; CRC messages into the command list), `Recorder.cpp` (no replay
 unless `record=1`), `Money.h/.cpp` and `ScoreKeeper.h` (read access to the tallies).

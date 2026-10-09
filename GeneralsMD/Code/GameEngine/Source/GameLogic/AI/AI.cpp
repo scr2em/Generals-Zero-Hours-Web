@@ -39,6 +39,7 @@
 #include "GameLogic/AI.h"
 #include "GameLogic/AIPlayer.h"
 #include "GameLogic/AIStrategy.h"
+#include "GameLogic/AITacticsCore.h"
 #include "GameLogic/PartitionManager.h"
 #include "GameLogic/Module/AIUpdate.h"
 #include "GameLogic/Module/ContainModule.h"
@@ -333,6 +334,10 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "FillBunkers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useBunkers ) },
 			{ "BunkerReserve",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerReserve ) },
 			{ "BunkerArmyShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerArmyShare ) },
+			{ "TeamWaves",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useTeamWaves ) },
+			{ "AllyWaveWeight",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveWeight ) },
+			{ "AllyWaveFloor",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveFloor ) },
+			{ "BaseDefenceMaxBlockSeconds",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceMaxBlockSeconds ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -719,10 +724,7 @@ static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter
 	const Bool threatFirst = skill.m_useThreatTargets && !owner->isAiFeatureOff(AIPlayer::AIF_THREAT);
 
 	// Our units around here: what a target can do to them is what makes it dangerous.
-	enum { MAX_MATES = 8 };
-	const AICombatFigures *mates[MAX_MATES];
-	Int numMates = 0;
-	Real mateCost = 0.0f;
+	AITactics::Mates mates;
 	if (threatFirst)
 	{
 		PartitionFilterAlive alive;
@@ -730,13 +732,12 @@ static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter
 		PartitionFilter *mateFilters[] = { &friends, &alive, nullptr };
 		SimpleObjectIterator *mateIter = ThePartitionManager->iterateObjectsInRange(me->getPosition(), 150.0f, FROM_CENTER_2D, mateFilters);
 		MemoryPoolObjectHolder mateHolder(mateIter);
-		for (Object *m = mateIter->first(); m && numMates < MAX_MATES; m = mateIter->next())
+		for (Object *m = mateIter->first(); m && mates.m_num < AITactics::Mates::MAX; m = mateIter->next())
 		{
 			const AICombatFigures *mf = AICombatModel::figures(m->getTemplate());
 			if (mf == nullptr || !mf->m_armed || mf->m_structure)
 				continue;
-			mates[numMates++] = mf;
-			mateCost += mf->m_cost;
+			mates.add(mf);
 		}
 	}
 
@@ -758,72 +759,12 @@ static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter
 		if (body && body->getMaxHealth() > 0.0f)
 			health = body->getHealth() / body->getMaxHealth();
 
-		// What does not depend on the kind of rules.
-		Real common = 40.0f * (1.0f - health);																	// finish what is hurt
-		const Real dps = AICombatModel::damagePerSecond(mine, f);
-		if (dps > 0.0f)
-			common += 25.0f / (1.0f + (health * f->m_maxHealth / dps) / 3.0f);		// quick kills
-		if (dist <= mine->m_range)
-			common += 20.0f;																											// in reach right now
-		common -= 40.0f * (dist >= range ? 1.0f : dist / range);								// near is better
-
-		// The original rule: it can hurt this unit: first.
-		Real scoreA = common;
-		const Real threat = AICombatModel::killRate(f, mine);
-		if (threat > 0.0f)
-			scoreA += 60.0f + (threat * 600.0f > 30.0f ? 30.0f : threat * 600.0f);
-		else if (f->m_armed)
-			scoreA += 25.0f;
-		else if (!f->m_structure)
-			scoreA += 15.0f;
-		else
-			scoreA += 5.0f;
-
-		Real scoreB = scoreA;
-		Int kind = 0;
-		if (threatFirst)
-		{
-			// Threat: the share of the value of our units around here that it destroys every second.
-			Real rate = 0.0f;
-			if (numMates > 0)
-			{
-				for (Int i = 0; i < numMates; ++i)
-					rate += mates[i]->m_cost * AICombatModel::killRate(f, mates[i]);
-				rate /= (mateCost > 0.0f ? mateCost : 1.0f);
-			}
-			else
-			{
-				rate = threat;
-			}
-
-			scoreB = common;
-			if (rate > 0.0f)
-			{
-				scoreB += 55.0f + 40.0f * rate / (rate + 0.04f);
-				if (f->m_supportLevel >= 2)
-					scoreB += 8.0f;			// armed and mending the others: a priority among the threats
-			}
-			else if (f->m_supportLevel >= 2)
-			{
-				scoreB += 48.0f;		// healers and repairers keep the others going
-				kind = 1;
-			}
-			else if (f->m_armed)
-				scoreB += 25.0f;
-			else if (f->m_supportLevel == 1)
-				scoreB += 30.0f;		// workers
-			else if (!f->m_structure)
-				scoreB += 15.0f;
-			else
-				scoreB += 5.0f;
-
-			// What outranges us hurts from where we cannot answer: when it is within reach, take it.
-			if (f->m_armed && !f->m_structure && f->m_range >= 1.35f * mine->m_range && dist <= mine->m_range + 10.0f)
-			{
-				scoreB += 12.0f;
-				kind = 2;
-			}
-		}
+		// The scores of the rules are shared with the stances of the player assists (AITacticsCore.cpp).
+		AITactics::TargetScore ts;
+		AITactics::scoreTarget(mine, f, health, dist, range, threatFirst, mates, &ts);
+		const Real scoreA = ts.m_original;
+		const Real scoreB = ts.m_threat;
+		const Int kind = ts.m_kind;
 
 		if (bestA == nullptr || scoreA > bestScoreA)
 		{
@@ -840,14 +781,7 @@ static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter
 		// that once enough is on its way to kill it the rest of the group takes the next target.
 		Real score = scoreB;
 		if (split && body)
-		{
-			const Real assigned = owner->getAiAssignedDamage(e->getID());
-			if (assigned > 0.0f)
-			{
-				const Real ratio = assigned / (body->getHealth() * 1.05f + 1.0f);
-				score -= ratio >= 1.0f ? 100.0f : 40.0f * ratio * ratio;
-			}
-		}
+			score -= AITactics::splitPenalty(owner->getAiAssignedDamage(e->getID()), body->getHealth());
 
 		if (best == nullptr || score > bestScore)
 		{
@@ -1339,6 +1273,10 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_useBunkers = true;
 	ex.m_bunkerReserve = 200.0f;
 	ex.m_bunkerArmyShare = 0.3f;
+	ex.m_useTeamWaves = true;
+	ex.m_allyWaveWeight = 0.6f;
+	ex.m_allyWaveFloor = 0.4f;
+	ex.m_baseDefenceMaxBlockSeconds = 60.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1457,6 +1395,10 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferBool( &sk.m_useBunkers );
 		xfer->xferReal( &sk.m_bunkerReserve );
 		xfer->xferReal( &sk.m_bunkerArmyShare );
+		xfer->xferBool( &sk.m_useTeamWaves );
+		xfer->xferReal( &sk.m_allyWaveWeight );
+		xfer->xferReal( &sk.m_allyWaveFloor );
+		xfer->xferReal( &sk.m_baseDefenceMaxBlockSeconds );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

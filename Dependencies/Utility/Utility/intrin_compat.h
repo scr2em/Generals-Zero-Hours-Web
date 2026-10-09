@@ -71,7 +71,7 @@ static inline __int64 _rdtsc()
 
 #include <cstdint>
 
-#if !defined(_lrotl) && !defined(_WIN32) && !defined(__EMSCRIPTEN__) // clang provides _lrotl with -fms-extensions
+#if !defined(_lrotl) && !defined(_WIN32) && !defined(ZH_WEBCOMPAT) // clang provides _lrotl with -fms-extensions
 static inline uint32_t _lrotl(uint32_t value, int shift)
 {
 #if defined(__has_builtin) && __has_builtin(__builtin_rotateleft32)
@@ -87,7 +87,7 @@ static inline uint32_t _lrotl(uint32_t value, int shift)
 #ifdef _WIN32
 #include <intrin.h>
 #pragma intrinsic(__rdtsc)
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
 #include <time.h>
 #endif // _WIN32
 #endif // _rdtsc
@@ -96,7 +96,7 @@ static inline uint64_t _rdtsc()
 {
 #ifdef _WIN32
     return __rdtsc();
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
     // WebAssembly has no cycle counter, use nanoseconds of the monotonic clock instead.
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -114,7 +114,7 @@ static inline uint64_t _rdtsc()
 #ifdef _WIN32
 #include <intrin.h>
 #pragma intrinsic(_ReturnAddress)
-#elif defined(__EMSCRIPTEN__)
+#elif defined(ZH_WEBCOMPAT)
 // clang provides _ReturnAddress with -fms-extensions.
 #elif defined(__has_builtin)
     #if __has_builtin(__builtin_return_address)

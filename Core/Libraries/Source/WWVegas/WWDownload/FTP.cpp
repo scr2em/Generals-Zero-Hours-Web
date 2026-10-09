@@ -261,7 +261,7 @@ DWORD WINAPI gethostbynameA( void * szName )
 int Cftp::AsyncGetHostByName(char * szName, struct sockaddr_in &address )
 {
 	static int            stat = 0;
-	static unsigned long  threadid;
+	static DWORD  threadid;
 
 	if( stat == 0 )
 	{

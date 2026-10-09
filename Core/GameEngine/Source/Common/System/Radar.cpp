@@ -35,6 +35,7 @@
 #include "Common/GameUtility.h"
 #include "Common/MiscAudio.h"
 #include "Common/Radar.h"
+#include "GameClient/AssistHooks.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 #include "Common/ThingTemplate.h"
@@ -53,6 +54,8 @@
 #include "GameLogic/TerrainLogic.h"
 #include "GameLogic/Module/ContainModule.h"
 #include "GameLogic/Module/StealthUpdate.h"
+
+AssistAlertHook TheAssistAlertHook = nullptr;
 
 
 // GLOBALS ////////////////////////////////////////////////////////////////////////////////////////
@@ -1052,6 +1055,9 @@ void Radar::tryUnderAttackEvent( const Object *obj )
 	// if event created, do some more feedback
 	if( eventCreated )
 	{
+		// the player assists offer a response to the alert
+		if( TheAssistAlertHook )
+			TheAssistAlertHook( obj->getPosition() );
 
 		TheControlBar->triggerRadarAttackGlow();
 		//

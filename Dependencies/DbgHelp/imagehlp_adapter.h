@@ -24,6 +24,6 @@
 #include <windows.h>
 #include <imagehlp.h> // Must be included after windows.h
 
-#if (defined(_MSC_VER) && _MSC_VER < 1300) || defined(__EMSCRIPTEN__)
+#if (defined(_MSC_VER) && _MSC_VER < 1300) || defined(ZH_WEBCOMPAT)
 #include "minidump_subset.h"
 #endif

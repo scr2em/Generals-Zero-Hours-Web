@@ -98,6 +98,31 @@ FILE *webcompat_freopen(const char *path, const char *mode, FILE *stream)
 	return freopen(ToPosix(path).c_str(), mode, stream);
 }
 
+#if defined(ZH_NATIVE_HEADLESS) && defined(__GLIBC__)
+// The native headless build on Linux: libstdc++'s <cstdio> undefines the fopen and freopen macros of
+// msvcrt_compat.h, so code that includes it calls the C library directly. The program is linked with
+// --wrap=fopen --wrap=freopen (cmake/native-headless.cmake), which sends every call here.
+FILE *__real_fopen(const char *path, const char *mode);
+FILE *__real_freopen(const char *path, const char *mode, FILE *stream);
+
+FILE *__wrap_fopen(const char *path, const char *mode)
+{
+	if (!path || !mode)
+	{
+		errno = EINVAL;
+		return nullptr;
+	}
+	return __real_fopen(ToPosix(path).c_str(), mode);
+}
+
+FILE *__wrap_freopen(const char *path, const char *mode, FILE *stream)
+{
+	if (!path || !mode)
+		return __real_freopen(path, mode, stream);
+	return __real_freopen(ToPosix(path).c_str(), mode, stream);
+}
+#endif
+
 int _open(const char *path, int flags, ...)
 {
 	mode_t mode = 0;

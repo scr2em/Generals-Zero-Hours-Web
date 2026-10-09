@@ -76,7 +76,7 @@ unsigned WWProfile_Get_System_Time()
 
 WWINLINE double WWProfile_Get_Inv_Processor_Ticks_Per_Second()
 {
-#if defined(WIN32) || defined(__EMSCRIPTEN__)
+#if defined(WIN32) || defined(ZH_WEBCOMPAT)
 	return CPUDetectClass::Get_Inv_Processor_Ticks_Per_Second();
 #elif defined (_UNIX)
 	return 0.001;

@@ -185,7 +185,7 @@ static Bool openNear(const Coord3D &center, Int maxCells, Coord3D *out)
 // ---- the ground that can be reached from the base ----------------------------------------------------------------------------
 // Terrain closes the perimeter with cliffs: the top of a cliff ring is flat ground that nobody can walk on from the base side.
 // So the rings are scanned for ground that is connected to the base, which a flood fill over the pathfinder cells tells.
-enum { FLOOD_HALF = 56, FLOOD_SIZE = 2 * FLOOD_HALF + 1 };
+enum { FLOOD_HALF = 125, FLOOD_SIZE = 2 * FLOOD_HALF + 1 };			// +-1250 units: base radius + perimeter margin + the rings looked at
 static UnsignedByte s_reach[FLOOD_SIZE * FLOOD_SIZE];
 static Int s_queue[FLOOD_SIZE * FLOOD_SIZE];
 static Coord3D s_floodCenter;
@@ -239,7 +239,7 @@ static Bool reachedByFlood(const Coord3D &p)
 	const Int gx = (Int)floorf((p.x - s_floodCenter.x) / STEP + 0.5f) + FLOOD_HALF;
 	const Int gy = (Int)floorf((p.y - s_floodCenter.y) / STEP + 0.5f) + FLOOD_HALF;
 	if (gx < 0 || gy < 0 || gx >= FLOOD_SIZE || gy >= FLOOD_SIZE)
-		return FALSE;
+		return TRUE;		// beyond the window nothing is known: not a wall
 	return s_reach[gy * FLOOD_SIZE + gx] != 0;
 }
 
@@ -488,6 +488,8 @@ Bool AIStrategy::geoCompute()
 	for (Int k = 0; k < 10; ++k)
 	{
 		const Real radius = r0 + 30.0f * k;
+		if (radius > (Real)(FLOOD_HALF - 5) * STEP)
+			break;		// beyond the flooded window
 		Bool open[RING_SAMPLES];
 		Int blocked = 0, offMap = 0;
 		for (Int i = 0; i < RING_SAMPLES; ++i)

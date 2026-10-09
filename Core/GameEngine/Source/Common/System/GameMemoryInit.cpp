@@ -103,7 +103,7 @@ static Int roundUpMemBound(Int i)
 //-----------------------------------------------------------------------------
 void userMemoryManagerInitPools()
 {
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 	// The memory manager initializes itself on the first operator new, which in the browser build
 	// is made by the file system's own static constructor (WasmFS allocates its file table there).
 	// The file system cannot be used yet, and MemoryPools.ini is a developer tuning file that the

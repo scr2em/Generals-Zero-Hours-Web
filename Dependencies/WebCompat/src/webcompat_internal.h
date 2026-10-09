@@ -87,6 +87,10 @@ DWORD ErrnoToWin32Error(int err);
 // path exists.
 bool ResolvePath(const char *path, char *resolved, size_t resolvedSize);
 
+// The install folder of Zero Hour or of the original Generals, with a trailing slash (see
+// webcompat_folders.h).
+const char *InstallFolder(bool generals);
+
 // A handle for the objects that only need to be distinct tokens (cursors, icons, images).
 HANDLE NewStockHandle();
 

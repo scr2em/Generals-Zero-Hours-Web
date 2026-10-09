@@ -23,14 +23,22 @@
 #include <strings.h>
 
 #include <errno.h>
+#ifndef __APPLE__
 #include <malloc.h>
+#endif
 #include <objbase.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include <string>
+
+#include <webcompat_folders.h>
+
+#ifdef __EMSCRIPTEN__
 #include <emscripten/heap.h>
+#endif
 
 using namespace WebCompat;
 
@@ -157,7 +165,11 @@ BOOL WINAPI IsBadReadPtr(const void *lp, UINT_PTR ucb)
 	if (ucb == 0)
 		return FALSE;
 	const uintptr_t start = reinterpret_cast<uintptr_t>(lp);
+#ifdef __EMSCRIPTEN__
 	const uintptr_t memorySize = (uintptr_t)__builtin_wasm_memory_size(0) * 65536u;
+#else
+	const uintptr_t memorySize = UINTPTR_MAX;
+#endif
 	return start == 0 || start + ucb < start || start + ucb > memorySize;
 }
 
@@ -485,9 +497,16 @@ void WINAPI GetSystemInfo(LPSYSTEM_INFO lpSystemInfo)
 
 void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS lpBuffer)
 {
+#ifdef __EMSCRIPTEN__
 	// The memory the program can use is what the heap may grow to.
 	const size_t limit = emscripten_get_heap_max();
 	const size_t used = (size_t)(uintptr_t)sbrk(0);
+#else
+	// Native headless build: the numbers of a web page that uses a quarter of its 4 GB, so that nothing the
+	// game derives from them differs from the web build.
+	const size_t limit = 0xFFFF0000u;
+	const size_t used = limit / 4;
+#endif
 	const size_t available = limit > used ? limit - used : 0;
 	lpBuffer->dwLength = sizeof(MEMORYSTATUS);
 	lpBuffer->dwMemoryLoad = limit ? (DWORD)((uint64_t)used * 100 / limit) : 0;
@@ -675,19 +694,72 @@ int WINAPI MulDiv(int nNumber, int nNumerator, int nDenominator)
 }
 
 /* ---------------------------------------------------------------------------
-** Shell folders: all of them are below /userdata.
+** The game's folders (webcompat_folders.h). Shell folders: all of them are
+** below the user data folder, /userdata by default.
 ** ------------------------------------------------------------------------- */
+
+} // extern "C"
+
+namespace
+{
+
+struct GameFolders
+{
+	std::string zeroHour = "/game/";
+	std::string generals = "/generals/";
+	std::string userData = "/userdata";
+	std::string desktop = "/userdata/Desktop";
+	std::string appData = "/userdata/AppData";
+};
+
+GameFolders &Folders()
+{
+	static GameFolders folders;
+	return folders;
+}
+
+std::string WithoutTrailingSlash(const char *path)
+{
+	std::string text(path);
+	while (text.size() > 1 && (text.back() == '/' || text.back() == '\\'))
+		text.pop_back();
+	return text;
+}
+
+} // namespace
+
+extern "C" void WebCompat_SetGameFolders(const char *zeroHour, const char *generals, const char *userData)
+{
+	GameFolders &folders = Folders();
+	if (zeroHour)
+		folders.zeroHour = WithoutTrailingSlash(zeroHour) + "/";
+	if (generals)
+		folders.generals = WithoutTrailingSlash(generals) + "/";
+	if (userData)
+	{
+		folders.userData = WithoutTrailingSlash(userData);
+		folders.desktop = folders.userData + "/Desktop";
+		folders.appData = folders.userData + "/AppData";
+	}
+}
+
+const char *WebCompat::InstallFolder(bool generals)
+{
+	return generals ? Folders().generals.c_str() : Folders().zeroHour.c_str();
+}
+
+extern "C" {
 
 static const char *FolderPath(int csidl)
 {
 	switch (csidl & 0xFF)
 	{
 	case CSIDL_DESKTOP:
-	case CSIDL_DESKTOPDIRECTORY: return "/userdata/Desktop";
-	case CSIDL_PERSONAL: return "/userdata";
+	case CSIDL_DESKTOPDIRECTORY: return Folders().desktop.c_str();
+	case CSIDL_PERSONAL: return Folders().userData.c_str();
 	case CSIDL_APPDATA:
 	case CSIDL_LOCAL_APPDATA:
-	case CSIDL_COMMON_APPDATA: return "/userdata/AppData";
+	case CSIDL_COMMON_APPDATA: return Folders().appData.c_str();
 	default: return nullptr;
 	}
 }
@@ -701,7 +773,7 @@ static BOOL CopyFolderPath(int csidl, bool create, LPSTR pszPath)
 	if (create || (csidl & CSIDL_FLAG_CREATE))
 	{
 		// Make sure the folder exists, parents first.
-		CreateDirectoryA("/userdata", nullptr);
+		CreateDirectoryA(Folders().userData.c_str(), nullptr);
 		CreateDirectoryA(path, nullptr);
 	}
 	return TRUE;

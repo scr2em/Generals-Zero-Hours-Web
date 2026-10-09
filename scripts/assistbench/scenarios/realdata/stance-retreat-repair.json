@@ -1,0 +1,25 @@
+{
+ "name": "stance-retreat-repair",
+ "description": "retreat when damaged, to a place of repair: three tanks with retreat at 50% are hurt to about 35%; they go to the war factory, come back to full health and go back to where they were. The repair building (AmericaWarFactory) is an assumption: if the trace says \"goes to the rally point\", the faction repairs elsewhere; change the template. (Needs the commits with MSG_ASSIST_BASE_DEFEND / MSG_ASSIST_STANCE; until then \"this build has no command\".)",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn shop 0:AmericaWarFactory:1 at=cc:0^0,-350",
+  "spawn tanks 0:AmericaTankCrusader:3 at=cc:0^700,0",
+  "wait 5",
+  "select tanks",
+  "send ASSIST_STANCE int:2 int:2 int:50",
+  "wait 2",
+  "snapshot tanks",
+  "spawn raider 1:ChinaInfantryRedguard:1 at=cc:0^1100,0",
+  "damage tanks 65% by=raider",
+  "kill raider",
+  "until health tanks above 95 max=5400",
+  "until atsnapshot tanks tol=80 max=2400"
+ ],
+ "log": [
+  "^ASSIST stance retreat: unit \\d+ at \\d+% goes to repair facility",
+  "^ASSIST stance retreat: unit \\d+ goes back to"
+ ]
+}

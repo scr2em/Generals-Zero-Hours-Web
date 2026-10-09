@@ -26,8 +26,10 @@ elseif (IS_WEB_BUILD)
     add_library(deps_usp10 INTERFACE)
     # MP3 decoder of the Web Audio device
     add_subdirectory(minimp3)
-    # FFmpeg (Bink demuxer and decoders) for the in-game videos
-    add_subdirectory(FFmpegWeb)
+    # FFmpeg (Bink demuxer and decoders) for the in-game videos (not in the native headless build)
+    if(EMSCRIPTEN)
+        add_subdirectory(FFmpegWeb)
+    endif()
 else()
     add_library(deps_dbghelp INTERFACE)
     add_library(deps_usp10 INTERFACE)

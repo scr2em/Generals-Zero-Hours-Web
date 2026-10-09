@@ -81,5 +81,5 @@ public:
 
     \brief System exception filter
   */
-  static long __stdcall ExceptionFilter(struct _EXCEPTION_POINTERS* pExPtrs);
+  static LONG __stdcall ExceptionFilter(struct _EXCEPTION_POINTERS* pExPtrs);
 };

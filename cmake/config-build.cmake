@@ -6,6 +6,7 @@ option(RTS_BUILD_GENERALS "Build Generals code." ON)
 option(RTS_BUILD_OPTION_PROFILE "Build code with the \"Profile\" configuration." OFF)
 option(RTS_BUILD_OPTION_PROFILE_TRACY "Build code with Tracy profiling enabled." OFF)
 option(RTS_BUILD_OPTION_DEBUG "Build code with the \"Debug\" configuration." OFF)
+option(RTS_BUILD_NATIVE_HEADLESS "Build the headless game for Linux or macOS on the web build's platform layer (cmake/native-headless.cmake)." OFF)
 option(RTS_BUILD_OPTION_ASAN "Build code with Address Sanitizer." OFF)
 option(RTS_BUILD_OPTION_VC6_FULL_DEBUG "Build VC6 with full debug info." OFF)
 cmake_dependent_option(RTS_BUILD_OPTION_TESTS "Build the unit tests." OFF "NOT IS_VS6_BUILD" OFF)
@@ -62,8 +63,8 @@ else()
     target_compile_options(deps_config INTERFACE ${RTS_FLAGS})
 endif()
 
-# The web build uses the Win32 code paths on top of Dependencies/WebCompat.
-if(UNIX AND NOT EMSCRIPTEN)
+# The web build and the native headless build use the Win32 code paths on top of Dependencies/WebCompat.
+if(UNIX AND NOT EMSCRIPTEN AND NOT RTS_BUILD_NATIVE_HEADLESS)
     target_compile_definitions(deps_config INTERFACE _UNIX)
 endif()
 

@@ -1,0 +1,42 @@
+{
+ "name": "starter-protect-group",
+ "description": "Smoke check only (starter content, says nothing about gameplay): four riflemen protect hotkey group 2 (three tanks); a tank added to the group later is protected too; an enemy hits a tank of the group (direct damage, then a real attack); they answer and return home; unprotect removes the links.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn squad 0:IronwoodTank:3 at=cc:0^380,0",
+  "spawn guards 0:IronwoodRifleman:4 at=cc:0^220,-60",
+  "wait 5",
+  "select squad",
+  "group 2",
+  "select guards",
+  "protect guards group=2",
+  "wait 2",
+  "expect protects guards squad",
+  "spawn late 0:IronwoodTank:1 at=cc:0^420,-90",
+  "select squad+late",
+  "group 2",
+  "wait 2",
+  "expect protects guards late",
+  "spawn raider 1:IronwoodRifleman:1 at=cc:0^560,150",
+  "damage squad[1] 10 by=raider",
+  "until state guards responding max=30",
+  "ai raider attack squad[0]",
+  "until dead raider max=600",
+  "kill raider",
+  "until state guards returning any=1 max=600",
+  "until athome guards max=1200",
+  "select guards",
+  "unprotect",
+  "wait 2",
+  "expect unlinked guards"
+ ],
+ "log": [
+  "^ASSIST protect link \\d+ protects",
+  "^ASSIST protect \\d+ answers the alarm",
+  "^ASSIST protect \\d+ goes home",
+  "^ASSIST protect \\d+ is home",
+  "^ASSIST protect link \\d+ removed"
+ ]
+}

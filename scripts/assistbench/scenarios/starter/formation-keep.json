@@ -1,0 +1,23 @@
+{
+ "name": "starter-formation-keep",
+ "description": "Smoke check only (starter content, says nothing about gameplay): keep shape (the game's own formation): after a move the units stand as they stood before, relative to each other.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn tanks 0:IronwoodTank:3 at=cc:0^220,-150",
+  "spawn rifles 0:IronwoodRifleman:4 at=cc:0^220,0",
+  "spawn rockets 0:IronwoodRocketeer:3 at=cc:0^220,150",
+  "name army tanks+rifles+rockets",
+  "wait 5",
+  "select army",
+  "formation keep",
+  "wait 1",
+  "expect formation army keep",
+  "snapshot army",
+  "move cc:0^600,0",
+  "wait 1200",
+  "dump army",
+  "expect sameshape army tol=30"
+ ]
+}

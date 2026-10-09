@@ -1010,7 +1010,7 @@ void GameEngine::executeFrame()
 					else
 						RELEASE_CRASH(("Uncaught Exception in GameEngine::update"));
 				}
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 				catch (const std::exception &e)
 				{
 					// Web port: say what it was, the console is all a player can send.

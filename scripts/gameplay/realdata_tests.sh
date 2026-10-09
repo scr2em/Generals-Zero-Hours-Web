@@ -10,11 +10,21 @@
 #   team     2v2 on $MAP_TEAM: two Experts against two Hard AIs from both sides of the map, and an Expert next to a weak
 #            ally (an Easy AI in place of a human) against two Experts: do the Expert allies attack?
 #   bunker   China Expert against Hard: does it put infantry in its bunkers?
+#   assists  the player assists, scripted (scripts/assistbench/scenarios/realdata: formations, protect links), seconds each
+#
+# What a pass looks like in the team suite: every Expert launches its first wave ("WAVE launches") within about 11 game minutes
+# (the table says "min 11" or less) and not every Expert sits under alarm for more than a quarter of the game (seconds under alarm
+# below about 400 in 30 minutes; an alarm that lasts longer than 90 s ends "(stale"); in the trace the line "waves: army A of N
+# needed (...; allies X)" shows allies above 0 once the allies have an army. Compare with the old behaviour by adding the words
+# "off-team+bdcap" to the variant of an Expert (expert:China:trace+off-team+bdcap@1).
 #
 # Options:
 #   --quick           fewer games (about a third of the time)
 #   --workers N       games at the same time (default 2; each needs about 1 GB of memory and a core)
 #   --build-dir DIR   web build to test (default build/web, built first by scripts/web/run.sh --build-only)
+#   --native-dir DIR  native headless build (default build/native-headless, from `cmake --preset native-headless`).
+#                     When it exists, the matches are played with it (faster, no browser); boot still uses the web build
+#   --web             play the matches in the browser even when the native build exists
 #   --no-build        test the build as it is
 #   -h, --help        this text
 #
@@ -25,11 +35,13 @@
 #   git add test-reports && git commit -m "Gameplay test report" && git push
 set -euo pipefail
 
-usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; }
 
 QUICK=0
 WORKERS=2
 BUILD_DIR=build/web
+NATIVE_DIR=build/native-headless
+USE_WEB=0
 BUILD=1
 SUITES=()
 while [ $# -gt 0 ]; do
@@ -37,13 +49,15 @@ while [ $# -gt 0 ]; do
 		--quick) QUICK=1; shift ;;
 		--workers) WORKERS="$2"; shift 2 ;;
 		--build-dir) BUILD_DIR="$2"; shift 2 ;;
+		--native-dir) NATIVE_DIR="$2"; shift 2 ;;
+		--web) USE_WEB=1; shift ;;
 		--no-build) BUILD=0; shift ;;
 		-h|--help) usage; exit 0 ;;
-		boot|1v1|team|bunker) SUITES+=("$1"); shift ;;
+		boot|1v1|team|bunker|assists) SUITES+=("$1"); shift ;;
 		*) echo "Unknown option or suite: $1" >&2; usage >&2; exit 2 ;;
 	esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(boot 1v1 team bunker)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(boot 1v1 team bunker assists)
 
 if [ -z "${ZH_PATH:-}" ] || [ ! -d "$ZH_PATH" ]; then
 	echo "Set ZH_PATH to your Zero Hour folder (the one with INIZH.big), e.g." >&2
@@ -63,23 +77,39 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 # 1. Build ------------------------------------------------------------------------------------------------------------
-if [ "$BUILD" = 1 ]; then
-	scripts/web/run.sh --build-only --build-dir "$BUILD_DIR"
+# The matches use the native headless build when it has been configured (cmake --preset native-headless), else the web
+# build in the browser. Starting the game like a player (boot) and the scripted assists always need the web build.
+NATIVE=0
+if [ "$USE_WEB" = 0 ] && [ -f "$NATIVE_DIR/CMakeCache.txt" ]; then
+	NATIVE=1
+	if [ "$BUILD" = 1 ]; then
+		cmake --build "$NATIVE_DIR" --target zh_headless
+	fi
+	[ -x "$NATIVE_DIR/GeneralsMD/zh_headless" ] || { echo "No native build in $NATIVE_DIR (run without --no-build, or use --web)" >&2; exit 1; }
 fi
+NEED_WEB=$((1 - NATIVE))
+for suite in "${SUITES[@]}"; do case "$suite" in boot|assists) NEED_WEB=1 ;; esac; done
 SITE="$BUILD_DIR/GeneralsMD"
-[ -f "$SITE/z_generals.html" ] || { echo "No build in $SITE (run without --no-build)" >&2; exit 1; }
+if [ "$NEED_WEB" = 1 ]; then
+	if [ "$BUILD" = 1 ]; then
+		scripts/web/run.sh --build-only --build-dir "$BUILD_DIR"
+	fi
+	[ -f "$SITE/z_generals.html" ] || { echo "No build in $SITE (run without --no-build)" >&2; exit 1; }
+fi
 
 # 2. Playwright (drives Chrome; the installed Google Chrome is used when there is one) --------------------------------
 command -v node >/dev/null 2>&1 || { echo "Node.js 20 or newer is needed (brew install node)" >&2; exit 1; }
-NODE_DIR="$HOME/.cache/zh-gameplay-node"
-export NODE_PATH="$NODE_DIR/node_modules${NODE_PATH:+:$NODE_PATH}"
-if ! node -e "require('playwright')" >/dev/null 2>&1; then
-	echo "Installing Playwright into $NODE_DIR (once) ..."
-	mkdir -p "$NODE_DIR"
-	npm install --silent --prefix "$NODE_DIR" playwright >/dev/null
-fi
-if [ ! -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ] && [ -z "${CHROMIUM_PATH:-}" ]; then
-	(cd "$NODE_DIR" && npx --yes playwright install chromium >/dev/null)
+if [ "$NEED_WEB" = 1 ]; then
+	NODE_DIR="$HOME/.cache/zh-gameplay-node"
+	export NODE_PATH="$NODE_DIR/node_modules${NODE_PATH:+:$NODE_PATH}"
+	if ! node -e "require('playwright')" >/dev/null 2>&1; then
+		echo "Installing Playwright into $NODE_DIR (once) ..."
+		mkdir -p "$NODE_DIR"
+		npm install --silent --prefix "$NODE_DIR" playwright >/dev/null
+	fi
+	if [ ! -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ] && [ -z "${CHROMIUM_PATH:-}" ]; then
+		(cd "$NODE_DIR" && npx --yes playwright install chromium >/dev/null)
+	fi
 fi
 
 # 3. Run the suites ---------------------------------------------------------------------------------------------------
@@ -90,7 +120,12 @@ PROFILE="$HOME/.cache/zh-gameplay-profile"   # keeps the copied game data betwee
 PORT=8950
 DATA=(--zh "$ZH_PATH")
 [ -n "${GENERALS_PATH:-}" ] && DATA+=(--generals "$GENERALS_PATH")
-BENCH=(node scripts/aibench/aibench.mjs --site "$SITE" "${DATA[@]}" --profile "$PROFILE" --port "$PORT" --workers "$WORKERS")
+BENCH_WEB=(node scripts/aibench/aibench.mjs --site "$SITE" "${DATA[@]}" --profile "$PROFILE" --port "$PORT" --workers "$WORKERS")
+if [ "$NATIVE" = 1 ]; then
+	BENCH=(node scripts/aibench/aibench.mjs --native "$NATIVE_DIR/GeneralsMD/zh_headless" "${DATA[@]}" --workers "$WORKERS")
+else
+	BENCH=("${BENCH_WEB[@]}")
+fi
 if [ "$QUICK" = 1 ]; then SEEDS1=2; SEEDST=1; else SEEDS1=4; SEEDST=2; fi
 
 {
@@ -98,15 +133,18 @@ if [ "$QUICK" = 1 ]; then SEEDS1=2; SEEDST=1; else SEEDS1=4; SEEDST=2; fi
 	echo
 	echo "Commit $COMMIT ($(git log -1 --format=%s 2>/dev/null || true)), $(date '+%Y-%m-%d %H:%M'), $(uname -sm)."
 	echo "Suites: ${SUITES[*]}; quick: $QUICK; maps: 1v1 \"$MAP_1V1\", team \"$MAP_TEAM\" (starts $TEAM_STARTS)."
+	echo "Matches played with the $([ "$NATIVE" = 1 ] && echo "native headless build ($NATIVE_DIR)" || echo "web build in the browser ($SITE)")."
 	echo
 } > "$OUT/summary.md"
 
 status=0
 run_suite() {   # name, then bench arguments
 	local name="$1"; shift
+	local bench=("${BENCH[@]}")
+	[ "$name" = boot ] && bench=("${BENCH_WEB[@]}")
 	echo
 	echo "==> $name"
-	"${BENCH[@]}" --out "$OUT/$name" "$@" 2>&1 | tee "$OUT/$name.txt" || status=1
+	"${bench[@]}" --out "$OUT/$name" "$@" 2>&1 | tee "$OUT/$name.txt" || status=1
 }
 
 for suite in "${SUITES[@]}"; do
@@ -126,6 +164,12 @@ for suite in "${SUITES[@]}"; do
 		bunker)
 			run_suite bunker --map "$MAP_1V1" --timeout 20 --match-timeout 2000 --seeds 2 --determinism 0 --keep-logs \
 				--matchup "expert:China:trace,hard:America" ;;
+		assists)
+			# scripted player assist scenarios (-assistMatch, no rendering): each names its map and units, see scripts/assistbench
+			echo
+			echo "==> assists"
+			node scripts/assistbench/assistbench.mjs --site "$SITE" "${DATA[@]}" --profile "$PROFILE" --port "$PORT" --workers "$WORKERS" \
+				--out "$OUT/assists" scripts/assistbench/scenarios/realdata 2>&1 | tee "$OUT/assists.txt" || status=1 ;;
 	esac
 done
 
@@ -134,11 +178,22 @@ python3 - "$OUT" <<'PY' >> "$OUT/summary.md"
 import glob, json, os, re, sys
 out = sys.argv[1]
 def section(title): print(f"\n## {title}\n")
-for suite in ("boot", "1v1", "team", "bunker"):
+for suite in ("boot", "1v1", "team", "bunker", "assists"):
     d = os.path.join(out, suite)
     if not os.path.isdir(d): continue
     section(suite)
     txt = os.path.join(out, suite + ".txt")
+    if suite == "assists":
+        # scripted scenarios: the bench's own report (pass/fail per scenario, the first failing check); the steps, the checks
+        # and the decisions of the assists are in assists/<scenario>.trace.txt
+        rep = os.path.join(d, "report.md")
+        if os.path.exists(rep):
+            body = open(rep, errors="replace").read().split("\n", 1)[-1]
+            print(body.strip()[:8000])
+        else:
+            lines = open(txt, errors="replace").read().splitlines() if os.path.exists(txt) else []
+            print("(no report)\n\n```\n" + "\n".join(lines[-20:]) + "\n```")
+        continue
     if suite == "boot":
         lines = open(txt, errors="replace").read().splitlines() if os.path.exists(txt) else []
         print("\n".join(l for l in lines if l.startswith("boot:")) or "(no result)")
@@ -151,7 +206,7 @@ for suite in ("boot", "1v1", "team", "bunker"):
     if os.path.exists(rep):
         body = open(rep, errors="replace").read().split("\n", 1)[-1]   # without its title
         print(re.sub(r"(?m)^(#+) ", lambda m: "#" + m.group(1) + " ", body).strip()[:8000])
-    print("\n| match | result | per Expert (player): waves launched, base alarms, seconds under alarm, bunker entries | errors |\n|---|---|---|---|")
+    print("\n| match | result | per Expert (player): waves launched (first at minute), base alarms, seconds under alarm (stale ones), bunker entries | errors |\n|---|---|---|---|")
     for f in sorted(glob.glob(os.path.join(d, "matches", "*.json"))):
         if f.endswith("-replay.json"): continue
         j = json.load(open(f))
@@ -166,13 +221,17 @@ for suite in ("boot", "1v1", "team", "bunker"):
         errors = []
         if os.path.exists(log):
             for line in open(log, errors="replace"):
-                m = re.match(r"AISTRAT\[p(\d+) f\d+\] (.*)", line)
+                m = re.match(r"AISTRAT\[p(\d+) f(\d+)\] (.*)", line)
                 if m:
-                    p = per.setdefault(m.group(1), [0, 0, 0, 0])
-                    t = m.group(2)
-                    if t.startswith("WAVE launches"): p[0] += 1
+                    p = per.setdefault(m.group(1), [0, 0, 0, 0, 0, 0])
+                    t = m.group(3)
+                    if t.startswith("WAVE launches"):
+                        p[0] += 1
+                        if p[4] == 0: p[4] = int(m.group(2))     # frame of the first wave
                     elif t.startswith("BASEDEF alarm"): p[1] += 1
-                    elif t.startswith("BASEDEF clear after"): p[2] += int(re.match(r"BASEDEF clear after (\d+)", t).group(1))
+                    elif t.startswith("BASEDEF clear after"):
+                        p[2] += int(re.match(r"BASEDEF clear after (\d+)", t).group(1))
+                        if "(stale:" in t: p[5] += 1
                     elif t.startswith("BUNKER:") and " goes into " in t: p[3] += 1
                 elif re.search(r"RuntimeError|Engine thread stopped|Assertion failed|Fatal error", line):
                     errors.append(line.strip()[:120])
@@ -180,7 +239,7 @@ for suite in ("boot", "1v1", "team", "bunker"):
             with open(os.path.join(d, "matches", mid + ".trace.txt"), "w") as t:
                 t.writelines(l for l in open(log, errors="replace") if l.startswith("AISTRAT[") or "AIMATCH" in l)
             if j.get("ok"): os.remove(log)
-        stats = "; ".join(f"p{k}: {v[0]}, {v[1]}, {v[2]}, {v[3]}" for k, v in sorted(per.items())) or "-"
+        stats = "; ".join(f"p{k}: {v[0]} (min {v[4] // 1800 if v[0] else '-'}), {v[1]}, {v[2]} ({v[5]}), {v[3]}" for k, v in sorted(per.items())) or "-"
         print(f"| {mid} | {outcome} | {stats} | {(j.get('error') or '') + ' ' + ' / '.join(errors[:2])} |")
 PY
 

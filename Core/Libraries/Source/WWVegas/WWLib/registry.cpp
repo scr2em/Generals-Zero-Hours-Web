@@ -79,7 +79,7 @@ RegistryClass::RegistryClass( const char * sub_key, bool create ) :
 
 	if (ERROR_SUCCESS == result) {
 		IsValid = true;
-		Key = (int)key;
+		Key = (intptr_t)key;
 	}
 }
 
@@ -156,7 +156,7 @@ int RegistryClass::Get_Bin_Size( const char * name )
 {
 	assert( IsValid );
 
-	unsigned long size = 0;
+	DWORD size = 0;
 	::RegQueryValueEx( (HKEY)Key, name, nullptr, nullptr, nullptr, &size );
 	return size;
 }
@@ -168,7 +168,7 @@ void RegistryClass::Get_Bin( const char * name, void *buffer, int buffer_size )
 	assert( buffer != nullptr );
 	assert( buffer_size > 0 );
 
-	unsigned long size = buffer_size;
+	DWORD size = buffer_size;
 	::RegQueryValueEx( (HKEY)Key, name, nullptr, nullptr, (LPBYTE)buffer, &size );
 }
 
@@ -246,7 +246,7 @@ void	RegistryClass::Get_Value_List( DynamicVectorClass<StringClass> &list )
 	//	Simply enumerate all the values in this key
 	//
 	int index = 0;
-	unsigned long sizeof_name = sizeof (value_name);
+	DWORD sizeof_name = sizeof (value_name);
 	while (::RegEnumValue ((HKEY)Key, index ++,
 					value_name, &sizeof_name, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS)
 	{
@@ -359,11 +359,11 @@ void RegistryClass::Save_Registry_Values(HKEY key, char *path, INIClass *ini)
 	char save_name[512];
 
 	while (result == ERROR_SUCCESS) {
-		unsigned long type = 0;
+		DWORD type = 0;
 		unsigned char data[8192];
-		unsigned long data_size = sizeof(data);
+		DWORD data_size = sizeof(data);
 		char value_name[256];
-		unsigned long value_name_size = sizeof(value_name);
+		DWORD value_name_size = sizeof(value_name);
 
 		result = RegEnumValue(key, index, value_name, &value_name_size, nullptr, &type, data, &data_size);
 
@@ -376,7 +376,7 @@ void RegistryClass::Save_Registry_Values(HKEY key, char *path, INIClass *ini)
 				case REG_DWORD:
 					strcpy(save_name, "DWORD_");
 					strlcat(save_name, value_name, ARRAY_SIZE(save_name));
-					ini->Put_Int(path, save_name, *((unsigned long*)data));
+					ini->Put_Int(path, save_name, *((DWORD*)data));
 					break;
 
 				/*
@@ -434,9 +434,9 @@ void RegistryClass::Save_Registry_Tree(char *path, INIClass *ini)
 	HKEY sub_key;
 	int index = 0;
 	char name[256];
-	unsigned long name_size = sizeof(name);
+	DWORD name_size = sizeof(name);
 	char class_name[256];
-	unsigned long class_name_size = sizeof(class_name);
+	DWORD class_name_size = sizeof(class_name);
 	FILETIME file_time;
 	memset(&file_time, 0, sizeof(file_time));
 
@@ -463,8 +463,8 @@ void RegistryClass::Save_Registry_Tree(char *path, INIClass *ini)
 				strlcat(new_key_path, "\\", ARRAY_SIZE(new_key_path));
 				strlcat(new_key_path, name, ARRAY_SIZE(new_key_path));
 
-				unsigned long num_subs = 0;
-				unsigned long num_values = 0;
+				DWORD num_subs = 0;
+				DWORD num_values = 0;
 
 				long new_result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, new_key_path, 0, KEY_ALL_ACCESS, &sub_key);
 				if (new_result == ERROR_SUCCESS) {
@@ -620,11 +620,11 @@ void RegistryClass::Delete_Registry_Values(HKEY key)
 	long result = ERROR_SUCCESS;
 
 	while (result == ERROR_SUCCESS) {
-		unsigned long type = 0;
+		DWORD type = 0;
 		unsigned char data[8192];
-		unsigned long data_size = sizeof(data);
+		DWORD data_size = sizeof(data);
 		char value_name[256];
-		unsigned long value_name_size = sizeof(value_name);
+		DWORD value_name_size = sizeof(value_name);
 
 		result = RegEnumValue(key, index, value_name, &value_name_size, nullptr, &type, data, &data_size);
 
@@ -658,9 +658,9 @@ void RegistryClass::Delete_Registry_Tree(char *path)
 		HKEY sub_key;
 		int index = 0;
 		char name[256];
-		unsigned long name_size = sizeof(name);
+		DWORD name_size = sizeof(name);
 		char class_name[256];
-		unsigned long class_name_size = sizeof(class_name);
+		DWORD class_name_size = sizeof(class_name);
 		FILETIME file_time;
 		memset(&file_time, 0, sizeof(file_time));
 		int max_times = 1000;
@@ -686,8 +686,8 @@ void RegistryClass::Delete_Registry_Tree(char *path)
 					strlcat(new_key_path, "\\", ARRAY_SIZE(new_key_path));
 					strlcat(new_key_path, name, ARRAY_SIZE(new_key_path));
 
-					unsigned long num_subs = 0;
-					unsigned long num_values = 0;
+					DWORD num_subs = 0;
+					DWORD num_values = 0;
 
 					long new_result = RegOpenKeyEx(HKEY_LOCAL_MACHINE, new_key_path, 0, KEY_ALL_ACCESS, &sub_key);
 					if (new_result == ERROR_SUCCESS) {

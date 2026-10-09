@@ -19,6 +19,15 @@
 #   formations-replay  a match with formation orders is recorded, then played back: no CRC mismatch, same orders
 #   protect          riflemen protect the headquarters, an enemy attacks it, they answer, return home; a move by hand moves the home
 #   protect-replay   the same, recorded and played back
+#   base-alert       the "base under attack" response: idle army units are sent to the attacked place and back (Alt+A twice)
+#   base-alert-replay  the same, recorded and played back
+#   stance-kite      stance: rocketeers step back while their weapon reloads
+#   stance-retreat   stance: damaged riflemen go to an infirmary and come back healed
+#   stance-spread    stance: riflemen keep apart when an enemy mortar (big blast) is about
+#   stance-split     stance: riflemen do not pile on a target that has enough fire on it
+#   stance-replay    all four stances at once, recorded and played back
+#   odds             the odds meter: own riflemen selected, the mouse over an enemy rifleman gives a favourable verdict
+#   coverage         the defence coverage view: rings of a ground and an air defence, uncovered stretches of the base edge
 site=$(cd "$1" && pwd)
 out=${2:-${TMPDIR:-/tmp}/zh-assist-flows}
 here=$(cd "$(dirname "$0")" && pwd)
@@ -32,7 +41,7 @@ MENU="c:515,449"; PAUSE_EXIT="c:399,412"; YES="c:318,368"; OK_REPORT="c:699,566"
 REPLAY_ROW="c:62,100"; REPLAY_PLAY="c:124,502"
 ASSIST_CHECKBOX="c:565,480"		# "Player assists allowed" on the skirmish setup screen
 ASSIST_BUTTON="c:208,481"			# "Player assists..." on the Options screen
-OPT_FORMATIONS="c:380,190"; OPT_CLOSE="c:399,270"		# in the Player assists dialog
+OPT_FORMATIONS="c:400,67"; OPT_CLOSE="c:399,295"		# in the Player assists dialog
 
 # the units the matches start with: left of the base, in the first screen
 UNITS="0:IronwoodRifleman:6+0:IronwoodTank:3+0:IronwoodRocketeer:4+0:IronwoodScout:2"
@@ -88,7 +97,7 @@ run formations-replay "$GAME W:ASSIST~match~allowed=1 $SELECT \
 #    come back; moving them by hand sets their new home; the stop command removes the link.
 PROTECT_UNITS="0:IronwoodRifleman:3+1:IronwoodRifleman:1:0:170:-60"
 PROTECT_GAME="w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodRifleman~for~player~1 w:3"
-PROTECT_DO="k:Home w:5 r:300,225,430,300 w:4 kd:Control w:1 k:Digit1 w:1 ku:Control w:2 R:900,365 w:3 r:120,345,260,400 w:4 s:selected kd:Alt w:1 k:KeyP w:1 ku:Alt w:3 s:picking k:Digit1 W:ASSIST~protect~link~[0-9]+~protects~0~objects~and~hotkey~group~1 s:linked"
+PROTECT_DO="k:Home w:5 c:400,215 w:3 s:hq kd:Control w:1 k:Digit2 w:1 ku:Control w:2 r:120,345,260,400 w:4 s:selected kd:Alt w:1 k:KeyP w:1 ku:Alt w:3 s:picking k:Digit2 W:ASSIST~protect~link~[0-9]+~protects~0~objects~and~hotkey~group~2 s:linked"
 run protect "$PROTECT_GAME W:ASSIST~match~allowed=1 $PROTECT_DO \
 	W:ASSIST~protect~[0-9]+~answers~the~alarm s:answering W:ASSIST~protect~[0-9]+~goes~home W:ASSIST~protect~[0-9]+~is~home s:home \
 	c:200,230 W:ASSIST~protect~home~of~[0-9]+~moved~by~hand w:3 \
@@ -97,6 +106,65 @@ run protect "$PROTECT_GAME W:ASSIST~match~allowed=1 $PROTECT_DO \
 run protect-replay "$PROTECT_GAME W:ASSIST~match~allowed=1 $PROTECT_DO W:ASSIST~protect~[0-9]+~answers~the~alarm W:ASSIST~protect~[0-9]+~is~home f:700 \
 	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:600 \
 	K:2:ASSIST~protect~link~[0-9]+~protects N:CRC~Mismatch N:RuntimeError" --arg -assistTest --arg "$PROTECT_UNITS" --arg -assistDebug --options AssistProtect=1
+
+# 7. Defence coverage: a guard tower (ground) east and a flak tower (air only) west of the base; the hotkey switches the view on
+#    and it finds stretches of the base edge that only one of them covers.
+COVER_UNITS="0:IronwoodGuardTower:1:0:220:-90+0:IronwoodFlakTower:1:0:-220:-60"
+run coverage "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodFlakTower w:3 k:Home w:5 s:before \
+	kd:Alt w:1 k:KeyD w:1 ku:Alt w:4 W:ASSIST~coverage~ground~defences=1~air~defences=1~bases=1~uncovered~ground~steps=[1-9][0-9]*~air~steps=[1-9][0-9]* s:coverage \
+	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$COVER_UNITS" --arg -assistDebug --options AssistCoverageView=1
+
+# 8. Base under attack: three idle riflemen stand away from the base, an enemy rifleman shoots the headquarters; the alert raises the
+#    response, the hotkey sends the idle units and the second press sends them back.
+ALERT_UNITS="0:IronwoodRifleman:3+1:IronwoodRifleman:1:0:170:-60"
+ALERT_GAME="w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodRifleman~for~player~1 w:3"
+ALERT_DO="W:ASSIST~match~allowed=1 k:Home w:3 W:ASSIST~alert~raised~at s:alert kd:Alt w:1 k:KeyA w:1 ku:Alt W:ASSIST~base~defend:~[1-9]~units~sent~to s:defending \
+	w:10 kd:Alt w:1 k:KeyA w:1 ku:Alt W:ASSIST~base~defend:~[1-9]~units~sent~back s:back"
+run base-alert "$ALERT_GAME $ALERT_DO N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$ALERT_UNITS" --arg -assistDebug --options AssistBaseAlert=1
+
+run base-alert-replay "$ALERT_GAME $ALERT_DO f:300 \
+	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:600 \
+	K:2:ASSIST~base~defend:~[1-9]~units~sent~to N:CRC~Mismatch N:RuntimeError" --arg -assistTest --arg "$ALERT_UNITS" --arg -assistDebug --options AssistBaseAlert=1
+
+# 9. Odds meter: three own riflemen are selected, the mouse is moved onto the lone enemy rifleman: the verdict is favourable.
+run odds "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodRifleman~for~player~1 w:3 k:Home w:5 r:120,345,260,400 w:4 \
+	kd:Alt w:1 k:KeyO w:1 ku:Alt w:2 W:ASSIST~odds~view~on s:viewon m:700,270 w:2 m:699,268 w:3 W:ASSIST~odds~probe~armed s:hover W:ASSIST~odds~kind=1~ratio=[0-9.]+~own=[1-3]~enemy=1 s:odds \
+	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$ALERT_UNITS" --arg -assistDebug --options AssistOddsMeter=1
+
+# 11. Unit stances.  The enemy appears at a late logic frame (the last field of the "-assistTest" entry), so the stance is set before
+#     the fight starts.  The selection is a box over the units below the base.
+STANCE_ASSIST_ON="W:ASSIST~match~allowed=1"
+KITE_UNITS="0:IronwoodRocketeer:2:0:-150:-130+1:IronwoodRifleman:2:0:10:-130:900"
+run stance-kite "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~2~x~IronwoodRocketeer~for~player~0 $STANCE_ASSIST_ON k:Home w:4 r:60,340,270,410 w:3 \
+	kd:Alt w:1 k:KeyK w:1 ku:Alt w:2 W:ASSIST~stance~set~mask=1~value=1~percent=0~for~2~units s:kite_set \
+	W:ASSISTTEST~created~2~x~IronwoodRifleman~for~player~1 W:ASSIST~stance~kite:~unit~[0-9]+~steps~back~from s:kite_step \
+	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$KITE_UNITS" --arg -assistDebug --options AssistStances=1
+
+RETREAT_UNITS="0:IronwoodRifleman:2:0:-150:-130+0:IronwoodInfirmary:1:0:-230:-80+1:IronwoodRifleman:2:0:-30:-130:900"
+run stance-retreat "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodInfirmary~for~player~0 $STANCE_ASSIST_ON k:Home w:4 r:60,340,270,410 w:3 \
+	kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 W:ASSIST~stance~set~mask=2~value=2~percent=70 s:retreat_set \
+	W:ASSIST~stance~retreat:~unit~[0-9]+~at~[0-9]+%~goes~to~heal~facility s:retreating W:ASSIST~stance~retreat:~unit~[0-9]+~goes~back~to s:healed \
+	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$RETREAT_UNITS" --arg -assistDebug --options AssistStances=1
+
+SPREAD_UNITS="0:IronwoodRifleman:3:0:-150:-130+0:IronwoodRifleman:3:0:-135:-130+1:IronwoodMortar:1:0:-60:-220:900"
+run stance-spread "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~3~x~IronwoodRifleman~for~player~0 $STANCE_ASSIST_ON k:Home w:4 r:60,340,300,410 w:3 \
+	kd:Alt w:1 k:KeyS w:1 ku:Alt w:2 W:ASSIST~stance~set~mask=4~value=4 s:spread_set \
+	W:ASSISTTEST~created~1~x~IronwoodMortar~for~player~1 W:ASSIST~stance~spread:~(idle~)?unit~[0-9]+~(moves~apart|steps~aside) s:spread_step \
+	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$SPREAD_UNITS" --arg -assistDebug --options AssistStances=1
+
+SPLIT_UNITS="0:IronwoodRifleman:8:0:-150:-130+1:IronwoodRifleman:2:0:-80:-230:900"
+run stance-split "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~8~x~IronwoodRifleman~for~player~0 $STANCE_ASSIST_ON k:Home w:4 r:60,340,560,410 w:3 \
+	kd:Alt w:1 k:KeyX w:1 ku:Alt w:2 W:ASSIST~stance~set~mask=8~value=8~percent=0~for~8~units s:split_set \
+	W:ASSISTTEST~created~2~x~IronwoodRifleman~for~player~1 W:ASSIST~stance~split:~unit~[0-9]+~leaves~[0-9]+ s:split_switch \
+	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$SPLIT_UNITS" --arg -assistDebug --options AssistStances=1
+
+# all four at once, recorded and played back: same positions and no CRC mismatch
+ALL_UNITS="0:IronwoodRifleman:4:0:-150:-130+0:IronwoodRocketeer:2:0:-150:-160+0:IronwoodInfirmary:1:0:-230:-80+1:IronwoodRifleman:3:0:-40:-230:900+1:IronwoodMortar:1:0:-60:-260:900"
+run stance-replay "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~4~x~IronwoodRifleman~for~player~0 $STANCE_ASSIST_ON k:Home w:4 r:60,320,400,410 w:3 \
+	kd:Alt w:1 k:KeyK w:1 ku:Alt w:2 kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 kd:Alt w:1 k:KeyS w:1 ku:Alt w:2 kd:Alt w:1 k:KeyX w:1 ku:Alt w:2 \
+	W:ASSIST~stance~set~mask=8~value=8 W:ASSISTTEST~created~3~x~IronwoodRifleman~for~player~1 f:1500 \
+	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:600 \
+	K:2:ASSIST~stance~set~mask=8 N:CRC~Mismatch N:RuntimeError" --arg -assistTest --arg "$ALL_UNITS" --arg -assistDebug --options AssistStances=1
 
 echo "$failed flow(s) failed"
 exit $((failed > 0))

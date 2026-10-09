@@ -27,3 +27,7 @@
 /// Called when the right mouse button goes down: true if the assists take the drag (a formation aim) and the camera must not scroll with it.
 typedef Bool (*AssistRightDragHook)();
 extern AssistRightDragHook TheAssistRightDragHook;
+
+/// Called when the radar raises the "under attack" alert for the local player, with the place of the attack.
+typedef void (*AssistAlertHook)( const struct Coord3D *pos );
+extern AssistAlertHook TheAssistAlertHook;

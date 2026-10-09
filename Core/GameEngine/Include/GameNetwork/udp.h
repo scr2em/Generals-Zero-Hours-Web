@@ -30,7 +30,7 @@
 
 // The WebAssembly build uses the Winsock flavor of the socket API: its winsock.h maps the Winsock
 // functions and error codes onto the POSIX ones, and the code below then behaves as on Windows.
-#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+#if defined(_WIN32) || defined(ZH_WEBCOMPAT)
 #define UDP_USE_WINSOCK
 #endif
 

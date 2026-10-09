@@ -47,7 +47,7 @@ struct lazy_static
 	}
 
 	// Is public only so that the type stays an aggregate without a constructor. Do not access directly.
-	volatile long m_state;
+	volatile LONG m_state;
 	union
 	{
 		char bytes[sizeof(T)];

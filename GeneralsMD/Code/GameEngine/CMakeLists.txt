@@ -94,6 +94,8 @@ set(GAMEENGINE_SRC
 #    Include/Common/RAMFile.h
 #    Include/Common/RandomValue.h
     Include/Common/AIMatch.h
+    Include/Common/AIMatchShared.h
+    Include/Common/AssistMatch.h
     Include/Common/Recorder.h
 #    Include/Common/ReplaySimulation.h
     Include/Common/Registry.h
@@ -239,6 +241,7 @@ set(GAMEENGINE_SRC
     Include/GameLogic/AIProtect.h
     Include/GameLogic/AIRoute.h
     Include/GameLogic/AIStrategy.h
+    Include/GameLogic/AITacticsCore.h
     Include/GameLogic/PlayerAssist.h
     Include/GameLogic/Protect.h
     Include/GameClient/AssistUI.h
@@ -616,6 +619,7 @@ set(GAMEENGINE_SRC
 #    Source/Common/PerfTimer.cpp
 #    Source/Common/RandomValue.cpp
     Source/Common/AIMatch.cpp
+    Source/Common/AssistMatch.cpp
     Source/Common/Recorder.cpp
 #    Source/Common/ReplaySimulation.cpp
 #    Source/Common/RTS/AcademyStats.cpp
@@ -853,14 +857,21 @@ set(GAMEENGINE_SRC
     Source/GameLogic/AI/AIRaid.cpp
     Source/GameLogic/AI/AIRoute.cpp
     Source/GameLogic/AI/AIRepair.cpp
+    Source/GameLogic/AI/AITacticsCore.cpp
     Source/GameLogic/AI/AICombatModel.cpp
     Source/GameLogic/PlayerAssist.cpp
     Source/GameLogic/Protect.cpp
+    Source/GameLogic/AssistBaseAlert.cpp
     Source/GameLogic/AssistTest.cpp
     Source/GameClient/AssistUI.cpp
     Source/GameClient/AssistUIProtect.cpp
+    Source/GameClient/AssistUIStance.cpp
+    Source/GameClient/AssistUIAlert.cpp
+    Source/GameClient/AssistUIOdds.cpp
+    Source/GameClient/AssistUICoverage.cpp
     Source/Common/AssistOptions.cpp
     Source/GameLogic/AssistFormation.cpp
+    Source/GameLogic/AssistStance.cpp
     Source/GameLogic/AI/AIEnemyModel.cpp
     Source/GameLogic/AI/AIStates.cpp
     Source/GameLogic/AI/AITNGuard.cpp

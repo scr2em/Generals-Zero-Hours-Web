@@ -57,6 +57,36 @@ Bool AIStrategy::baseDefenceOn() const
 	return skill().m_useBaseDefence && !m_ai->isFeatureOff(AIPlayer::AIF_BASEDEF);
 }
 
+Bool AIStrategy::teamWavesOn() const
+{
+	return skill().m_useTeamWaves && !m_ai->isFeatureOff(AIPlayer::AIF_TEAM);
+}
+
+/// An alarm that has lasted long without anything of ours being hit does not hold the next wave back any longer (the enemy force
+/// near the base is then standing about, or is busy with somebody else's base): the army goes out to meet it.
+Bool AIStrategy::baseAlarmStale( UnsignedInt now ) const
+{
+	if (m_ai->isFeatureOff(AIPlayer::AIF_BDCAP))
+		return FALSE;
+	if (now - m_bdSince < secondsToFrames(skill().m_baseDefenceMaxBlockSeconds))
+		return FALSE;
+	return m_bdDamageFrame == 0 || now - m_bdDamageFrame > 15 * LOGICFRAMES_PER_SECOND;
+}
+
+/// Does the alarm hold the next wave back?  Yes, unless it is stale, or the force in the base is small against the army (a third of it) and
+/// has not hurt anything of ours for a few seconds: the team that was sent deals with it.
+Bool AIStrategy::baseAlarmBlocksWaves( UnsignedInt now ) const
+{
+	if (!m_bdActive || !baseDefenceOn())
+		return FALSE;
+	if (m_ai->isFeatureOff(AIPlayer::AIF_BDCAP))
+		return TRUE;
+	if (baseAlarmStale(now))
+		return FALSE;
+	const Bool hit = m_bdDamageFrame != 0 && now - m_bdDamageFrame <= 8 * LOGICFRAMES_PER_SECOND;
+	return hit || m_bdValue * 3.0f >= m_armyValue;
+}
+
 /// One of our objects took damage: when it stands inside the base zone and an enemy did it, that is a threat (reported by the body module).
 void AIStrategy::noteBaseDamage( Object *victim, ObjectID attacker, Real amount )
 {
@@ -102,6 +132,8 @@ Bool AIStrategy::findBaseThreat( Coord3D *where, Real *value ) const
 		}
 	}
 	const Bool damaged = m_bdDamageFrame != 0 && now - m_bdDamageFrame <= 4 * LOGICFRAMES_PER_SECOND;
+	if (now < m_bdMuteUntil && !damaged && threat < 2.0f * m_bdMuteValue)
+		return FALSE;		// the force that stood about without hurting anything for a minute (see updateBaseDefence)
 	if (threat < sk.m_baseDefenceMinValue && !damaged)
 		return FALSE;
 	if (threat < sk.m_baseDefenceMinValue)
@@ -169,6 +201,31 @@ void AIStrategy::updateBaseDefence()
 		return;
 	}
 
+	// An alarm that has gone on for long without anything of ours being hit is over: the teams go back to their role, and the same
+	// force does not raise it again for a while (a stuck unit, or a force that watches the base from afar, must not hold the army).
+	if (m_bdActive && baseAlarmStale(now))
+	{
+		m_bdActive = FALSE;
+		m_bdMuteUntil = now + 90 * LOGICFRAMES_PER_SECOND;
+		m_bdMuteValue = value;
+		Int released = 0;
+		for (Int i = 0; i < m_numTeams; ++i)
+		{
+			AITeamRecord &rec = m_teams[i];
+			if (!rec.m_baseDefence)
+				continue;
+			rec.m_baseDefence = FALSE;
+			if (rec.m_mode == AITEAM_DEFENDING)
+			{
+				rec.m_mode = AITEAM_FREE;
+				rec.m_modeFrame = now;
+				rec.m_orderFrame = 0;
+				++released;
+			}
+		}
+		AI_TRACE("BASEDEF clear after %u s: %d team(s) go back to their role (stale: nothing of ours was hit; the force of %.0f is ignored for 90 s unless it hits something)", (now - m_bdSince) / LOGICFRAMES_PER_SECOND, released, value);
+		return;
+	}
 	m_bdLastThreat = now;
 	m_bdPos = where;
 	m_bdValue = value;

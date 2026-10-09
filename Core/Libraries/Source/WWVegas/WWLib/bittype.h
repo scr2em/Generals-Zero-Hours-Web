@@ -39,22 +39,39 @@
 
 typedef unsigned char	uint8;
 typedef unsigned short	uint16;
+#if defined(__LP64__)
+// 64-bit Linux and macOS (the native headless build): long has 64 bits there, these keep 32.
+typedef unsigned int	uint32;
+#else
 typedef unsigned long	uint32;
+#endif
 typedef unsigned int    uint;
 
 typedef signed char		sint8;
 typedef signed short		sint16;
+#if defined(__LP64__)
+typedef signed int		sint32;
+#else
 typedef signed long		sint32;
+#endif
 typedef signed int      sint;
 
 typedef float				float32;
 typedef double				float64;
 
+#if defined(__LP64__)
+typedef unsigned int    DWORD;
+#else
 typedef unsigned long   DWORD;
+#endif
 typedef unsigned short	WORD;
 typedef unsigned char   BYTE;
 typedef int             BOOL;
 typedef unsigned short	USHORT;
 typedef const char *		LPCSTR;
 typedef unsigned int    UINT;
+#if defined(__LP64__)
+typedef unsigned int    ULONG;
+#else
 typedef unsigned long   ULONG;
+#endif

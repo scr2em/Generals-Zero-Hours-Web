@@ -1,0 +1,23 @@
+{
+ "name": "formation-box",
+ "description": "a click move in a box: rows of four; every unit ends within 30 of its slot at the destination, facing the move; the tanks stand ahead of the rocket soldiers (tough units in front, long range behind).",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn tanks 0:AmericaTankCrusader:3 at=cc:0^220,-150",
+  "spawn rifles 0:AmericaInfantryRanger:4 at=cc:0^220,0",
+  "spawn rockets 0:AmericaInfantryMissileDefender:3 at=cc:0^220,150",
+  "name army tanks+rifles+rockets",
+  "wait 5",
+  "select army",
+  "formation box",
+  "wait 1",
+  "expect formation army box",
+  "move cc:0^600,0",
+  "wait 1200",
+  "dump army",
+  "expect shape army box",
+  "expect ahead tanks rockets"
+ ]
+}

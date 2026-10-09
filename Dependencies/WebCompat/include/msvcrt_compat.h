@@ -190,8 +190,16 @@ void _fpreset(void);
 
 /* Memory */
 #define _alloca alloca
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#define _msize(p) malloc_size(p)
+#elif defined(__GLIBC__)
+#include <malloc.h>
+#define _msize(p) malloc_usable_size(p)
+#else
 #define _msize(p) malloc_usable_size(p)
 size_t malloc_usable_size(void *p);
+#endif
 #define _aligned_malloc(size, align) aligned_alloc((align), (((size) + (align) - 1) / (align)) * (align))
 #define _aligned_free free
 

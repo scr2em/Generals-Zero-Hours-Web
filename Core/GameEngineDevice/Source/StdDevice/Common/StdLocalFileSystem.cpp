@@ -34,7 +34,7 @@
 
 #include <filesystem>
 
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 #include <mutex>
 #include <unordered_set>
 #endif
@@ -46,7 +46,7 @@ StdLocalFileSystem::StdLocalFileSystem() : LocalFileSystem()
 StdLocalFileSystem::~StdLocalFileSystem() {
 }
 
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 // The game looks for every file on the local file system first and in the archives second, so
 // nearly all lookups of a normal game (everything is in a .big) end with "not found". Each one costs
 // a round trip to the browser's file system worker (about 0.6 ms), because WasmFS does not cache
@@ -122,6 +122,10 @@ static std::filesystem::path fixFilenameFromWindowsPath(const Char *filename, In
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 	// (In the browser the file system is case insensitive already, see WebStorage.cpp.)
+	// TheSuperHackers @bugfix The search below takes the first part of the path as it is, which is right for "/" but
+	// not for the first folder of a relative path ("Data\INI\..."): start relative paths at ".".
+	if (path.is_relative())
+		path = std::filesystem::path(".") / path;
 	// check if the file exists to see if fixup is required
 	// if it's not found try to match disregarding case sensitivity
 	// For cases where a write is happening, we should check if the parent path exists, if so, let it through, since the file may not exist yet.
@@ -201,7 +205,7 @@ File * StdLocalFileSystem::openFile(const Char *filename, Int access, size_t buf
 		return nullptr;
 	}
 
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 	const Bool cacheable = MissingFileCache::isCacheable(filename);
 	if (cacheable)
 	{
@@ -236,7 +240,7 @@ File * StdLocalFileSystem::openFile(const Char *filename, Int access, size_t buf
 	if (file->open(path.string().c_str(), access, bufferSize) == FALSE) {
 		deleteInstance(file);
 		file = nullptr;
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 		if (cacheable && !(access & File::WRITE))
 			getMissingFileCache().addMissing(filename);
 #endif
@@ -281,7 +285,7 @@ void StdLocalFileSystem::reset()
 //DECLARE_PERF_TIMER(StdLocalFileSystem_doesFileExist)
 Bool StdLocalFileSystem::doesFileExist(const Char *filename) const
 {
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 	const Bool cacheable = MissingFileCache::isCacheable(filename);
 	if (cacheable && getMissingFileCache().isKnownMissing(filename))
 		return FALSE;
@@ -294,7 +298,7 @@ Bool StdLocalFileSystem::doesFileExist(const Char *filename) const
 
 	std::error_code ec;
 	const Bool exists = std::filesystem::exists(path, ec);
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 	if (cacheable && !exists)
 		getMissingFileCache().addMissing(filename);
 #endif
@@ -319,6 +323,15 @@ void StdLocalFileSystem::getFileListInDirectory(const AsciiString& currentDirect
 	std::replace(fixedDirectory.begin(), fixedDirectory.end(), '\\', '/');
 #endif
 
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+	// TheSuperHackers @bugfix The directory is written with the capitalisation of a case insensitive file system too.
+	{
+		const std::filesystem::path resolved = fixFilenameFromWindowsPath(asciisearch.str(), 0);
+		if (!resolved.empty())
+			fixedDirectory = resolved.string();
+	}
+#endif
+
 	std::error_code ec;
 
 	auto iter = std::filesystem::directory_iterator(fixedDirectory.c_str(), ec);
@@ -331,11 +344,17 @@ void StdLocalFileSystem::getFileListInDirectory(const AsciiString& currentDirect
 	// The default iterator constructor creates an end iterator
 	for (; iter != std::filesystem::directory_iterator(); ++iter)	{
 		std::string filenameStr = iter->path().filename().string();
-		if (!iter->is_directory() && iter->path().extension() == searchExt &&
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+		// The extension too ("*.ini" finds "GameData.INI").
+		const Bool extensionMatches = strcasecmp(iter->path().extension().string().c_str(), searchExt.string().c_str()) == 0;
+#else
+		const Bool extensionMatches = iter->path().extension() == searchExt;
+#endif
+		if (!iter->is_directory() && extensionMatches &&
 			(strcmp(filenameStr.c_str(), ".") != 0 && strcmp(filenameStr.c_str(), "..") != 0)) {
 			// if we haven't already, add this filename to the list.
 			// a stl set should only allow one copy of each filename
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 			// TheSuperHackers @bugfix The web build runs the game's Windows paths: like the Win32 file system, return the
 			// directory as the caller wrote it (with its backslashes) followed by the name. The game cuts the file name
 			// off at the last backslash (the replay list does, for one), which did not find one in "dir/file".

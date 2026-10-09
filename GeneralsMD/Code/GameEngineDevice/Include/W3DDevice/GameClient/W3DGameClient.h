@@ -45,7 +45,7 @@
 #include "W3DDevice/GameClient/W3DGameWindowManager.h"
 #include "W3DDevice/GameClient/W3DGameFont.h"
 #include "W3DDevice/GameClient/W3DDisplayStringManager.h"
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 #include "GameClient/VideoPlayer.h"
 #ifdef RTS_HAS_FFMPEG
 #include "WebDevice/Video/WebVideoPlayer.h"
@@ -119,7 +119,7 @@ protected:
 
   /// Manager for display strings
 	virtual DisplayStringManager *createDisplayStringManager() override { return NEW W3DDisplayStringManager; }
-#if defined(__EMSCRIPTEN__)
+#if defined(ZH_WEBCOMPAT)
 #ifdef RTS_HAS_FFMPEG
 	// The Bink videos play through the FFmpeg of Dependencies/FFmpegWeb.
 	virtual VideoPlayerInterface *createVideoPlayer() override { return NEW WebVideoPlayer; }
@@ -141,7 +141,7 @@ protected:
 
 };
 
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 inline Keyboard *W3DGameClient::createKeyboard() { return NEW WebKeyboard; }
 #else
 inline Keyboard *W3DGameClient::createKeyboard() { return NEW DirectInputKeyboard; }

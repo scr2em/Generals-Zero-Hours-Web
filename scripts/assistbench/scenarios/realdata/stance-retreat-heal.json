@@ -1,0 +1,25 @@
+{
+ "name": "stance-retreat-heal",
+ "description": "retreat when damaged, to a place of healing: four rangers with retreat at 70% are hurt to about 40%; they go to the barracks, are healed and go back. The heal building (AmericaBarracks) is an assumption: if the trace says \"goes to the rally point\", change the template. (Needs the commits with MSG_ASSIST_BASE_DEFEND / MSG_ASSIST_STANCE; until then \"this build has no command\".)",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn hut 0:AmericaBarracks:1 at=cc:0^0,-350",
+  "spawn rangers 0:AmericaInfantryRanger:4 at=cc:0^700,0",
+  "wait 5",
+  "select rangers",
+  "send ASSIST_STANCE int:2 int:2 int:70",
+  "wait 2",
+  "snapshot rangers",
+  "spawn raider 1:ChinaInfantryRedguard:1 at=cc:0^1100,0",
+  "damage rangers 60% by=raider",
+  "kill raider",
+  "until health rangers above 95 max=5400",
+  "until atsnapshot rangers tol=80 max=2400"
+ ],
+ "log": [
+  "^ASSIST stance retreat: unit \\d+ at \\d+% goes to heal facility",
+  "^ASSIST stance retreat: unit \\d+ goes back to"
+ ]
+}

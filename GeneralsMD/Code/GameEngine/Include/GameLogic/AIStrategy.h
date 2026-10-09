@@ -33,6 +33,7 @@
 #include "GameLogic/AI.h"
 #include "GameLogic/AIProtect.h"
 #include "GameLogic/AIRoute.h"
+#include "GameLogic/AITacticsCore.h"
 
 class AIPlayer;
 class Object;
@@ -186,6 +187,8 @@ public:
 	Real armyValue() const { return m_roleValue[AIROLE_INFANTRY] + m_roleValue[AIROLE_VEHICLE] + m_roleValue[AIROLE_AIRCRAFT]; }
 	Real totalValue() const;
 	Real armedValue() const { return m_armedValue; }
+	/// Value of the armed units of our allies (other players of our team) seen in the last full pass over the objects.
+	Real allyValue() const { return m_allyValue; }
 	UnsignedInt lastScanFrame() const { return m_lastScanFrame; }
 
 	const AIComposition *composition() const { return m_comp; }
@@ -206,6 +209,8 @@ private:
 	Real				m_roleValue[AIROLE_COUNT];
 	Int					m_roleCount[AIROLE_COUNT];
 	Real				m_armedValue;
+	Real				m_allyValue;				///< armed allied units, as of the last complete pass
+	Real				m_scanAlly;					///< the same, summed in the pass that is under way
 	AIComposition	m_comp[MAX_COMPOSITION];
 	Int					m_numComp;
 };
@@ -235,14 +240,6 @@ struct AITeamRecord
 	Bool					m_baseDefence;			///< sent by the base defence: not to be sent back to the rally point until the base is clear
 	Bool					m_inWave;						///< part of the wave that is out (set at the launch); a team that appears later waits for the next one
 	ObjectID			m_idMark;						///< object ids from here on belong to units that joined after the last order of the strategic layer (0 = none given)
-};
-
-/// Damage that units have just assigned to a target (split fire): a small table with expiry.
-struct AILedgerEntry
-{
-	ObjectID			m_target;
-	Real					m_damage;
-	UnsignedInt		m_expire;
 };
 
 /// A unit that is stepping out of the fight for a moment (kiting): where it was attacking, and how to resume.
@@ -413,7 +410,7 @@ private:
 	void updateSiege();
 	void updateArmy();
 	Bool rallyPoint( Coord3D *pos );
-	Real waveTarget() const;
+	Real waveTarget( Real *stallNeed = nullptr ) const;
 	Real alliedValueNear( const Coord3D *center, Team *except ) const;
 
 	// tactics (AITactics.cpp)
@@ -520,6 +517,9 @@ private:
 
 	// base defence priority (AIBaseDefence.cpp)
 	Bool baseDefenceOn() const;
+	Bool baseAlarmStale( UnsignedInt now ) const;
+	Bool baseAlarmBlocksWaves( UnsignedInt now ) const;
+	Bool teamWavesOn() const;
 	void noteBaseDamage( Object *victim, ObjectID attacker, Real amount );
 	Bool findBaseThreat( Coord3D *where, Real *value ) const;
 	void sendTeamToBase( Team *team, AITeamRecord &rec, const Coord3D &where );
@@ -571,8 +571,7 @@ private:
 	Coord3D				m_scoutTarget;
 	UnsignedInt		m_savingSince;
 	UnsignedInt		m_noSavingUntil;
-	enum { LEDGER_SIZE = 32 };
-	AILedgerEntry	m_ledger[LEDGER_SIZE];		///< split fire: damage assigned to targets, see assignDamage
+	AITactics::SplitLedger	m_ledger;		///< split fire: damage assigned to targets, see assignDamage
 	AIStepRecord	m_steps[MAX_STEPS];				///< units that are kiting
 	Int						m_numSteps;
 	Int						m_tacticTeam;							///< round robin over the units of the field teams
@@ -648,6 +647,8 @@ private:
 	UnsignedInt		m_bdSince;
 	UnsignedInt		m_bdDamageFrame;								///< latest damage to one of our objects inside the zone by an enemy
 	UnsignedInt		m_nextBaseDefence;
+	UnsignedInt		m_bdMuteUntil;									///< a stale alarm is not raised again by the same force until this frame
+	Real					m_bdMuteValue;
 	UnsignedInt		m_bdWeakFrame;									///< last trace line about a threat that the teams at home do not go out to
 	AIBunkerRecord m_bunkerMen[MAX_BUNKER_MEN];			///< infantry that hold defensive structures for good
 	Int						m_numBunkerMen;

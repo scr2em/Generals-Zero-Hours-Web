@@ -1,0 +1,21 @@
+{
+ "name": "starter-assists-not-allowed",
+ "description": "Smoke check only (starter content, says nothing about gameplay): in a match that does not allow the player assists, formation and protect orders change nothing.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "assists": false,
+ "steps": [
+  "spawn tanks 0:IronwoodTank:3 at=cc:0^220,-150",
+  "spawn rifles 0:IronwoodRifleman:4 at=cc:0^220,0",
+  "spawn rockets 0:IronwoodRocketeer:3 at=cc:0^220,150",
+  "name army tanks+rifles+rockets",
+  "wait 5",
+  "select army",
+  "formation wedge",
+  "protect army cc:0",
+  "wait 2",
+  "expect formation army none",
+  "expect unlinked army"
+ ]
+}

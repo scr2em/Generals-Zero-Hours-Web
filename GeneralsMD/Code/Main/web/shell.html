@@ -689,7 +689,12 @@ let problem = null;
 function noteProblem(text) {
 	if (problem) return;
 	for (const p of PROBLEMS) {
-		if (p.re.test(text)) { problem = p; return; }
+		if (p.re.test(text)) {
+			problem = p;
+			// The engine thread's last lines can arrive after the page heard that the game exited: say it now.
+			if (gameEnded && endInfo) showEnded();
+			return;
+		}
 	}
 }
 
@@ -1775,11 +1780,22 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // The game has ended (it quit, crashed, or ran out of memory): say so, and offer to play again.
+let endInfo = null;
 function endGame(info) {
 	if (gameEnded) return;
 	gameEnded = true;
 	gameRunning = false;
+	endInfo = info;
 	if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+	showEnded();
+	$('ended').hidden = false;
+	$('toolbar').style.display = 'none';
+	$('play-again').focus();
+}
+
+// The texts of the "game has ended" panel (again when the reason arrives late).
+function showEnded() {
+	const info = endInfo;
 	const failedArmies = armyFailures();
 	const clean = info.code === 0 && !problem && !info.crashed && failedArmies.length === 0;
 	$('ended-title').textContent = clean ? 'The game has ended' : (problem ? problem.title : 'The game stopped unexpectedly');
@@ -1790,10 +1806,7 @@ function endGame(info) {
 	$('play-again-without').hidden = failedArmies.length === 0;
 	$('play-again').classList.toggle('primary', failedArmies.length === 0);
 	$('ended-continue').hidden = !info.soft;
-	$('ended').hidden = false;
-	$('toolbar').style.display = 'none';
 	if (!clean) showErrors();
-	$('play-again').focus();
 }
 
 // ---- the armies of this run: what the engine says about each package ---------------------------------

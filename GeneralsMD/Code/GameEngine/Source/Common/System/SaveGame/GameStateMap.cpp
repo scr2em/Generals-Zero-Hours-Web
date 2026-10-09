@@ -29,7 +29,7 @@
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "PreRTS.h"
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 #include <errno.h>
 #include <stdio.h>
 #endif
@@ -200,7 +200,7 @@ static void extractAndSaveMap( AsciiString mapToSave, Xfer *xfer )
 	{
 
 		DEBUG_CRASH(( "extractAndSaveMap - Unable to open file '%s'", mapToSave.str() ));
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 		fprintf( stderr, "extractAndSaveMap - Unable to open file '%s' (errno %d)\n", mapToSave.str(), errno );
 #endif
 		throw SC_INVALID_DATA;
@@ -343,7 +343,7 @@ void GameStateMap::xfer( Xfer *xfer )
 		{
 			DEBUG_CRASH(("GameState::xfer - The map filename read from the file '%s' is not in the SAVE directory, but should be",
 												 saveGameInfo->saveGameMapName.str()) );
-#ifdef __EMSCRIPTEN__
+#ifdef ZH_WEBCOMPAT
 			fprintf( stderr, "The map filename read from the save file '%s' (portable '%s') is not in the save directory '%s'\n",
 				saveGameInfo->saveGameMapName.str(), tmp.str(), TheGameState->getSaveDirectory().str() );
 #endif
