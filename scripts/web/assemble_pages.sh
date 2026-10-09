@@ -19,7 +19,7 @@ fi
 site_src="$1/GeneralsMD"
 out="$2"
 
-for f in z_generals.html z_generals.js z_generals.wasm importer.js coi-serviceworker.js; do
+for f in z_generals.html z_generals.js z_generals.wasm importer.js armies.js coi-serviceworker.js; do
     if [ ! -f "$site_src/$f" ]; then
         echo "error: $site_src/$f is missing; build the z_generals target first" >&2
         exit 1
@@ -34,7 +34,7 @@ rm -rf "$out"
 mkdir -p "$out"
 
 # The page, the engine and the launcher's scripts.
-cp "$site_src/z_generals.js" "$site_src/z_generals.wasm" "$site_src/importer.js" "$site_src/coi-serviceworker.js" "$out/"
+cp "$site_src/z_generals.js" "$site_src/z_generals.wasm" "$site_src/importer.js" "$site_src/armies.js" "$site_src/coi-serviceworker.js" "$out/"
 for f in direct-source.js zhnet.js; do
     if [ -f "$site_src/$f" ]; then cp "$site_src/$f" "$out/"; fi
 done

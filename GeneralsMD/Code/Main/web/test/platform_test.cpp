@@ -31,11 +31,16 @@
 #include <emscripten/html5_webgl.h>
 
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
+
+#include <string>
 
 static const char *messageName(uint32_t m)
 {
@@ -117,6 +122,60 @@ static void listDirectory(const char *path)
 	closedir(dir);
 }
 
+// The launcher passes "-army <path>" for every army package the player checked. Stand-in for the engine's
+// loader: opens each package, prints its size and first bytes (proves the file is readable at that path, also in
+// the middle) and writes /userdata/ArmyReport.json the way the engine does (every package "loaded", id = file
+// name without its extension; a package whose name contains "skip" is reported as skipped).
+static void loadArmies(int argc, char **argv)
+{
+	std::string report = "{\"ruleset\":\"test\",\"packages\":[";
+	int count = 0;
+	for (int i = 1; i + 1 < argc; ++i)
+	{
+		if (strcmp(argv[i], "-army") != 0)
+			continue;
+		const char *path = argv[++i];
+		struct stat st = {};
+		const int fd = open(path, O_RDONLY);
+		unsigned char head[4] = {}, mid[4] = {};
+		if (fd < 0 || fstat(fd, &st) != 0)
+		{
+			printf("TEST: army %s cannot open (%s)\n", path, strerror(errno));
+			if (fd >= 0)
+				close(fd);
+			continue;
+		}
+		const ssize_t n = read(fd, head, sizeof(head));
+		const off_t middle = st.st_size > 8 ? st.st_size / 2 : 0;
+		const ssize_t m = pread(fd, mid, sizeof(mid), middle);
+		close(fd);
+		printf("TEST: army %s size=%lld first=%02x%02x%02x%02x(%d) middle@%lld=%02x%02x%02x%02x(%d)\n", path, (long long)st.st_size,
+			head[0], head[1], head[2], head[3], (int)n, (long long)middle, mid[0], mid[1], mid[2], mid[3], (int)m);
+
+		std::string id = path;
+		id = id.substr(id.rfind('/') + 1);
+		if (id.rfind('.') != std::string::npos)
+			id = id.substr(0, id.rfind('.'));
+		const bool skipped = id.find("skip") != std::string::npos;
+		if (count++)
+			report += ",";
+		report += "{\"id\":\"" + id + "\",\"path\":\"" + path + "\",\"status\":\"" + (skipped ? "skipped" : "loaded") + "\",\"reason\":\"" +
+			(skipped ? "test: needs another ruleset" : "") + "\",\"factions\":[{\"displayName\":\"Faction of " + id + "\",\"ai\":true}]}";
+		if (skipped)
+			printf("TEST: ZHARMY: %s skipped: test: needs another ruleset\n", id.c_str());
+		else
+			printf("TEST: ZHARMY: %s loaded\n", id.c_str());
+	}
+	report += "]}\n";
+	FILE *f = fopen("/userdata/ArmyReport.json", "wb");
+	if (f)
+	{
+		fwrite(report.data(), 1, report.size(), f);
+		fclose(f);
+	}
+	printf("TEST: armies %d\n", count);
+}
+
 int main(int argc, char **argv)
 {
 	printf("TEST: start argc=%d\n", argc);
@@ -156,6 +215,7 @@ int main(int argc, char **argv)
 		listDirectory("/game");
 		listDirectory("/game/data");
 		listDirectory("/generals");
+		listDirectory("/armies");
 
 		// User data persists in OPFS.
 		FILE *counter = fopen("/userdata/Options.ini", "rb");
@@ -174,6 +234,7 @@ int main(int argc, char **argv)
 			fclose(counter);
 		}
 		printf("TEST: userdata runs=%d\n", runs);
+		loadArmies(argc, argv);
 	}
 
 	int w, h;

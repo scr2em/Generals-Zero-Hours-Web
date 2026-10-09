@@ -630,6 +630,19 @@ export async function readUserFile(path) {
 	}
 }
 
+// Deletes one file of the user data (the launcher removes the previous army report before a start). True when it is gone.
+export async function removeUserFile(path) {
+	try {
+		let dir = await (await opfsRoot()).getDirectoryHandle('userdata');
+		const parts = path.split('/');
+		for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+		await dir.removeEntry(parts[parts.length - 1]);
+		return true;
+	} catch (e) {
+		return e && e.name === 'NotFoundError';
+	}
+}
+
 export async function storageEstimate() {
 	if (navigator.storage && navigator.storage.estimate) {
 		const { usage = 0, quota = 0 } = await navigator.storage.estimate();

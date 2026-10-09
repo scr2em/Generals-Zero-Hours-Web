@@ -24,6 +24,7 @@ export const DIRECT_PAYLOAD_VERSION = 1;
 const DB_NAME = 'zh-direct-source';
 const STORE = 'folders';
 const KEY = 'saved';
+const ARMIES_KEY = 'armies';   // the armies folder (army packages), kept apart from the game folders
 
 /** An error with a code the launcher can show text for. */
 export class DirectError extends Error {
@@ -92,6 +93,28 @@ export async function rememberFolder(role, handle) {
 export async function forgetFolders() {
 	try {
 		await dbRun('readwrite', (store) => store.delete(KEY));
+	} catch (e) { /* nothing to forget */ }
+}
+
+/** Remembers the armies folder ({ name, handle }) for later visits. Throws when the browser will not store it. */
+export async function rememberArmiesFolder(handle) {
+	await dbRun('readwrite', (store) => store.put({ name: handle.name, handle }, ARMIES_KEY));
+}
+
+/** The remembered armies folder, { name, handle }, or null. */
+export async function loadArmiesFolder() {
+	try {
+		const saved = await dbRun('readonly', (store) => store.get(ARMIES_KEY));
+		return saved && saved.handle ? saved : null;
+	} catch (e) {
+		return null;
+	}
+}
+
+/** Forgets the remembered armies folder. Does not touch the files. */
+export async function forgetArmiesFolder() {
+	try {
+		await dbRun('readwrite', (store) => store.delete(ARMIES_KEY));
 	} catch (e) { /* nothing to forget */ }
 }
 
@@ -221,12 +244,55 @@ export function closeOpen(targetKey) {
 	if (targetKey) open.delete(targetKey); else open.clear();
 }
 
+// ---------------------------------------------------------------------------------------------
+// Army packages: served at /armies next to the game files (or on their own)
+// ---------------------------------------------------------------------------------------------
+
+// [{ path: 'armies/<name>', file }]: the packages the player checked. They are read in place like the game files, whichever
+// way the game data is provided (read in place, copied into OPFS, or the starter content): the engine mounts them at /armies
+// (WebStorage.cpp). Each entry is a reference to a file on disk.
+let armyEntries = [];
+
+/** Sets the packages to serve at /armies: [{ name: 'file.zharmy' (below /armies, '/' for sub folders), file }]. [] for none. */
+export function setArmyFiles(list) {
+	armyEntries = (list || []).map((a) => ({ path: 'armies/' + a.name, file: a.file }));
+}
+
+/** How many package files are set to be served. */
+export function armyFileCount() {
+	return armyEntries.length;
+}
+
+/**
+ * Prepares the page's Module (before the game script is added) to serve the packages of setArmyFiles() when the game data
+ * does not come from attachCurrent() (the starter content, or a copy in OPFS). With the game read in place, attachCurrent()
+ * serves them, too. Returns the number of files, 0 when there is nothing to do.
+ */
+export function attachArmies(Module, options = {}) {
+	if (armyEntries.length === 0) return 0;
+	const payload = buildPayload({ ...options, only: 'armies' });
+	addPreRun(Module, payload);
+	return armyEntries.length;
+}
+
+function addPreRun(Module, payload) {
+	Module.preRun = [].concat(Module.preRun || [], [() => {
+		if (typeof Module.zhDirectAttach !== 'function') {
+			throw new DirectError('unsupported', 'This build of the game cannot read files in place (no zhdirect support in the module).');
+		}
+		Module.zhDirectAttach(payload);
+	}]);
+}
+
 function buildPayload(options = {}) {
 	const entries = [];
-	for (const key of ['game', 'generals']) {
-		const o = open.get(key);
-		if (o) for (const e of o.entries) entries.push({ path: e.path, file: e.file });
+	if (options.only !== 'armies') {
+		for (const key of ['game', 'generals']) {
+			const o = open.get(key);
+			if (o) for (const e of o.entries) entries.push({ path: e.path, file: e.file });
+		}
 	}
+	for (const e of armyEntries) entries.push({ path: e.path, file: e.file });
 	const tuning = {};
 	for (const name of ['cacheBytes', 'threadCacheBytes', 'blockSize', 'maxSegment', 'directThreshold']) {
 		if (typeof options[name] === 'number' && options[name] > 0) tuning[name] = options[name];
@@ -244,12 +310,7 @@ function buildPayload(options = {}) {
 export function attachCurrent(Module, options = {}) {
 	if (!open.has('game')) throw new DirectError('not-open', 'The game folder is not open. Choose it (or allow access to it) first.');
 	const payload = buildPayload(options);
-	Module.preRun = [].concat(Module.preRun || [], [() => {
-		if (typeof Module.zhDirectAttach !== 'function') {
-			throw new DirectError('unsupported', 'This build of the game cannot read files in place (no zhdirect support in the module).');
-		}
-		Module.zhDirectAttach(payload);
-	}]);
+	addPreRun(Module, payload);
 	const args = Array.from(Module.arguments || []);
 	if (!args.includes('-webdirect')) args.push('-webdirect');
 	Module.arguments = args;

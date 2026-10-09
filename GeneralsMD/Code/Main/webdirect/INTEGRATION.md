@@ -92,6 +92,21 @@ Which files are opened is exactly the copy importer's selection (`planImport`): 
 the engine fingerprints) / dll, archives only at the top level, `maps.big` of the original game skipped. Read in place has no
 space cost, so nothing is de-duplicated between the two installs.
 
+## Army packages at /armies
+
+The launcher's "Armies" section (`web/armies.js`, `web/shell.html`) serves the army packages (`*.zharmy`, see
+`docs/ARMY_PACKAGES.md`) the player ticked through the same backend, in every mode (read in place, copy in OPFS, starter content):
+
+* `direct.setArmyFiles([{ name, file }])` adds the entries `armies/<name>` to the payload. With the game read in place
+  `attachCurrent()` sends them together with the game files; otherwise `attachArmies(Module)` sends a payload that holds only them
+  (no `-webdirect`, the game data still comes from OPFS).
+* `WebStorage.cpp` (`zh_direct_roots()` tells which roots the entries are below) mounts the tree at `/direct` as before, creates
+  `/direct/armies` and links it at `/armies`. `/game` and `/generals` are linked to `/direct` only when game files were handed over.
+  The names are lower case in the tree and found without regard to case; the launcher passes `-army /armies/<name>` with the name
+  it served (the file's own name when it only uses letters, digits and `. _ ( ) + -`, else a plain version of it; sub folders are kept).
+* The armies folder handle is kept in IndexedDB under its own key (`rememberArmiesFolder`, `loadArmiesFolder`,
+  `forgetArmiesFolder`), separate from the game folders.
+
 ## Test results (headless Chromium in the sandbox, `webdirect/test/run_all.sh`)
 
 * Backend test (`web_direct_test`): mount, case insensitive lookup (lower/mixed/upper, relative after `chdir`), directory

@@ -15,6 +15,7 @@ import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { mkdirSync, cpSync, readFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { writeTestPackages, writeManyPackages } from './zharmy_fixture.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -706,6 +707,296 @@ if (starter) {
 		await p.click('#files-close');
 		check('files: the panel closes', await p.isHidden('#files'));
 		await ctx.close();
+	}
+}
+
+
+// ---- 7. armies: the folder of .zharmy packages, listing, statuses, Play passes them to the engine ---------------------
+{
+	const armiesDir = path.join(out, 'armies');
+	rmSync(armiesDir, { recursive: true, force: true });
+	const pkgs = writeTestPackages(armiesDir);
+	const hex = (buf) => buf.toString('hex');
+	const bigName = 'Big Pack (copy).zharmy';
+	const url = (q = '?picker=input') => `http://127.0.0.1:${port}/${page_name}${q}`;
+	const pickArmiesFolder = async (page, dir) => {
+		const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#pick-armies')]);
+		await chooser.setFiles(dir);
+		await page.waitForFunction(() => /found|no \.zharmy/.test(document.getElementById('state-armies').textContent), null, { timeout: 60000 });
+	};
+	const rows = (page) => page.evaluate(() => window.__zh.armyRows());
+	const byPath = (list, p) => list.find((r) => r.path === p) || {};
+	const testLog = (logs) => logs.filter((l) => l.startsWith('TEST:') || /WebPlatform:|ZHARMY/.test(l)).join('\n');
+	const settledStarter = () => /^(Ready|.*failed|.*[Nn]ot enough|This server|Could not|.*corrupt|.*wrong size)/.test(document.getElementById('state-starter').textContent);
+	// An armies folder in OPFS stands in for a folder handle of the real picker (like the game folder tests above).
+	const putOpfsFolder = (page, names) => page.evaluate(async (list) => {
+		const root = await navigator.storage.getDirectory();
+		await root.removeEntry('armies-home', { recursive: true }).catch(() => {});
+		const dir = await root.getDirectoryHandle('armies-home', { create: true });
+		for (const [name, b64] of list) {
+			const w = await (await dir.getFileHandle(name, { create: true })).createWritable();
+			await w.write(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+			await w.close();
+		}
+		await window.__zh.direct.rememberArmiesFolder(dir);
+	}, names.map((n) => [n, pkgs[n].toString('base64')]));
+
+	// 7a. the listing, with the starter content as the game (needs --starter)
+	if (starter) {
+		const context = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+		const page = await context.newPage();
+		const logs = [];
+		page.on('console', (m) => logs.push(m.text()));
+		page.on('dialog', (d) => d.accept());
+		// Count what the page reads of the package files: slices only, never a whole file.
+		await page.addInitScript(() => {
+			window.__armyReads = { whole: 0, sliced: 0 };
+			const isPkg = (b) => b instanceof File && /\.zharmy$/i.test(b.name);
+			const slice = Blob.prototype.slice;
+			Blob.prototype.slice = function (a, b, c) {
+				if (isPkg(this)) window.__armyReads.sliced += Math.max(0, Math.min(b === undefined ? this.size : b < 0 ? this.size + b : b, this.size) - (a || 0));
+				return slice.call(this, a, b, c);
+			};
+			for (const name of ['arrayBuffer', 'text', 'stream', 'bytes']) {
+				const f = Blob.prototype[name];
+				if (typeof f === 'function') Blob.prototype[name] = function (...a) { if (isPkg(this)) window.__armyReads.whole++; return f.apply(this, a); };
+			}
+		});
+		// ?arg= adds an engine argument: a path in other letter case must find the same file
+		await page.goto(url('?picker=input&arg=-army&arg=/armies/IRONWOOD.ZHARMY'));
+		await page.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
+		check('armies: the section is offered after the game choice, optional, nothing chosen', await page.isVisible('#choice-armies') && /No folder chosen/.test(await page.textContent('#state-armies')) && await page.isHidden('#armies-box') && /Choose armies folder/.test(await page.textContent('#pick-armies')));
+		check('armies: no technical words for the player', !/ruleset/i.test(await page.textContent('#choice-armies')));
+		await page.screenshot({ path: path.join(out, '12-armies-empty.png') });
+		await page.click('#download-starter');
+		await page.waitForFunction(settledStarter, null, { timeout: 120000 });
+
+		const t0 = Date.now();
+		await pickArmiesFolder(page, armiesDir);
+		const listed = Date.now() - t0;
+		const list = await rows(page);
+		check('armies: every *.zharmy is listed (15 incl. the sub folder), other files are not', list.length === 15 && !list.some((r) => /notes/.test(r.path)), String(list.length) + ' ' + list.map((r) => r.path).join(','));
+		const reads = await page.evaluate(() => window.__armyReads);
+		const totalBytes = Object.values(pkgs).reduce((n, b) => n + b.length, 0);
+		check('armies: only slices of the files are read, never a whole package', reads.whole === 0 && reads.sliced < 2 * 1024 * 1024 && totalBytes > 30 * 1024 * 1024, JSON.stringify(reads) + ' of ' + totalBytes);
+		check('armies: listing 15 packages incl. a 30 MB one is quick', listed < 10000, listed + ' ms');
+		const st = (p) => byPath(list, p);
+		check('armies: ready with the starter content (deflated and stored manifests, requires empty, several rulesets)',
+			['ironwood.zharmy', 'any.zharmy', bigName, 'skipme.zharmy', 'more/sub.zharmy'].every((p) => st(p).status === 'ready'), JSON.stringify(list.map((r) => [r.path, r.status])));
+		check('armies: needs the Zero Hour files (yellow), with plain words', st('zh-only.zharmy').status === 'needs' && /Needs the Zero Hour game files/.test(st('zh-only.zharmy').text) && /works with your Zero Hour files/.test(st('zh-only.zharmy').why), JSON.stringify(st('zh-only.zharmy')));
+		const why = (p) => st(p).why || '';
+		check('armies: invalid, bad zip', st('bad-zip.zharmy').status === 'bad' && /not a ZIP/.test(why('bad-zip.zharmy')), why('bad-zip.zharmy'));
+		check('armies: invalid, too small to be a zip', st('tiny.zharmy').status === 'bad' && /too small/.test(why('tiny.zharmy')), why('tiny.zharmy'));
+		check('armies: invalid, no manifest', st('no-manifest.zharmy').status === 'bad' && /no manifest/.test(why('no-manifest.zharmy')), why('no-manifest.zharmy'));
+		check('armies: invalid, manifest is not JSON', st('bad-json.zharmy').status === 'bad' && /not valid JSON/.test(why('bad-json.zharmy')), why('bad-json.zharmy'));
+		check('armies: invalid, format 2 is newer than the launcher', st('format2.zharmy').status === 'bad' && /newer version/.test(why('format2.zharmy')), why('format2.zharmy'));
+		check('armies: invalid, bad tag', st('bad-tag.zharmy').status === 'bad' && /tag/.test(why('bad-tag.zharmy')), why('bad-tag.zharmy'));
+		check('armies: invalid, bad id', st('bad-id.zharmy').status === 'bad' && /id/.test(why('bad-id.zharmy')), why('bad-id.zharmy'));
+		check('armies: invalid, duplicate id (the later file)', st('z-dup-id.zharmy').status === 'bad' && /already listed from ironwood/.test(why('z-dup-id.zharmy')) && st('ironwood.zharmy').status === 'ready', why('z-dup-id.zharmy'));
+		check('armies: invalid, duplicate tag (the later file)', st('z-dup-tag.zharmy').status === 'bad' && /tag IRW/.test(why('z-dup-tag.zharmy')), why('z-dup-tag.zharmy'));
+		check('armies: a name with spaces is served under a plain name', st(bigName).served === 'Big_Pack_(copy).zharmy' && st('ironwood.zharmy').served === 'ironwood.zharmy' && st('more/sub.zharmy').served === 'more/sub.zharmy', st(bigName).served);
+
+		// what the player reads
+		const text = await page.textContent('#armies-list');
+		check('armies: name, version, tag, factions with AI / humans only, size, source mod, license', /Ironwood Army/.test(text) && /v1\.0\.0/.test(text) && /IRW/.test(text) &&
+			/Ironwood Vanguard \(AI\)/.test(text) && /Ironwood Humans \(humans only\)/.test(text) && /from TestMod 9\.1/.test(text) && /Test licence for personal use\./.test(text) && /Free test licence: do what you like\./.test(text), text.replace(/\s+/g, ' ').slice(0, 300));
+		check('armies: the size is shown', text.includes((pkgs['ironwood.zharmy'].length / 1024).toFixed(0) + ' KB') && text.includes('30.') && /MB/.test(text), (pkgs['ironwood.zharmy'].length / 1024).toFixed(0));
+		check('armies: status words', /Ready/.test(text) && /Needs the Zero Hour game files/.test(text) && /Invalid/.test(text));
+		check('armies: boxes are enabled only for ready packages (1 yellow + 9 red are disabled)', (await page.locator('#armies-list input:disabled').count()) === 10 && (await page.locator('#armies-list input:enabled').count()) === 5);
+		check('armies: nothing is ticked at first', (await page.locator('#armies-list input:checked').count()) === 0 && /0 ticked · 5 ready · 15 found/.test(await page.textContent('#armies-count')), await page.textContent('#armies-count'));
+		await page.screenshot({ path: path.join(out, '13-armies-listed.png'), fullPage: true });
+
+		// ticks are remembered per package id
+		await page.check('input[data-army="test.ironwood"]');
+		await page.check('input[data-army="test.any-army"]');
+		await page.check(`input[data-army="test.bigpack"]`);
+		const saved = await page.evaluate(() => localStorage.getItem('zh-armies-checked'));
+		check('armies: ticks are saved in localStorage by package id', saved === JSON.stringify(['test.any-army', 'test.bigpack', 'test.ironwood']), saved);
+		check('armies: the count follows', /3 ticked/.test(await page.textContent('#armies-count')));
+		await page.reload();
+		check('armies: after a reload the folder (no handle from a plain pick) is gone, the list is empty', /No folder chosen/.test(await page.textContent('#state-armies')) && await page.isHidden('#armies-box'));
+		await page.waitForFunction(() => /^Ready/.test(document.getElementById('state-starter').textContent));
+		await pickArmiesFolder(page, armiesDir);
+		const again = await page.evaluate(() => [...document.querySelectorAll('#armies-list input:checked')].map((i) => i.getAttribute('data-army')).sort());
+		check('armies: the ticks come back when the folder is chosen again', JSON.stringify(again) === JSON.stringify(['test.any-army', 'test.bigpack', 'test.ironwood']), again.join(','));
+		check('armies: a package that is not usable now cannot be ticked', await page.isDisabled('input[data-army="test.zh-only"]'));
+
+		// filter, tick all, untick all
+		check('armies: "tick all that are ready" and "untick all" are offered', await page.isVisible('#armies-all') && await page.isVisible('#armies-none'));
+		await page.click('#armies-none');
+		check('armies: untick all', (await page.locator('#armies-list input:checked').count()) === 0 && (await page.evaluate(() => localStorage.getItem('zh-armies-checked'))) === '[]');
+		await page.click('#armies-all');
+		check('armies: tick all that are ready (not the yellow or red ones)', (await page.locator('#armies-list input:checked').count()) === 5);
+		await page.click('#armies-none');
+		for (const id of ['test.any-army', 'test.bigpack', 'test.ironwood']) await page.check(`input[data-army="${id}"]`);
+
+		// Play
+		await page.click('#play');
+		await page.waitForFunction(() => document.getElementById('stage').hidden === false);
+		await page.waitForFunction(() => window.__zh.logLines.some((l) => l.includes('TEST: ready')), null, { timeout: 30000 }).catch(() => {});
+		const argv = await page.evaluate(() => window.Module.arguments);
+		const armyArgs = argv.map((a, i) => (a === '-army' ? argv[i + 1] : null)).filter(Boolean);
+		check('armies: Play passes "-army /armies/<file>" for every ticked package (after the ?arg= one)', JSON.stringify(armyArgs) === JSON.stringify(['/armies/IRONWOOD.ZHARMY', '/armies/any.zharmy', '/armies/Big_Pack_(copy).zharmy', '/armies/ironwood.zharmy']), argv.join(' '));
+		check('armies: the starter content does not get -webdirect', !argv.includes('-webdirect'));
+		const log = testLog(logs);
+		check('armies: the engine mounted /armies next to the OPFS game data', /WebPlatform: 3 army package files at \/armies/.test(log) && /TEST: mount=0/.test(log) && /TEST: read \d+ bytes: /.test(log), log.split('\n').filter((l) => /armies|mount/.test(l)).join('|'));
+		for (const [file, served] of [['ironwood.zharmy', 'ironwood.zharmy'], ['any.zharmy', 'any.zharmy'], [bigName, 'Big_Pack_(copy).zharmy']]) {
+			const buf = pkgs[file];
+			const mid = Math.floor(buf.length / 2);
+			const want = `TEST: army /armies/${served} size=${buf.length} first=${hex(buf.subarray(0, 4))}(4) middle@${mid}=${hex(buf.subarray(mid, mid + 4))}(4)`;
+			check('armies: the engine reads ' + served + ' at that path (size, first and middle bytes)', log.includes(want), log.split('\n').filter((l) => l.includes(served.toLowerCase()) || l.includes(served)).join('|'));
+		}
+		const iron = pkgs['ironwood.zharmy'];
+		check('armies: the file is found whatever the letter case of the path', log.includes(`TEST: army /armies/IRONWOOD.ZHARMY size=${iron.length} first=504b0304(4)`), log.split('\n').filter((l) => /IRONWOOD/i.test(l)).join('|'));
+		check('armies: /armies lists the files', /TEST: \/armies\/any\.zharmy/i.test(log) && /TEST: \/armies\/big_pack_\(copy\)\.zharmy/i.test(log) && /TEST: \/armies\/ironwood\.zharmy/i.test(log), log.split('\n').filter((l) => /TEST: \/armies/.test(l)).join('|'));
+		// the engine's answer
+		await page.waitForFunction(() => /Armies: 3 loaded/.test(document.getElementById('army-btn').textContent), null, { timeout: 15000 }).catch(() => {});
+		check('armies: the toolbar says 3 armies loaded', /Armies: 3 loaded/.test(await page.textContent('#army-btn')), await page.textContent('#army-btn'));
+		await page.click('#army-btn');
+		const panel = await page.textContent('#army-panel');
+		check('armies: the panel lists each army as loaded with its factions', /Ironwood Army\s*loaded/.test(panel) && /Works Anywhere\s*loaded/.test(panel) && /Faction of ironwood/.test(panel), panel.replace(/\s+/g, ' ').slice(0, 300));
+		await page.screenshot({ path: path.join(out, '14-armies-running.png') });
+		check('armies: the report left by the engine was read from the user data', await page.evaluate(() => window.__zh.armyRun().seen === true));
+		await context.close();
+	}
+
+	// 7b. a remembered armies folder (a directory handle), skipped and failed armies, "play again without it"
+	if (starter) {
+		const context = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+		await context.addInitScript(() => {
+			FileSystemDirectoryHandle.prototype.queryPermission = async () => (sessionStorage.getItem('perm') ? 'granted' : 'prompt');
+			FileSystemDirectoryHandle.prototype.requestPermission = async () => { sessionStorage.setItem('perm', '1'); return 'granted'; };
+		});
+		const page = await context.newPage();
+		const logs = [];
+		page.on('console', (m) => logs.push(m.text()));
+		page.on('dialog', (d) => d.accept());
+		await page.goto(url());
+		await page.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
+		await page.click('#download-starter');
+		await page.waitForFunction(settledStarter, null, { timeout: 120000 });
+		await putOpfsFolder(page, ['ironwood.zharmy', 'skipme.zharmy', 'any.zharmy', 'bad-json.zharmy']);
+		await page.reload();
+		await page.waitForFunction(() => /remembered/.test(document.getElementById('state-armies').textContent), null, { timeout: 15000 }).catch(() => {});
+		check('armies folder: remembered, the page offers Allow access', /remembered/.test(await page.textContent('#state-armies')) && /Allow access/.test(await page.textContent('#pick-armies')) && await page.isHidden('#armies-box'), await page.textContent('#state-armies'));
+		check('armies folder: Play is not blocked (armies are optional)', !(await page.isDisabled('#play')));
+		await page.screenshot({ path: path.join(out, '15-armies-allow-access.png') });
+		await page.click('#pick-armies');
+		await page.waitForFunction(() => /found/.test(document.getElementById('state-armies').textContent), null, { timeout: 15000 });
+		check('armies folder: Allow access lists the packages', (await rows(page)).length === 4 && /4 armies found/.test(await page.textContent('#state-armies')), await page.textContent('#state-armies'));
+		await page.check('input[data-army="test.skipme"]');
+		await page.check('input[data-army="test.ironwood"]');
+		// Chrome that keeps the permission: the next visit needs no click
+		await page.reload();
+		await page.waitForFunction(() => /found/.test(document.getElementById('state-armies').textContent), null, { timeout: 15000 }).catch(() => {});
+		check('armies folder: the next visit lists them without a click, ticks remembered', /4 armies found/.test(await page.textContent('#state-armies')) &&
+			(await page.locator('#armies-list input:checked').count()) === 2 && await page.isChecked('input[data-army="test.skipme"]'), await page.textContent('#state-armies'));
+		check('armies folder: shown as read in place, not copied', /read in place, not copied/.test(await page.textContent('#state-armies')));
+
+		await page.click('#play');
+		await page.waitForFunction(() => document.getElementById('stage').hidden === false);
+		await page.waitForFunction(() => /Armies: 1 loaded, 1 skipped/.test(document.getElementById('army-btn').textContent), null, { timeout: 30000 }).catch(() => {});
+		const label = await page.textContent('#army-btn');
+		check('armies: loaded and skipped are told apart in the toolbar', /Armies: 1 loaded, 1 skipped/.test(label), label);
+		await page.click('#army-btn');
+		const panel = await page.textContent('#army-panel');
+		check('armies: the skipped army is shown with the engine\'s reason', /Skip Me\s*skipped/.test(panel) && /test: needs another ruleset/.test(panel) && /Ironwood Army\s*loaded/.test(panel), panel.replace(/\s+/g, ' ').slice(0, 300));
+		check('armies: a toast tells about the skipped one', /Skip Me.*skipped/.test(await page.textContent('#toast')), await page.textContent('#toast'));
+		await page.waitForFunction(() => window.__zh.armyRun().seen === true, null, { timeout: 15000 });
+
+		// a package that fails stops the game: the ended page names it and offers to start again without it
+		await page.evaluate(() => {
+			window.Module.printErr('ZHARMY: test.ironwood failed: bad value in Object.ini');
+			window.Module.onExit(1);
+		});
+		await page.waitForFunction(() => window.__zh.state().gameEnded === true, null, { timeout: 5000 });
+		const title = await page.textContent('#ended-title');
+		const body = await page.textContent('#ended-text');
+		check('armies failed: the ended page says which army and why', /army could not be loaded/i.test(title) && /Ironwood Army/.test(body) && /bad value in Object\.ini/.test(body), title + ' / ' + body);
+		check('armies failed: "Play again without it" is the main button', await page.isVisible('#play-again-without') && (await page.getAttribute('#play-again-without', 'class')).includes('primary'));
+		check('armies failed: the error panel names it too', await page.isVisible('#errors') && /Ironwood Army/.test(await page.textContent('#errors-hint')), await page.textContent('#errors-hint'));
+		await page.screenshot({ path: path.join(out, '16-army-failed.png') });
+		await page.click('#play-again-without');
+		await page.waitForFunction(() => window.__zh && window.__zh.state().gameRunning === true, null, { timeout: 60000 });
+		const argv2 = await page.evaluate(() => window.Module.arguments);
+		check('armies failed: the game starts again with the failed army unticked, the other one kept', argv2.includes('/armies/skipme.zharmy') && !argv2.some((a) => /ironwood/.test(a)), argv2.join(' '));
+		check('armies failed: the tick is gone for good', JSON.stringify(await page.evaluate(() => window.__zh.checkedArmies())) === JSON.stringify(['test.skipme']));
+		await page.waitForFunction(() => window.__zh.logLines.filter((l) => l.includes('TEST: ready')).length >= 1, null, { timeout: 30000 }).catch(() => {});
+
+		// Forget folder
+		await page.evaluate(() => window.Module.onExit(0));
+		await page.click('#back-to-start');
+		await page.waitForFunction(() => /found/.test(document.getElementById('state-armies').textContent), null, { timeout: 15000 });
+		await page.click('#armies-forget');
+		await page.waitForFunction(() => /No folder chosen/.test(document.getElementById('state-armies').textContent));
+		check('armies folder: Forget folder clears the list and the memory', /No folder chosen/.test(await page.textContent('#state-armies')) && await page.isHidden('#armies-box') &&
+			(await page.evaluate(async () => (await window.__zh.direct.loadArmiesFolder()) === null)));
+		await page.reload();
+		await page.waitForFunction(() => /Ready/.test(document.getElementById('state-starter').textContent));
+		check('armies folder: after a reload nothing is remembered', /No folder chosen/.test(await page.textContent('#state-armies')) && /Choose armies folder/.test(await page.textContent('#pick-armies')));
+		await context.close();
+	}
+
+	// 7c. your Zero Hour files: the ruleset is zerohour; in place and as a copy, the armies are served either way
+	for (const mode of ['direct', 'copy']) {
+		const context = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+		const page = await context.newPage();
+		const logs = [];
+		page.on('console', (m) => logs.push(m.text()));
+		page.on('dialog', (d) => d.accept());
+		const q = mode === 'copy' ? '?picker=input&copy=1' : '?picker=input';
+		await page.goto(url(q));
+		await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
+		await pickArmiesFolder(page, armiesDir);
+		let list = await rows(page);
+		check(`armies (${mode}): without game data only the army that works with everything can be ticked`, list.filter((r) => r.status === 'wait').length === 5 && list.filter((r) => r.status === 'ready').length === 1 && (await page.locator('#armies-list input:enabled').count()) === 1, JSON.stringify(list.slice(0, 2)));
+		await importFolder(page, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
+		list = await rows(page);
+		check(`armies (${mode}): with your Zero Hour files: zerohour-only and "any" are ready, the starter-only ones need the starter content`,
+			byPath(list, 'zh-only.zharmy').status === 'ready' && byPath(list, 'any.zharmy').status === 'ready' && byPath(list, bigName).status === 'ready' &&
+			byPath(list, 'ironwood.zharmy').status === 'needs' && /Needs the free starter content/.test(byPath(list, 'ironwood.zharmy').text), JSON.stringify(list.slice(0, 6).map((r) => [r.path, r.status, r.text])));
+		await page.check('input[data-army="test.zh-only"]');
+		await page.check('input[data-army="test.any-army"]');
+		await page.click('#play');
+		await page.waitForFunction(() => document.getElementById('stage').hidden === false);
+		await page.waitForFunction(() => window.__zh.logLines.some((l) => l.includes('TEST: ready')), null, { timeout: 30000 }).catch(() => {});
+		const argv = await page.evaluate(() => window.Module.arguments);
+		const log = testLog(logs);
+		check(`armies (${mode}): Play passes the ticked armies`, argv.join(' ').includes('-army /armies/any.zharmy -army /armies/zh-only.zharmy'), argv.join(' '));
+		check(`armies (${mode}): ${mode === 'direct' ? 'read in place with the game' : 'the copy in OPFS plus the armies read in place'}`, (mode === 'direct') === argv.includes('-webdirect') && /TEST: mount=0/.test(log) && /TEST: read \d+ bytes: ; Hello from GameData.ini/.test(log) && /WebPlatform: 2 army package files at \/armies/.test(log), log.split('\n').filter((l) => /mount|WebPlatform|read/.test(l)).join('|'));
+		const zho = pkgs['zh-only.zharmy'];
+		check(`armies (${mode}): the engine reads the package bytes`, log.includes(`TEST: army /armies/zh-only.zharmy size=${zho.length} first=504b0304(4)`), log.split('\n').filter((l) => /army/.test(l)).join('|'));
+		await page.waitForFunction(() => /Armies: 2 loaded/.test(document.getElementById('army-btn').textContent), null, { timeout: 15000 }).catch(() => {});
+		check(`armies (${mode}): the report is shown`, /Armies: 2 loaded/.test(await page.textContent('#army-btn')), await page.textContent('#army-btn'));
+		await context.close();
+	}
+
+	// 7d. a long list (60 packages) stays usable: scrolls, filters, ticks all
+	{
+		const many = path.join(out, 'armies-many');
+		rmSync(many, { recursive: true, force: true });
+		writeManyPackages(many, 60);
+		const context = await browser.newContext({ viewport: { width: 1100, height: 900 } });
+		const page = await context.newPage();
+		await page.goto(url());
+		await page.waitForFunction(() => /Not (imported|downloaded)/.test(document.getElementById('state-game').textContent));
+		await page.click('#download-starter');
+		await page.waitForFunction(settledStarter, null, { timeout: 120000 });
+		const t0 = Date.now();
+		await pickArmiesFolder(page, many);
+		check('armies (60): all listed, quickly', (await rows(page)).length === 60 && Date.now() - t0 < 15000, (Date.now() - t0) + ' ms');
+		const box = await page.evaluate(() => { const l = document.getElementById('armies-list'); return { scroll: l.scrollHeight, client: l.clientHeight }; });
+		check('armies (60): the list scrolls inside its own box', box.scroll > box.client && box.client <= 400, JSON.stringify(box));
+		check('armies (60): a filter appears for long lists', await page.isVisible('#armies-filter'));
+		await page.fill('#armies-filter', 'army 1');
+		check('armies (60): the filter narrows the list', (await page.locator('#armies-list li').count()) === 11, String(await page.locator('#armies-list li').count()));
+		await page.fill('#armies-filter', 'no such army');
+		check('armies (60): a filter without a match says so', /No army matches/.test(await page.textContent('#armies-list')));
+		await page.fill('#armies-filter', '');
+		await page.click('#armies-all');
+		check('armies (60): tick all', /60 ticked/.test(await page.textContent('#armies-count')) && (await page.evaluate(() => window.__zh.checkedArmies().length)) === 60);
+		await page.screenshot({ path: path.join(out, '17-armies-many.png') });
+		await context.close();
 	}
 }
 

@@ -18,6 +18,7 @@
 		--accent-text: #14100a;
 		--good: #3fb950;
 		--bad: #f85149;
+		--warn: #d29922;
 		--radius: 10px;
 	}
 	@media (prefers-color-scheme: light) {
@@ -32,6 +33,7 @@
 			--accent-text: #ffffff;
 			--good: #1a7f37;
 			--bad: #cf222e;
+			--warn: #9a6700;
 		}
 	}
 	* { box-sizing: border-box; }
@@ -164,6 +166,56 @@
 	label.inline { color: var(--muted); font-size: 13px; display: inline-flex; gap: 8px; align-items: center; }
 	.fine { margin: 16px 0 0; color: var(--muted); font-size: 12px; }
 	.link { background: none; border: none; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
+
+
+	/* ---- armies (extra factions from .zharmy packages) ---- */
+	#choice-armies code { font-size: 12px; }
+	.army-bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
+	.army-bar .count { flex: 1; min-width: 8em; color: var(--muted); }
+	.army-bar input[type="search"] {
+		font: inherit; font-size: 13px; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+		border-radius: 8px; padding: 4px 10px; width: 11em; min-width: 0;
+	}
+	.army-bar input[type="search"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	.army-bar button.link { color: var(--muted); }
+	.army-list { list-style: none; margin: 0 0 10px; padding: 0; max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+	.army { padding: 8px 12px; border-top: 1px solid var(--border); }
+	.army:first-child { border-top: none; }
+	.army-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+	.army-head label { display: flex; flex: 1; min-width: 12em; gap: 8px; align-items: baseline; cursor: pointer; overflow-wrap: anywhere; }
+	.army-head input { flex: none; align-self: center; width: 16px; height: 16px; accent-color: var(--accent); }
+	.army-head input:disabled, .army.off .army-name { cursor: default; }
+	.army.off .army-name { color: var(--muted); }
+	.army-name { font-weight: 600; }
+	.army-ver, .army-tag { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+	.army-tag { border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; }
+	.pill { flex: none; font-size: 12px; font-weight: 600; border: 1px solid currentColor; border-radius: 10px; padding: 0 8px; }
+	.pill.ready { color: var(--good); }
+	.pill.needs { color: var(--warn); }
+	.pill.bad { color: var(--bad); }
+	.pill.wait { color: var(--muted); }
+	.army-meta { margin: 2px 0 0 24px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+	.army-reason { margin: 2px 0 0 24px; font-size: 12px; overflow-wrap: anywhere; }
+	.army-reason.needs { color: var(--warn); }
+	.army-reason.bad { color: var(--bad); }
+	.army details { margin: 4px 0 0 24px; font-size: 12px; color: var(--muted); }
+	.army summary { cursor: pointer; }
+	.army details p { margin: 4px 0; overflow-wrap: anywhere; }
+	.army details pre { margin: 4px 0; max-height: 180px; overflow: auto; padding: 6px 8px; background: var(--surface-2); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+	#army-btn.bad { border-color: var(--bad); }
+	#army-panel {
+		position: fixed; top: 44px; right: 8px; z-index: 6; width: min(380px, calc(100vw - 16px)); max-height: 60vh; overflow: auto;
+		padding: 10px 12px; border-radius: 8px; background: rgba(22, 27, 34, 0.96); color: #e6edf3; font-size: 13px; border: 1px solid #2b3440;
+	}
+	#army-panel h3 { margin: 0 0 6px; font-size: 14px; }
+	#army-panel ul { list-style: none; margin: 0; padding: 0; }
+	#army-panel li { padding: 4px 0; border-top: 1px solid #2b3440; overflow-wrap: anywhere; }
+	#army-panel li:first-child { border-top: none; }
+	#army-panel .st { font-weight: 600; }
+	#army-panel .st.loaded { color: #3fb950; }
+	#army-panel .st.skipped { color: #d29922; }
+	#army-panel .st.failed { color: #f85149; }
+	#army-panel .why, #army-panel .fac { display: block; color: #8b98a8; font-size: 12px; }
 
 	/* ---- multiplayer room ---- */
 	.netform { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: end; padding: 12px 0 4px; border-top: 1px solid var(--border); }
@@ -357,6 +409,31 @@
 			</div>
 		</section>
 
+		<section class="choice" id="choice-armies" aria-labelledby="armies-title">
+			<h2 id="armies-title">Armies <span class="badge">optional</span></h2>
+			<p id="armies-desc">Extra armies for skirmish games, kept as <code>.zharmy</code> files that were made from a mod you own. Choose the
+				folder that holds them and tick the ones you want. The game reads the ticked files straight from that folder: nothing is
+				uploaded or copied.</p>
+			<div class="row" id="row-armies">
+				<div class="name">Armies folder</div>
+				<button type="button" id="pick-armies">Choose armies folder&hellip;</button>
+				<div class="state" id="state-armies" aria-live="polite">No folder chosen. You can play without one.</div>
+			</div>
+			<p class="optional-line" id="armies-tools" hidden>
+				<span id="armies-refresh-part"><button type="button" class="link" id="armies-refresh">Look again</button> &middot; </span>
+				<button type="button" class="link" id="armies-forget">Forget folder</button>
+			</p>
+			<div id="armies-box" hidden>
+				<div class="army-bar">
+					<input type="search" id="armies-filter" placeholder="Filter by name" aria-label="Filter armies by name" hidden>
+					<span class="count" id="armies-count" aria-live="polite"></span>
+					<button type="button" class="link" id="armies-all">Tick all that are ready</button>
+					<button type="button" class="link" id="armies-none">Untick all</button>
+				</div>
+				<ul class="army-list" id="armies-list"></ul>
+			</div>
+		</section>
+
 		<section class="choice" id="choice-net" aria-labelledby="net-title">
 			<h2 id="net-title">Play with friends <span class="badge">LAN over the internet</span></h2>
 			<p>Everyone who joins the same room is on one virtual LAN. In the game, open Multiplayer &rarr; Network to see each
@@ -408,6 +485,7 @@
 		</p>
 		<p class="hint">In the game: Esc opens the game menu. F11 toggles fullscreen, which also gives the game every key (hold Esc to leave it). Ctrl+R reloads the page.</p>
 		<input type="file" id="folder-input" webkitdirectory multiple hidden>
+		<input type="file" id="armies-input" webkitdirectory multiple hidden>
 	</div>
 </main>
 
@@ -417,12 +495,17 @@
 	<div id="toolbar">
 		<span id="mode-badge" hidden>Free starter content &middot; original placeholder game</span>
 		<span id="net-badge" hidden></span>
+		<button type="button" id="army-btn" title="Which armies the game loaded" aria-expanded="false" aria-controls="army-panel" hidden>Armies</button>
 		<button type="button" id="screenshot" title="Take a screenshot (the game&rsquo;s screenshot key does the same)">Screenshot</button>
 			<button type="button" id="shots" title="Download screenshots, replays and saved games">Files</button>
 			<button type="button" id="fullscreen" title="Toggle fullscreen (F11). Fullscreen gives the game all keys; hold Esc to leave it.">Fullscreen</button>
 			<button type="button" id="quit" title="Quit the game (asks the game to quit; press again to leave at once)">Exit</button>
 		</div>
 		<div id="toast" role="status" aria-live="polite" hidden></div>
+		<section id="army-panel" hidden aria-label="Armies">
+			<h3>Armies</h3>
+			<ul id="army-list"></ul>
+		</section>
 	</div>
 
 	<section id="ended" hidden aria-live="assertive">
@@ -430,6 +513,7 @@
 			<h2 id="ended-title">The game has ended</h2>
 			<p id="ended-text"></p>
 			<div class="buttons">
+				<button type="button" id="play-again-without" class="primary" hidden>Play again without it</button>
 				<button type="button" id="play-again" class="primary">Play again</button>
 				<button type="button" id="back-to-start">Back to the start page</button>
 				<button type="button" id="ended-files">Screenshots and saves&hellip;</button>
@@ -469,6 +553,7 @@
 <script type="module">
 import * as importer from './importer.js';
 import * as direct from './direct-source.js';
+import * as armies from './armies.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -648,6 +733,7 @@ async function refreshStatus() {
 	$('play-mode').textContent = mode === 'starter' ? 'Will play: free starter content (placeholder game)'
 		: needsAccess ? 'Allow access to your folder to play'
 		: mode === 'install' ? 'Will play: your Zero Hour installation' : '';
+	renderArmies();
 	updateButtons();
 	// Chrome can keep the permission between visits; then there is nothing to click.
 	if (needsAccess && savedFolders.length && !autoReopenTried) {
@@ -665,6 +751,7 @@ function updateButtons() {
 	$('pick-generals').disabled = busy || !env.opfs;
 	$('download-starter').disabled = busy || !env.opfs;
 	$('clear').disabled = busy;
+	$('pick-armies').disabled = busy || army.busy || army.scanning;
 }
 
 function showProgress(p) {
@@ -895,6 +982,370 @@ $('clear').onclick = async () => {
 };
 
 // ---------------------------------------------------------------------------------------------
+// Armies: extra factions from .zharmy packages in a folder (docs/ARMY_PACKAGES.md)
+// ---------------------------------------------------------------------------------------------
+// The folder is read in place, like the game folder: the page lists the packages (only the ZIP directory and the manifest of
+// each are read, armies.js), and on Play the File objects of the ticked ones are handed to the engine, which serves them at
+// /armies (direct-source.js setArmyFiles / WebStorage.cpp) and gets "-army /armies/<file>" for each.
+
+const army = {
+	folder: null,        // { name, handle|null }: the folder that is listed now (a pick through <input> has no handle)
+	remembered: null,    // { name, handle } kept in IndexedDB from an earlier visit
+	needsAccess: false,  // remembered, but Chrome has to be asked for read permission first
+	packages: [],        // armies.scanPackages() records
+	scanning: false,
+	busy: false,
+	message: '',         // a problem to show in the state line
+	filter: '',
+	opened: 0,           // counts the listings (tests)
+};
+let checked = armies.loadChecked();   // ids of the ticked packages, remembered in this browser
+
+const NEEDS = { zerohour: 'the Zero Hour game files', starter: 'the free starter content' };
+const WORKS = { zerohour: 'your Zero Hour files', starter: 'the free starter content' };
+const words = (list, map) => list.map((r) => map[r] || r).join(' or ');
+
+// The base game data a package would run on right now: 'starter', 'zerohour' or null (nothing chosen yet).
+function armyRuleset() {
+	const mode = currentMode();
+	return mode === 'starter' ? 'starter' : mode === 'install' ? 'zerohour' : null;
+}
+
+// { kind: 'ready' | 'needs' | 'bad' | 'wait', text, why }
+function armyStatus(rec) {
+	if (!rec.ok) return { kind: 'bad', text: 'Invalid', why: rec.error };
+	const a = armies.availability(rec.manifest, armyRuleset());
+	if (a.ok) return { kind: 'ready', text: 'Ready', why: '' };
+	if (a.unknown) return { kind: 'wait', text: 'Choose your game first', why: 'Works with ' + words(a.needs, WORKS) + '. Choose the game data above to check.' };
+	return { kind: 'needs', text: 'Needs ' + words(a.needs, NEEDS), why: 'This army works with ' + words(a.needs, WORKS) + ', which is not what you will play with now.' };
+}
+
+const selectedArmies = () => army.packages.filter((r) => armyStatus(r).kind === 'ready' && checked.has(r.manifest.id));
+
+function setArmyMessage(text) {
+	army.message = text;
+	renderArmies();
+}
+
+function factionLine(f) {
+	return f.displayName + ' (' + (f.ai ? 'AI' : 'humans only') + ')';
+}
+
+function armyRow(rec) {
+	const st = armyStatus(rec);
+	const li = document.createElement('li');
+	li.className = 'army ' + st.kind + (st.kind === 'ready' ? '' : ' off');
+	const m = rec.manifest;
+	const head = document.createElement('div');
+	head.className = 'army-head';
+	const label = document.createElement('label');
+	const box = document.createElement('input');
+	box.type = 'checkbox';
+	box.disabled = st.kind !== 'ready';
+	box.checked = !box.disabled && checked.has(m.id);
+	const title = document.createElement('span');
+	title.className = 'army-name';
+	title.textContent = m ? m.name : rec.path;
+	label.append(box, title);
+	if (m) {
+		const v = document.createElement('span');
+		v.className = 'army-ver';
+		v.textContent = 'v' + m.version;
+		const t = document.createElement('span');
+		t.className = 'army-tag';
+		t.textContent = m.tag;
+		t.title = 'Tag: the prefix of everything this army adds to the game';
+		label.append(v, t);
+		box.id = 'army-' + m.id;
+		box.setAttribute('data-army', m.id);
+		box.onchange = () => {
+			if (box.checked) checked.add(m.id); else checked.delete(m.id);
+			armies.saveChecked(checked);
+			renderArmyCount();
+			updateButtons();
+		};
+	} else {
+		box.setAttribute('aria-label', rec.path + ' is not usable');
+	}
+	const pill = document.createElement('span');
+	pill.className = 'pill ' + st.kind;
+	pill.textContent = st.text;
+	head.append(label, pill);
+	li.append(head);
+
+	const meta = document.createElement('div');
+	meta.className = 'army-meta';
+	const bits = [];
+	if (m) {
+		bits.push(m.factions.map(factionLine).join(' · '));
+		if (m.source && m.source.mod) bits.push('from ' + m.source.mod + (m.source.modVersion ? ' ' + m.source.modVersion : ''));
+	}
+	bits.push(importer.formatBytes(rec.size));
+	bits.push(rec.path);
+	meta.textContent = bits.join(' · ');
+	li.append(meta);
+
+	if (st.why) {
+		const why = document.createElement('div');
+		why.className = 'army-reason ' + st.kind;
+		why.textContent = st.why;
+		li.append(why);
+	}
+	if (m) {
+		const d = document.createElement('details');
+		const sum = document.createElement('summary');
+		sum.textContent = 'Details and license';
+		d.append(sum);
+		const line = (label, text) => {
+			if (!text) return;
+			const p = document.createElement('p');
+			p.textContent = label + ': ' + text;
+			d.append(p);
+		};
+		line('Works with', m.requires.length ? words(m.requires, WORKS) : 'any game data');
+		line('About', typeof m.description === 'string' ? m.description : '');
+		line('By', Array.isArray(m.authors) ? m.authors.filter((a) => typeof a === 'string').join(', ') : '');
+		if (m.source && m.source.url && typeof m.source.url === 'string') line('Source', m.source.url);
+		line('License', typeof m.license === 'string' ? m.license : '');
+		if (rec.license) {
+			const pre = document.createElement('pre');
+			pre.textContent = rec.license;
+			d.append(pre);
+		}
+		if (rec.readme) {
+			const sum2 = document.createElement('p');
+			sum2.textContent = 'Readme:';
+			const pre = document.createElement('pre');
+			pre.textContent = rec.readme;
+			d.append(sum2, pre);
+		}
+		li.append(d);
+	}
+	return li;
+}
+
+function renderArmyCount() {
+	const ready = army.packages.filter((r) => armyStatus(r).kind === 'ready').length;
+	$('armies-count').textContent = selectedArmies().length + ' ticked · ' + ready + ' ready · ' + army.packages.length + ' found';
+	$('armies-all').hidden = $('armies-none').hidden = ready === 0;
+}
+
+function renderArmies() {
+	const has = army.folder !== null;
+	const stateEl = $('state-armies');
+	const folderName = (f) => '“' + f.name + '”';
+	let text, kind = '';
+	if (army.scanning) {
+		text = army.message || 'Reading armies…';
+	} else if (army.message) {
+		text = army.message;
+		kind = 'err';
+	} else if (army.needsAccess && army.remembered) {
+		text = 'Your folder ' + folderName(army.remembered) + ' is remembered · allow access to list its armies';
+	} else if (has) {
+		const n = army.packages.length;
+		text = folderName(army.folder) + ' · ' + (n === 0 ? 'no .zharmy files found' : n + (n === 1 ? ' army' : ' armies') + ' found') +
+			(army.packages.truncated ? ' (only the first ' + armies.MAX_PACKAGES + ' are listed)' : '') + ' · read in place, not copied';
+		kind = n ? 'ok' : '';
+	} else {
+		text = 'No folder chosen. You can play without one.';
+	}
+	stateEl.textContent = text;
+	stateEl.className = 'state' + (kind ? ' ' + kind : '');
+	$('pick-armies').textContent = army.needsAccess && army.remembered ? 'Allow access' : has ? 'Choose a different folder…' : 'Choose armies folder…';
+	$('armies-tools').hidden = !(has || army.remembered);
+	$('armies-refresh-part').hidden = !(has && army.folder.handle);
+	const q = army.filter.trim().toLowerCase();
+	const list = $('armies-list');
+	const show = has && army.packages.length > 0;
+	$('armies-box').hidden = !show;
+	$('armies-filter').hidden = army.packages.length <= 8;
+	list.textContent = '';
+	if (show) {
+		const frag = document.createDocumentFragment();
+		let shown = 0;
+		// Usable armies first, the ones that cannot be used (and why) below.
+		const rank = { ready: 0, wait: 1, needs: 2, bad: 3 };
+		const ordered = army.packages.map((rec, i) => [rank[armyStatus(rec).kind], i, rec]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+		for (const rec of ordered) {
+			const hay = (rec.path + ' ' + (rec.manifest ? rec.manifest.name + ' ' + rec.manifest.id + ' ' + rec.manifest.tag : '')).toLowerCase();
+			if (q && !hay.includes(q)) continue;
+			frag.append(armyRow(rec));
+			shown++;
+		}
+		if (!shown) {
+			const none = document.createElement('li');
+			none.className = 'army';
+			none.textContent = 'No army matches “' + army.filter + '”.';
+			frag.append(none);
+		}
+		list.append(frag);
+		renderArmyCount();
+	}
+	$('pick-armies').disabled = army.busy || army.scanning || busy;
+	$('armies-forget').disabled = army.busy;
+	$('armies-refresh').disabled = army.busy;
+}
+
+// Lists the packages of a folder handle (permission is already there). A folder that cannot be read any more leaves the page
+// asking for access again.
+async function openArmiesHandle(handle, { remember = false } = {}) {
+	army.busy = true;
+	army.scanning = true;
+	army.message = '';
+	army.folder = { name: handle.name, handle };
+	army.packages = [];
+	renderArmies();
+	try {
+		const items = await armies.listPackageFiles(handle);
+		army.packages = await armies.scanPackages(items, { onProgress: (done, total) => { $('state-armies').textContent = 'Reading armies… ' + done + ' of ' + total; } });
+		army.needsAccess = false;
+		army.opened++;
+		if (remember) {
+			try { await direct.rememberArmiesFolder(handle); } catch (e) { pushLog('The armies folder could not be remembered for the next visit: ' + (e && e.message || e), false); }
+		}
+		army.remembered = { name: handle.name, handle };
+	} catch (e) {
+		army.folder = null;
+		army.packages = [];
+		if (e && (e.name === 'NotAllowedError' || e.name === 'SecurityError')) {
+			army.needsAccess = !!army.remembered;
+			army.message = 'Chrome needs your permission to read the armies folder again.';
+		} else {
+			army.message = 'Cannot read the armies folder: ' + (e && e.message || e);
+		}
+	} finally {
+		army.scanning = false;
+		army.busy = false;
+		renderArmies();
+		updateButtons();
+	}
+}
+
+async function pickFolderFiles(input) {
+	return new Promise((resolve, reject) => {
+		input.value = '';
+		input.onchange = () => (input.files && input.files.length ? resolve(input.files) : reject(new DOMException('No folder selected', 'AbortError')));
+		input.oncancel = () => reject(new DOMException('No folder selected', 'AbortError'));
+		input.click();
+	});
+}
+
+async function pickArmies() {
+	if (army.busy || busy) return;
+	if (army.needsAccess && army.remembered) { await allowArmies(); return; }
+	army.busy = true;
+	renderArmies();
+	let handle = null;
+	try {
+		if (env.directoryPicker && !params.has('picker')) {
+			handle = await window.showDirectoryPicker({ id: 'zh-armies', mode: 'read' });
+		} else {
+			const files = await pickFolderFiles($('armies-input'));
+			const items = armies.listPackageFilesFromFileList(files);
+			const name = ((files[0].webkitRelativePath || '').split('/')[0]) || 'the folder';
+			army.busy = false;
+			army.scanning = true;
+			army.message = '';
+			army.folder = { name, handle: null };
+			army.packages = [];
+			renderArmies();
+			army.packages = await armies.scanPackages(items, { onProgress: (done, total) => { $('state-armies').textContent = 'Reading armies… ' + done + ' of ' + total; } });
+			army.opened++;
+			// A folder from <input> has no handle to remember; what was remembered before no longer matches.
+			army.remembered = null;
+			army.needsAccess = false;
+			await direct.forgetArmiesFolder();
+			army.scanning = false;
+			renderArmies();
+			updateButtons();
+			return;
+		}
+	} catch (e) {
+		army.busy = false;
+		army.scanning = false;
+		if (!(e && e.name === 'AbortError')) army.message = 'Cannot read that folder: ' + (e && e.message || e);
+		renderArmies();
+		return;
+	}
+	army.busy = false;
+	await openArmiesHandle(handle, { remember: true });
+}
+
+// Click handler of "Allow access": requestPermission needs the click's user gesture, so nothing is awaited before it.
+async function allowArmies() {
+	if (!army.remembered) return false;
+	const granted = await direct.requestAccess([army.remembered]);
+	if (granted !== 'granted') {
+		army.message = 'Access to the armies folder was not given. Click “Allow access” and choose Allow, or choose the folder again.';
+		renderArmies();
+		return false;
+	}
+	await openArmiesHandle(army.remembered.handle);
+	return !army.needsAccess;
+}
+
+async function forgetArmies() {
+	if (army.busy) return;
+	army.folder = null;
+	army.remembered = null;
+	army.needsAccess = false;
+	army.packages = [];
+	army.message = '';
+	army.filter = '';
+	$('armies-filter').value = '';
+	await direct.forgetArmiesFolder();
+	renderArmies();
+	updateButtons();
+}
+
+// The remembered folder of an earlier visit: listed at once when Chrome kept the permission, else "Allow access".
+async function initArmies() {
+	try {
+		army.remembered = await direct.loadArmiesFolder();
+	} catch (e) {
+		army.remembered = null;
+	}
+	if (!army.remembered) { renderArmies(); return; }
+	army.needsAccess = true;
+	renderArmies();
+	if (await direct.queryAccess([army.remembered]) === 'granted') await openArmiesHandle(army.remembered.handle);
+}
+
+$('pick-armies').onclick = () => pickArmies();
+$('armies-forget').onclick = () => forgetArmies();
+$('armies-refresh').onclick = async () => { if (army.folder && army.folder.handle && !army.busy) await openArmiesHandle(army.folder.handle); };
+$('armies-filter').oninput = () => { army.filter = $('armies-filter').value; renderArmies(); };
+$('armies-all').onclick = () => {
+	for (const r of army.packages) if (armyStatus(r).kind === 'ready') checked.add(r.manifest.id);
+	armies.saveChecked(checked);
+	renderArmies();
+	updateButtons();
+};
+$('armies-none').onclick = () => {
+	for (const r of army.packages) if (r.manifest) checked.delete(r.manifest.id);
+	armies.saveChecked(checked);
+	renderArmies();
+	updateButtons();
+};
+
+// The ticked, usable packages as the engine gets them: File objects (read again from the folder now, so the engine sees the
+// files as they are at this moment) and the path below /armies. Packages that cannot be opened any more are left out.
+async function prepareArmies() {
+	const files = [];
+	const left = [];
+	for (const rec of selectedArmies()) {
+		try {
+			files.push({ rec, id: rec.manifest.id, name: rec.served, file: await rec.getFile() });
+		} catch (e) {
+			left.push(rec.manifest.name);
+			pushLog('Army ' + rec.path + ' could not be opened: ' + (e && e.message || e), false);
+		}
+	}
+	return { files, left };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Multiplayer room (webnet/client/zhnet.js): a virtual LAN over WebRTC, see webnet/README.md
 // ---------------------------------------------------------------------------------------------
 
@@ -1090,6 +1541,15 @@ function goBack(autoPlay) {
 	location.reload();
 }
 $('play-again').onclick = () => goBack(true);
+// The army that stopped the game is unticked (by the id the player knows it by), then the game starts again.
+$('play-again-without').onclick = () => {
+	for (const e of armyFailures()) {
+		if (e.rec) checked.delete(e.rec.manifest.id);
+		checked.delete(e.id);
+	}
+	armies.saveChecked(checked);
+	goBack(true);
+};
 $('back-to-start').onclick = () => goBack(false);
 $('ended-details').onclick = () => showErrors();
 $('ended-continue').onclick = () => {
@@ -1117,18 +1577,186 @@ function endGame(info) {
 	gameEnded = true;
 	gameRunning = false;
 	if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-	const clean = info.code === 0 && !problem && !info.crashed;
+	const failedArmies = armyFailures();
+	const clean = info.code === 0 && !problem && !info.crashed && failedArmies.length === 0;
 	$('ended-title').textContent = clean ? 'The game has ended' : (problem ? problem.title : 'The game stopped unexpectedly');
 	$('ended-text').textContent = clean
 		? 'You can play again right away, or go back to the start page to change the game files or the resolution.'
 		: (problem ? problem.hint : 'The game ended with an error' + (info.code ? ' (code ' + info.code + ')' : '') + '. Details are in the log; "Play again" starts it again.');
 	$('ended-details').hidden = clean;
+	$('play-again-without').hidden = failedArmies.length === 0;
+	$('play-again').classList.toggle('primary', failedArmies.length === 0);
 	$('ended-continue').hidden = !info.soft;
 	$('ended').hidden = false;
 	$('toolbar').style.display = 'none';
 	if (!clean) showErrors();
 	$('play-again').focus();
 }
+
+// ---- the armies of this run: what the engine says about each package ---------------------------------
+
+// Set when the game starts with packages: { entries: [{ id, name, path, rec, status, reason, factions }], extra: [...], seen, startedAt }.
+// status: 'pending' | 'loaded' | 'skipped' | 'failed'. The answer comes from the log lines `ZHARMY: <id> loaded|skipped|failed: <reason>`
+// (at once) and from /userdata/ArmyReport.json (the factions, too).
+let armyRun = null;
+let armyFailTimer = 0;
+const baseName = (p) => String(p || '').split('/').pop().toLowerCase();
+
+function armyEntryFor(r) {
+	if (!armyRun) return null;
+	const low = (x) => String(x || '').toLowerCase();
+	const list = armyRun.entries;
+	return list.find((e) => r.path && low(r.path) === low(e.path))
+		|| list.find((e) => low(e.id) === low(r.id))
+		|| list.find((e) => r.path && baseName(r.path) === baseName(e.path))
+		|| list.find((e) => baseName(e.path) === low(r.id))
+		|| list.find((e) => baseName(e.path).replace(/\.zharmy$/, '') === low(r.id))
+		|| null;
+}
+
+// One answer of the engine { id, status, reason, path?, factions?, name? }.
+function noteArmyResult(r) {
+	if (!armyRun || !['loaded', 'skipped', 'failed'].includes(r.status)) return;
+	let entry = armyEntryFor(r);
+	if (!entry) {
+		entry = armyRun.extra.find((e) => e.id === r.id);
+		if (!entry) armyRun.extra.push(entry = { id: r.id, name: r.name || r.id, path: r.path || '', rec: null, status: 'pending', reason: '', factions: [] });
+	}
+	// A failure is final: the game stops with it, whatever a report says that was read around the same time.
+	if (entry.status === 'failed' && r.status !== 'failed') return;
+	entry.status = r.status;
+	entry.reason = r.reason || entry.reason || '';
+	if (Array.isArray(r.factions) && r.factions.length) entry.factions = r.factions;
+	if (r.name && !entry.rec) entry.name = r.name;
+	if (r.status === 'failed') noteArmyFailure(entry);
+	renderArmyRun();
+	tellArmyResult();
+}
+
+function noteArmyLine(text) {
+	if (!armyRun) return;
+	const r = armies.parseArmyLogLine(text);
+	if (r) noteArmyResult(r);
+}
+
+// A package that fails stops the game (the engine writes the report and ends); the page shows which one and offers to start again
+// without it. If the engine does not end by itself within a moment, the page ends the run.
+function noteArmyFailure(entry) {
+	problem = {
+		title: 'An army could not be loaded',
+		hint: armyFailureText(),
+	};
+	if (!armyFailTimer) armyFailTimer = setTimeout(() => endGame({ code: 1, crashed: true }), 3000);
+}
+
+const armyEntries = () => (armyRun ? armyRun.entries.concat(armyRun.extra) : []);
+function armyFailures() { return armyEntries().filter((e) => e.status === 'failed'); }
+
+function armyFailureText() {
+	const failed = armyFailures();
+	return failed.map((e) => '\u201c' + e.name + '\u201d' + (e.reason ? ' (' + e.reason + ')' : '')).join(', ') +
+		' could not be loaded, so the game stopped instead of starting with half an army. \u201cPlay again without it\u201d unticks ' +
+		(failed.length === 1 ? 'it' : 'them') + ' and starts the game again.';
+}
+
+function applyArmyReport(report) {
+	if (!report || !Array.isArray(report.packages)) return;
+	armyRun.seen = true;
+	for (const p of report.packages) {
+		noteArmyResult({
+			id: String(p.id || ''), status: p.status, reason: String(p.reason || ''), path: String(p.path || ''),
+			factions: Array.isArray(p.factions) ? p.factions.map((f) => ({ displayName: String(f.displayName || ''), ai: !!f.ai })) : [],
+			name: typeof p.name === 'string' ? p.name : '',
+		});
+	}
+	renderArmyRun();
+}
+
+function renderArmyRun() {
+	const list = armyEntries();
+	const btn = $('army-btn');
+	btn.hidden = list.length === 0;
+	if (!list.length) return;
+	const count = (st) => list.filter((e) => e.status === st).length;
+	const parts = [];
+	if (count('loaded')) parts.push(count('loaded') + ' loaded');
+	if (count('skipped')) parts.push(count('skipped') + ' skipped');
+	if (count('failed')) parts.push(count('failed') + ' failed');
+	if (count('pending')) parts.push(count('pending') + ' loading');
+	btn.textContent = 'Armies: ' + parts.join(', ');
+	btn.classList.toggle('bad', count('failed') > 0 || count('skipped') > 0);
+	const ul = $('army-list');
+	ul.textContent = '';
+	for (const e of list) {
+		const li = document.createElement('li');
+		const name = document.createElement('span');
+		name.textContent = e.name + ' ';
+		const st = document.createElement('span');
+		st.className = 'st ' + e.status;
+		st.textContent = { pending: 'loading\u2026', loaded: 'loaded', skipped: 'skipped', failed: 'failed' }[e.status];
+		li.append(name, st);
+		if (e.reason) {
+			const why = document.createElement('span');
+			why.className = 'why';
+			why.textContent = e.reason;
+			li.append(why);
+		}
+		const facs = e.factions && e.factions.length ? e.factions : (e.rec ? e.rec.manifest.factions : []);
+		if (facs.length) {
+			const fac = document.createElement('span');
+			fac.className = 'fac';
+			fac.textContent = (e.status === 'loaded' ? 'In the skirmish list: ' : 'Factions: ') + facs.map(factionLine).join(', ');
+			li.append(fac);
+		}
+		ul.append(li);
+	}
+}
+
+// Said once, when the engine has answered for every package.
+let armyToldOnce = false;
+function tellArmyResult() {
+	if (armyToldOnce || !armyRun) return;
+	const list = armyEntries();
+	if (!list.length || list.some((e) => e.status === 'pending')) return;
+	armyToldOnce = true;
+	const bad = list.filter((e) => e.status !== 'loaded');
+	const ok = list.filter((e) => e.status === 'loaded');
+	if (bad.length) {
+		toast(bad.map((e) => '\u201c' + e.name + '\u201d ' + e.status + (e.reason ? ': ' + e.reason : '')).join(' \u00b7 ') +
+			(ok.length ? ' \u00b7 ' + ok.length + ' loaded' : ''), 9000);
+	} else {
+		toast((ok.length === 1 ? 'Army loaded: ' : 'Armies loaded: ') + ok.map((e) => e.name).join(', '), 5000);
+	}
+	document.body.classList.add('show-toolbar');
+	setTimeout(() => document.body.classList.remove('show-toolbar'), 5000);
+}
+
+// Reads /userdata/ArmyReport.json while the game starts (the engine writes it on every start).
+async function pollArmyReport(run) {
+	const started = Date.now();
+	let after = 0;
+	while (armyRun === run && Date.now() - started < 240000) {
+		const file = await importer.readUserFile('armyreport.json');
+		// A report from an earlier run was removed before the start; if that failed, only a newer one counts.
+		if (file && (run.cleared || file.lastModified >= run.startedAt - 2000)) {
+			try {
+				applyArmyReport(JSON.parse(await file.text()));
+				tellArmyResult();
+				return;
+			} catch (e) { /* still being written: next time */ }
+		}
+		tellArmyResult();
+		if (gameEnded && ++after > 2) return;
+		await new Promise((r) => setTimeout(r, 600));
+	}
+}
+
+$('army-btn').onclick = () => {
+	const open = $('army-panel').hidden;
+	$('army-panel').hidden = !open;
+	$('army-btn').setAttribute('aria-expanded', String(open));
+	canvas.focus();
+};
 
 // A line from the engine that means it is not going on.
 const FATAL_RE = /RuntimeError|unreachable|worker sent an error|Aborted\(|^Fatal error|Cannot enlarge memory|memory access out of bounds|Uncaught/i;
@@ -1276,6 +1904,24 @@ async function startGame() {
 	const args = [...resolutionArgs];
 	for (const extra of params.getAll('arg')) args.push(extra);
 
+	// The ticked armies: the engine reads them in place at /armies, one "-army <path>" each.
+	const picked = await prepareArmies();
+	direct.setArmyFiles(picked.files);
+	for (const a of picked.files) args.push('-army', armies.ARMIES_MOUNT + '/' + a.name);
+	armyRun = null;
+	armyToldOnce = false;
+	armyFailTimer = 0;
+	$('army-btn').hidden = true;
+	$('army-panel').hidden = true;
+	if (picked.files.length) {
+		armyRun = {
+			entries: picked.files.map((a) => ({ id: a.id, name: a.rec.manifest.name, path: armies.ARMIES_MOUNT + '/' + a.name, rec: a.rec, status: 'pending', reason: '', factions: [] })),
+			extra: [], seen: false, cleared: false, startedAt: Date.now(),
+		};
+		armyRun.cleared = await importer.removeUserFile('armyreport.json');
+		renderArmyRun();
+	}
+
 	$('setup').hidden = true;
 	$('stage').hidden = false;
 	$('mode-badge').hidden = currentMode() !== 'starter';
@@ -1287,10 +1933,11 @@ async function startGame() {
 	window.Module = {
 		canvas,
 		arguments: args,
-		print: (text) => { console.log(text); pushLog(text, false); },
+		print: (text) => { console.log(text); pushLog(text, false); noteArmyLine(text); },
 		printErr: (text) => {
 			console.warn(text);
 			noteProblem(text);
+			noteArmyLine(text);
 			if (/saves and options will not be kept/.test(text)) toast('This browser window cannot keep files (a private window?): saved games and options are lost when it closes.', 12000);
 			const fatal = FATAL_RE.test(text);
 			pushLog(text, fatal || /out of memory/i.test(text));
@@ -1309,7 +1956,7 @@ async function startGame() {
 		postRun: [() => { $('loading').hidden = true; }],
 	};
 
-	// An install read in place: hand the files to the engine thread (see webdirect/INTEGRATION.md).
+	// An install read in place: hand the files to the engine thread (see webdirect/INTEGRATION.md). The armies go with them.
 	if (currentMode() === 'install' && isDirect(status.game)) {
 		try {
 			direct.attachCurrent(window.Module);
@@ -1318,7 +1965,17 @@ async function startGame() {
 			gameRunning = false;
 			return;
 		}
+	} else if (picked.files.length) {
+		// The starter content and the copy in browser storage come from OPFS; the armies are still read in place.
+		try {
+			direct.attachArmies(window.Module);
+		} catch (e) {
+			pushLog('Could not open the armies: ' + (e && e.message || e), true);
+			gameRunning = false;
+			return;
+		}
 	}
+	if (picked.left.length) toast('Left out (could not be opened): ' + picked.left.join(', '), 8000);
 
 	const template = $('game-script').content.querySelector('script');
 	const script = document.createElement('script');
@@ -1326,8 +1983,13 @@ async function startGame() {
 	document.body.appendChild(script);
 	document.body.classList.add('show-toolbar');
 	setTimeout(() => document.body.classList.remove('show-toolbar'), 3000);
+	if (armyRun) pollArmyReport(armyRun);
 }
 $('play').onclick = async () => {
+	// Ticked armies from an earlier visit whose folder still needs Chrome's permission: asked right here, in the click.
+	if (army.needsAccess && army.remembered && checked.size > 0) {
+		if (!await allowArmies()) toast('The armies folder was not opened: starting without armies.', 6000);
+	}
 	// A room that is still being joined is joined before the engine asks for its network address.
 	for (let i = 0; net && net.state.status === 'connecting' && i < 100; ++i) await new Promise((r) => setTimeout(r, 100));
 	startGame();
@@ -1374,9 +2036,12 @@ describeResolution();
 window.__zh = {
 	importer, direct, startGame, logLines, refreshStatus, joinRoom, fail: (text) => pushLog(text, true),
 	state: () => ({ gameRunning, gameEnded, problem: problem && problem.title, launchSize, clientSize, fullscreen: !!document.fullscreenElement }),
-	renderFiles,
+	renderFiles, armies, army, checkedArmies: () => [...checked], armyRun: () => armyRun,
+	armyRows: () => army.packages.map((r) => ({ path: r.path, served: r.served, ok: r.ok, status: armyStatus(r).kind, text: armyStatus(r).text, why: armyStatus(r).why, id: r.manifest && r.manifest.id })),
 	classify: (text) => { const p = PROBLEMS.find((q) => q.re.test(text)); return p ? p.title : null; },
 };
+
+const armiesReady = initArmies();
 
 // "Play again" reloads the page and starts the game as soon as the start page is ready (it needs no new click: the
 // folder permission Chrome kept, or the files in this browser's storage, are all it needs).
@@ -1386,7 +2051,10 @@ window.__zh = {
 	try {
 		await refreshStatus();
 	} catch (e) { pushLog('Status: ' + e, false); }
+	try { await armiesReady; } catch (e) { pushLog('Armies: ' + e, false); }
 	if (!want) return;
+	// Armies were ticked but Chrome has to ask again before their folder can be read: that needs a click, so the player starts it.
+	if (army.needsAccess && army.remembered && checked.size > 0) return;
 	for (let i = 0; i < 100 && $('play').disabled && !gameRunning; ++i) await new Promise((r) => setTimeout(r, 150));
 	if (!$('play').disabled && !gameRunning) $('play').click();
 }());

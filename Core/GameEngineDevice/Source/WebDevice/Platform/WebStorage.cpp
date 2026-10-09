@@ -38,6 +38,12 @@
 //        /direct/game, /direct/generals             ->  /game, /generals
 //    The user data (writes) stays in OPFS: /opfs/userdata -> /userdata.
 //
+//  * Army packages (.zharmy): the launcher can hand over the player's package files the same
+//    way, as entries below "armies/". They appear at /armies (/direct/armies), read only, in
+//    both modes above: with a game read in place they are part of the same tree; with the
+//    OPFS copy (or the starter content) the tree holds only the packages, and the game data
+//    still comes from OPFS.
+//
 ///////////////////////////////////////////////////////////////////////////////
 
 #include "WebDevice/Platform/WebPlatform.h"
@@ -62,6 +68,7 @@ extern "C"
 {
 	int zh_direct_available(void);
 	int zh_direct_count(void);
+	int zh_direct_roots(void);
 	int zh_direct_entry(int index, char *buffer, int capacity);
 	void zh_direct_register_backend(backend_t backend);
 	int zh_direct_stats(char *buffer, int capacity);
@@ -148,8 +155,12 @@ bool makeDirectories(const std::string &path, std::unordered_set<std::string> &m
 	return true;
 }
 
-// Mounts the files the page handed over as /direct, with /game and /generals pointing into it.
-bool mountDirect()
+// Which roots the page's files are below (zh_direct_roots).
+enum { DIRECT_ROOT_GAME = 1, DIRECT_ROOT_ARMIES = 2 };
+
+// Mounts the files the page handed over as /direct. With the game root, /game and /generals
+// point into it; with the armies root, /armies does.
+bool mountDirect(int roots)
 {
 	const int count = zh_direct_count();
 
@@ -171,15 +182,20 @@ bool mountDirect()
 	g_directHeader[0] = (uint32_t)(uintptr_t)table;
 	g_directHeader[1] = (uint32_t)count;
 
-	if (mkdir("/direct/game", 0777) != 0 || mkdir("/direct/generals", 0777) != 0)
+	if ((roots & DIRECT_ROOT_GAME) && (mkdir("/direct/game", 0777) != 0 || mkdir("/direct/generals", 0777) != 0))
 	{
 		fprintf(stderr, "WebPlatform: cannot create the install directories (%s)\n", strerror(errno));
+		return false;
+	}
+	if ((roots & DIRECT_ROOT_ARMIES) && mkdir("/direct/armies", 0777) != 0)
+	{
+		fprintf(stderr, "WebPlatform: cannot create the armies directory (%s)\n", strerror(errno));
 		return false;
 	}
 
 	std::unordered_set<std::string> made;
 	char path[1024];
-	int created = 0, skipped = 0;
+	int created = 0, skipped = 0, armies = 0;
 	for (int i = 0; i < count; ++i)
 	{
 		const int length = zh_direct_entry(i, path, (int)sizeof(path));
@@ -207,11 +223,19 @@ bool mountDirect()
 		}
 		close(fd);
 		++created;
+		if (strncmp(path, "armies/", 7) == 0)
+			++armies;
 	}
 
 	printf("WebPlatform: direct mode, %d files (%d skipped)\n", created, skipped);
+	if (roots & DIRECT_ROOT_ARMIES)
+		printf("WebPlatform: %d army package files at /armies\n", armies);
 
-	return symlink("/direct/game", "/game") == 0 && symlink("/direct/generals", "/generals") == 0;
+	if ((roots & DIRECT_ROOT_ARMIES) && symlink("/direct/armies", "/armies") != 0)
+		return false;
+	if (roots & DIRECT_ROOT_GAME)
+		return symlink("/direct/game", "/game") == 0 && symlink("/direct/generals", "/generals") == 0;
+	return true;
 }
 
 // Mounts the copy of the game data in OPFS.
@@ -261,17 +285,22 @@ extern "C" int WebPlatform_MountStorage(void)
 
 	s_result = -1;
 
-	const bool direct = zh_direct_available() != 0;
+	const int roots = zh_direct_available() != 0 ? zh_direct_roots() : 0;
+	const bool direct = (roots & DIRECT_ROOT_GAME) != 0;
 	if (g_requireDirect && !direct)
 	{
 		fprintf(stderr, "WebPlatform: the page asked for the game files to be read from the player's folder but did not hand them over\n");
 		return s_result;
 	}
 
+	// Army packages (and the game files, in direct mode) handed over by the page.
+	if (roots != 0 && !mountDirect(roots))
+		return s_result;
+
 	if (direct)
 	{
 		// Reads of the game data come from the player's folder; saves and options still go to OPFS.
-		if (mountDirect() && mountUserData(false))
+		if (mountUserData(false))
 		{
 			g_storageMode = WEBPLATFORM_STORAGE_DIRECT;
 			s_result = 0;

@@ -155,6 +155,7 @@ if(EMSCRIPTEN)
         add_custom_command(TARGET ${target} POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 ${ZH_WEB_DIR}/importer.js
+                ${ZH_WEB_DIR}/armies.js
                 ${ZH_WEB_DIR}/coi-serviceworker.js
                 ${ZH_WEB_DIR}/zhcursor.js
                 ${ZH_WEB_DIR}/serve.py

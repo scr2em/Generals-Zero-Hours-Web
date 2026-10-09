@@ -278,6 +278,21 @@ addToLibrary({
   zh_direct_count__sig: 'i',
   zh_direct_count: () => zhDirect.payload().entries.length,
 
+  // Which roots the entries are below: 1 = game/ or generals/ (the game is read in place), 2 = armies/ (army
+  // packages, served at /armies in every mode).
+  zh_direct_roots__deps: ['$zhDirect'],
+  zh_direct_roots__sig: 'i',
+  zh_direct_roots: () => {
+    var roots = 0;
+    var entries = zhDirect.payload().entries;
+    for (var i = 0; i < entries.length; i++) {
+      var p = entries[i].path;
+      if (p.startsWith('armies/')) roots |= 2;
+      else roots |= 1;
+    }
+    return roots;
+  },
+
   // Copies the path of entry i (e.g. "game/data/ini/gamedata.ini") to buffer and makes it the entry the
   // next created WasmFS file belongs to. Returns the path length, or -1 when it does not fit,
   // -2 when the file is too big for the JSImpl backend (its getSize is a 32 bit int).
