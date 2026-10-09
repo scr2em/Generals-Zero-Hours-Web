@@ -128,6 +128,13 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_kiteResumes(0),
 	m_kiteRejectFast(0),
 	m_kiteRejectCorner(0),
+	m_launchBlockedSince(0),
+	m_nextLaunchCheck(0),
+	m_waveBadSince(0),
+	m_nextWaveCheck(0),
+	m_launchesHeld(0),
+	m_launchesForced(0),
+	m_pullbacks(0),
 	m_splitPicks(0),
 	m_splitSwitches(0),
 	m_threatSwitches(0),
@@ -162,7 +169,7 @@ void AIStrategy::newMap()
 		{ "focus", AIPlayer::AIF_FOCUS }, { "wave", AIPlayer::AIF_WAVE }, { "retreat", AIPlayer::AIF_RETREAT },
 		{ "scout", AIPlayer::AIF_SCOUT }, { "counter", AIPlayer::AIF_COUNTER }, { "save", AIPlayer::AIF_SAVE },
 		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
-		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE } };
+		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE }, { "fight", AIPlayer::AIF_FIGHT } };
 	const char *offList = strstr(variant.str(), "off-");
 	if (offList)
 	{
@@ -250,6 +257,7 @@ void AIStrategy::update()
 				AI_TRACE("target picks %d: changed by split fire %d, by the threat rules %d; support units %d; out-ranging units %d",
 					m_splitPicks, m_splitSwitches, m_threatSwitches, m_supportPicks, m_longRangePicks);
 				AI_TRACE("kiting: %d steps back, %d resumed; refused: %d enemy faster, %d no room", m_kiteStarts, m_kiteResumes, m_kiteRejectFast, m_kiteRejectCorner);
+				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
 					m_enemy.roleValue(AIROLE_DEFENCE), m_enemy.roleValue(AIROLE_PRODUCTION), m_enemy.roleValue(AIROLE_ECONOMY),
@@ -712,6 +720,161 @@ Real AIStrategy::fightAdvantage( const Coord3D *center, Real radius, Real *ourPo
 	return clampReal((valueOurs * rateOurs) / (valueTheirs * rateTheirs), 0.05f, 20.0f);
 }
 
+/**
+ * The same weighing for a fight that has not started: all of our field teams against what has been seen
+ * of the enemy around a place (units that are within 'radius', defences that cover it).  Nothing is read
+ * from objects we cannot see now: it is the enemy model's memory.
+ */
+Real AIStrategy::forecastAdvantage( const Coord3D *where, Real radius, Real *ourPower, Real *theirPower ) const
+{
+	Group ours[MAX_GROUPS], theirs[MAX_GROUPS];
+	Int numOurs = 0, numTheirs = 0;
+	Real valueOurs = 0.0f, valueTheirs = 0.0f;
+
+	for (Int i = 0; i < m_numTeams; ++i)
+	{
+		Team *team = TheTeamFactory->findTeamByID(m_teams[i].m_team);
+		if (team == nullptr)
+			continue;
+		for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+		{
+			Object *obj = it.cur();
+			if (obj == nullptr || !isCombatUnit(obj))
+				continue;
+			const AICombatFigures *f = AICombatModel::figures(obj->getTemplate());
+			BodyModuleInterface *body = obj->getBodyModule();
+			Real health = 1.0f;
+			if (body && body->getMaxHealth() > 0.0f)
+				health = clampReal(body->getHealth() / body->getMaxHealth(), 0.05f, 1.0f);
+			addToGroups(ours, numOurs, f, health);
+			valueOurs += f->m_cost * health;
+		}
+	}
+
+	for (Int i = 0; i < m_enemy.numContacts(); ++i)
+	{
+		const AIContact &c = m_enemy.contacts()[i];
+		const AICombatFigures *f = AICombatModel::figures(templateOf(c.m_templateID));
+		if (f == nullptr || !f->m_armed)
+			continue;
+		const Real d = dist2D(c.m_pos, *where);
+		const Real reach = f->m_structure ? f->m_range + 120.0f : radius;
+		if (d > reach)
+			continue;
+		const Real health = 0.25f + 0.75f * (c.m_healthPct / 100.0f);
+		addToGroups(theirs, numTheirs, f, health);
+		valueTheirs += f->m_cost * health;
+	}
+
+	if (ourPower)
+		*ourPower = valueOurs;
+	if (theirPower)
+		*theirPower = valueTheirs;
+	if (valueTheirs <= 0.0f)
+		return 99.0f;
+	if (valueOurs <= 0.0f)
+		return 0.05f;
+	const Real rateOurs = destructionRate(ours, numOurs, theirs, numTheirs);
+	const Real rateTheirs = destructionRate(theirs, numTheirs, ours, numOurs);
+	if (rateTheirs <= 0.0f)
+		return 20.0f;
+	if (rateOurs <= 0.0f)
+		return 0.05f;
+	return clampReal((valueOurs * rateOurs) / (valueTheirs * rateTheirs), 0.05f, 20.0f);
+}
+
+/**
+ * Before a wave goes: is the fight at its objective one it can win?  If it is clearly losing, it waits at the
+ * rally point for reinforcements (the army keeps growing), but not for ever: after LaunchBlockSeconds it goes anyway.
+ * Returns true when the wave may go.
+ */
+Bool AIStrategy::checkWaveLaunch( const Coord3D *objective )
+{
+	const AISkillSettings &sk = skill();
+	if (!sk.m_useFightCheck || m_ai->isFeatureOff(AIPlayer::AIF_FIGHT))
+		return TRUE;
+	const UnsignedInt now = TheGameLogic->getFrame();
+	Real ourPower = 0.0f, theirPower = 0.0f;
+	const Real advantage = forecastAdvantage(objective, 450.0f, &ourPower, &theirPower);
+	if (advantage >= sk.m_launchAdvantage)
+	{
+		m_launchBlockedSince = 0;
+		return TRUE;
+	}
+	if (m_launchBlockedSince == 0)
+	{
+		m_launchBlockedSince = now;
+		++m_launchesHeld;
+		AI_TRACE("wave HELD at the rally point: advantage %.2f (ours %.0f, theirs %.0f at (%.0f,%.0f))", advantage, ourPower, theirPower, objective->x, objective->y);
+	}
+	if (now - m_launchBlockedSince >= secondsToFrames(sk.m_launchBlockSeconds))
+	{
+		AI_TRACE("wave goes anyway after waiting: advantage %.2f", advantage);
+		++m_launchesForced;
+		m_launchBlockedSince = 0;
+		return TRUE;
+	}
+	m_nextLaunchCheck = now + 3 * LOGICFRAMES_PER_SECOND;
+	return FALSE;
+}
+
+/**
+ * A wave that is on its way to an objective it has not reached: compare it with what is known there once more
+ * (the enemy model has been updated since the launch).  If it stays clearly the weaker side for a few seconds, the
+ * wave turns back, regroups at the rally point and goes again when it is stronger (checkWaveLaunch decides that).
+ */
+void AIStrategy::checkWaveOnTheWay( const Coord3D *waveCenter )
+{
+	const AISkillSettings &sk = skill();
+	if (!sk.m_useFightCheck || m_ai->isFeatureOff(AIPlayer::AIF_FIGHT))
+		return;
+	const UnsignedInt now = TheGameLogic->getFrame();
+	if (now < m_nextWaveCheck || now - m_armyStateFrame < 4 * LOGICFRAMES_PER_SECOND)
+		return;
+	m_nextWaveCheck = now + 2 * LOGICFRAMES_PER_SECOND;
+	// Once the wave is there, the teams weigh the fight they are in (evaluateTeam).
+	if (dist2D(*waveCenter, m_waveObjective) < 350.0f)
+	{
+		m_waveBadSince = 0;
+		return;
+	}
+
+	Real ourPower = 0.0f, theirPower = 0.0f;
+	const Real advantage = forecastAdvantage(&m_waveObjective, 450.0f, &ourPower, &theirPower);
+	if (advantage >= sk.m_pullbackAdvantage)
+	{
+		m_waveBadSince = 0;
+		return;
+	}
+	if (m_waveBadSince == 0)
+		m_waveBadSince = now;
+	if (now - m_waveBadSince < secondsToFrames(sk.m_reactionSeconds + 3.0f))
+		return;
+
+	Coord3D rally;
+	if (!rallyPoint(&rally))
+		return;
+	AI_TRACE("wave PULLS BACK: advantage %.2f (ours %.0f, theirs %.0f at (%.0f,%.0f))", advantage, ourPower, theirPower, m_waveObjective.x, m_waveObjective.y);
+	++m_pullbacks;
+	m_waveBadSince = 0;
+	m_armyState = ARMY_GATHER;
+	m_armyStateFrame = now;
+	m_armyPeak = m_armyValue;
+	m_armyGrowthFrame = now;
+	for (Int i = 0; i < m_numTeams; ++i)
+	{
+		AITeamRecord &rec = m_teams[i];
+		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
+		if (team == nullptr || !isManageableTeam(team))
+			continue;
+		rec.m_mode = AITEAM_RETREATING;
+		rec.m_modeFrame = now;
+		rec.m_target = rally;
+		rec.m_badSince = 0;
+		orderTeamMove(team, &rally);
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 // team bookkeeping
 //-------------------------------------------------------------------------------------------------
@@ -1101,6 +1264,8 @@ void AIStrategy::updateArmy()
 		const Bool equipped = m_siegeShortage <= 0.5f || now - m_armyGrowthFrame >= 2 * secondsToFrames(sk.m_waveHoldSeconds);
 		if ((value >= target && equipped) || (stalled && value >= 0.6f * target && equipped))
 		{
+			if (m_launchBlockedSince != 0 && now < m_nextLaunchCheck)
+				return;	// held back by the fight check: look again in a moment
 			if (rollMistake())
 			{
 				m_armyGrowthFrame = now;	// a moment's hesitation
@@ -1108,6 +1273,8 @@ void AIStrategy::updateArmy()
 			}
 			Coord3D objective;
 			if (!chooseObjective(&center, value, &objective))
+				return;
+			if (!checkWaveLaunch(&objective))
 				return;
 			AI_TRACE("WAVE launches: value %.0f target %.0f siege shortage %.2f -> (%.0f,%.0f)", value, target, m_siegeShortage, objective.x, objective.y);
 			m_armyState = ARMY_ATTACK;
@@ -1127,10 +1294,18 @@ void AIStrategy::updateArmy()
 				orderTeamAttackMove(team, &objective);
 			}
 		}
+		else
+		{
+			m_launchBlockedSince = 0;
+		}
 	}
 	else
 	{
 		// The wave is spent (most of it dead or run away): gather again.
+		if (value >= 0.25f * m_launchValue && m_numTeams > 0 && weight > 0.0f)
+			checkWaveOnTheWay(&center);
+		if (m_armyState != ARMY_ATTACK)
+			return;
 		if (value < 0.25f * m_launchValue || (m_numTeams == 0))
 		{
 			AI_TRACE("wave spent: value %.0f of %.0f", value, m_launchValue);
@@ -1730,6 +1905,10 @@ void AIStrategy::xfer( Xfer *xfer )
 	xfer->xferUser(m_steps, sizeof(m_steps));
 	xfer->xferInt(&m_tacticTeam);
 	xfer->xferInt(&m_tacticUnit);
+	xfer->xferUnsignedInt(&m_launchBlockedSince);
+	xfer->xferUnsignedInt(&m_nextLaunchCheck);
+	xfer->xferUnsignedInt(&m_waveBadSince);
+	xfer->xferUnsignedInt(&m_nextWaveCheck);
 }
 
 void AIStrategy::loadPostProcess()

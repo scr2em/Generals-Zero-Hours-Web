@@ -270,6 +270,10 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "KiteRangeFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteRangeFactor ) },
 			{ "KiteSpeedFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteSpeedFactor ) },
 			{ "KiteGroupRadius",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteGroupRadius ) },
+			{ "FightCheck",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useFightCheck ) },
+			{ "LaunchAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchAdvantage ) },
+			{ "PullbackAdvantage",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_pullbackAdvantage ) },
+			{ "LaunchBlockSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchBlockSeconds ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1213,6 +1217,10 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_kiteRangeFactor = 1.1f;
 	ex.m_kiteSpeedFactor = 1.3f;
 	ex.m_kiteGroupRadius = 400.0f;
+	ex.m_useFightCheck = true;
+	ex.m_launchAdvantage = 0.8f;
+	ex.m_pullbackAdvantage = 0.5f;
+	ex.m_launchBlockSeconds = 120.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1268,6 +1276,10 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_kiteRangeFactor );
 		xfer->xferReal( &sk.m_kiteSpeedFactor );
 		xfer->xferReal( &sk.m_kiteGroupRadius );
+		xfer->xferBool( &sk.m_useFightCheck );
+		xfer->xferReal( &sk.m_launchAdvantage );
+		xfer->xferReal( &sk.m_pullbackAdvantage );
+		xfer->xferReal( &sk.m_launchBlockSeconds );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

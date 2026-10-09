@@ -316,6 +316,9 @@ private:
 	Bool isManageableTeam( Team *team ) const;
 	void evaluateTeam( Team *team, AITeamRecord *rec );
 	Real fightAdvantage( const Coord3D *center, Real radius, Real *ourPower, Real *theirPower ) const;
+	Real forecastAdvantage( const Coord3D *where, Real radius, Real *ourPower, Real *theirPower ) const;
+	Bool checkWaveLaunch( const Coord3D *objective );
+	void checkWaveOnTheWay( const Coord3D *waveCenter );
 	void orderTeamMove( Team *team, const Coord3D *pos );
 	void orderTeamAttackMove( Team *team, const Coord3D *pos );
 	void sendReinforcementsToThreat();
@@ -387,6 +390,13 @@ private:
 	Int						m_kiteResumes;
 	Int						m_kiteRejectFast;
 	Int						m_kiteRejectCorner;
+	UnsignedInt		m_launchBlockedSince;			///< fight check: frame since which the launch of the wave is held back (0 = not)
+	UnsignedInt		m_nextLaunchCheck;
+	UnsignedInt		m_waveBadSince;						///< frame since which the wave on its way looks too weak for the fight ahead
+	UnsignedInt		m_nextWaveCheck;
+	Int						m_launchesHeld;						///< statistics for the trace
+	Int						m_launchesForced;
+	Int						m_pullbacks;
 
 	Int						m_splitPicks;			///< statistics for the trace: target picks, and picks changed by split fire, threat rules ...
 	Int						m_splitSwitches;

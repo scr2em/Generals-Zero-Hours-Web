@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { startServer } from './lib/server.mjs';
 import { Browser } from './lib/browser.mjs';
+import { loadOverlay, makeOverlaySite } from './lib/overlay.mjs';
 import { compareRuns } from './lib/stats.mjs';
 import { buildReport, renderMarkdown, summaryText } from './lib/report.mjs';
 
@@ -18,6 +19,8 @@ Builds (the web build directories that contain z_generals.html):
 Game data:
   --data starter|DIR      "starter" (default): the free starter content built next to the page (starterpack/);
                           DIR: a folder holding ZeroHour/ (and optionally Generals/) of an installed game
+  --overlay NAME[,NAME]   play on the starter content edited by scripts/aibench/fixtures/NAME.json (bench-only data that exercises
+                          behaviour the starter units cannot show); uses its own browser profile
   --profile DIR           browser profile that keeps the imported game data between runs
                           (default ~/.cache/zh-aibench-profile; use the same one every time)
 What to play:
@@ -61,6 +64,7 @@ function parseArgs(argv) {
 			case '--build': { const v = next(); const eq = v.indexOf('='); if (eq < 1) throw new Error('--build NAME=DIR'); o.builds.push({ name: v.slice(0, eq), dir: v.slice(eq + 1) }); break; }
 			case '--data': o.data = next(); break;
 			case '--profile': o.profile = next(); break;
+			case '--overlay': o.overlay = next(); break;
 			case '--map': o.maps.push(next()); break;
 			case '--matchup': o.matchups.push(next()); break;
 			case '--seeds': o.seeds = Number(next()); break;
@@ -151,9 +155,19 @@ async function main() {
 	fs.mkdirSync(path.join(o.out, 'matches'), { recursive: true });
 	const log = (m) => console.log(m);
 
-	const mounts = Object.fromEntries(o.builds.map((b) => [b.name, b.dir]));
+	let mounts = Object.fromEntries(o.builds.map((b) => [b.name, b.dir]));
+	let profileDir = o.profile;
+	if (o.overlay) {
+		if (o.data !== 'starter') throw new Error('--overlay edits the starter content: use it with --data starter');
+		// several overlays can be combined: --overlay towers,strictfight
+		const parts = o.overlay.split(',').map((n) => loadOverlay(path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures'), n.trim()));
+		const overlay = { name: parts.map((p) => p.name).join('+'), description: parts.map((p) => p.description || p.name).join(' / '), edits: parts.flatMap((p) => p.edits) };
+		log(`overlay ${overlay.name}: ${overlay.description || ''}`);
+		mounts = Object.fromEntries(o.builds.map((b) => [b.name, makeOverlaySite(b.dir, overlay, o.out)]));
+		profileDir = o.profile + '-overlay-' + overlay.name;
+	}
 	const { server, port } = await startServer(mounts, o.port).catch((e) => { throw new Error(`cannot listen on port ${o.port}: ${e.message}`); });
-	const browser = new Browser({ port, profileDir: o.profile, chromium: o.chromium, headful: o.headful });
+	const browser = new Browser({ port, profileDir, chromium: o.chromium, headful: o.headful });
 	await browser.open();
 	const cleanup = async () => { await browser.close(); server.close(); };
 	process.on('SIGINT', async () => { await cleanup(); process.exit(130); });

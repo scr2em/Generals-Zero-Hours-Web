@@ -154,6 +154,10 @@ struct AISkillSettings
 	Real m_kiteRangeFactor;		///< A unit not slower than its enemy kites it when its range is this many times the enemy's ...
 	Real m_kiteSpeedFactor;		///< ... or, with a range not shorter than 0.95 times the enemy's, when it is this many times faster.
 	Real m_kiteGroupRadius;		///< A kiting unit stays within this distance of its team.
+	Bool m_useFightCheck;			///< Weigh the fight at the objective before a wave goes, and while it is out.
+	Real m_launchAdvantage;		///< Strength of the wave against what is known at its objective (ours/theirs) needed to launch.
+	Real m_pullbackAdvantage;	///< A wave on its way to a fight it is this much weaker than (ours/theirs) pulls back.
+	Real m_launchBlockSeconds;///< A wave held back by the fight check for this long goes anyway.
 };
 
 class AISideBuildList : public MemoryPoolObject

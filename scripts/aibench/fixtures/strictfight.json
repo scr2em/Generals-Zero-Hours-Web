@@ -1,0 +1,10 @@
+{
+ "description": "Expert fight check thresholds raised (launch needs 5x, wait 30 s): exercises the hold and the forced launch.",
+ "edits": [
+  {
+   "file": "data/ini/aidata.ini",
+   "find": "WaveSizeScale = 1.3",
+   "replace": "WaveSizeScale = 1.3\n    LaunchAdvantage = 5.0\n    PullbackAdvantage = 2.0\n    LaunchBlockSeconds = 30"
+  }
+ ]
+}
