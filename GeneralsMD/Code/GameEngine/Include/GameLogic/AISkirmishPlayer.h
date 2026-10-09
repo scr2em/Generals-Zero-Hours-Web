@@ -48,7 +48,7 @@ public:	 // AISkirmish specific methods.
 	AISkirmishPlayer( Player *p );							///< constructor
 	virtual void setExpert(Bool expert) override;				///< Expert: switches the strategic layer (AIStrategy) on
 	virtual Real expertAssignedDamage(ObjectID target) const override;
-	virtual void expertAssignDamage(ObjectID target, Real damage, Bool switched) override;
+	virtual void expertAssignDamage(ObjectID target, Real damage, Int flags) override;
 	virtual Bool computeSuperweaponTarget(const SpecialPowerTemplate *power, Coord3D *pos, Int playerNdx, Real weaponRadius) override; ///< Calculates best pos for weapon given radius.
 
 public:	// AIPlayer interface methods.

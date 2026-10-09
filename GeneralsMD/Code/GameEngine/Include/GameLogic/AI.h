@@ -148,6 +148,7 @@ struct AISkillSettings
 	// ---- tactics ----
 	Bool m_useSplitFire;			///< Do not send more fire at a target than it takes to kill it; the rest picks the next target.
 	Real m_splitWindowSeconds;///< How long the damage assigned to a target counts as on its way.
+	Bool m_useThreatTargets;	///< Pick targets by the damage they can do to our units nearby: threats, then support units, then artillery.
 };
 
 class AISideBuildList : public MemoryPoolObject

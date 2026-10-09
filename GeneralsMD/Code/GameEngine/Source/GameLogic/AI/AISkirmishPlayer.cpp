@@ -490,10 +490,10 @@ Real AISkirmishPlayer::expertAssignedDamage(ObjectID target) const
 	return m_strategy ? m_strategy->assignedDamage(target) : 0.0f;
 }
 
-void AISkirmishPlayer::expertAssignDamage(ObjectID target, Real damage, Bool switched)
+void AISkirmishPlayer::expertAssignDamage(ObjectID target, Real damage, Int flags)
 {
 	if (m_strategy)
-		m_strategy->assignDamage(target, damage, switched);
+		m_strategy->assignDamage(target, damage, flags);
 }
 
 Int AISkirmishPlayer::extraGatherers() const

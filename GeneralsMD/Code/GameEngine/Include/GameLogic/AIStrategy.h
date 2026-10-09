@@ -76,7 +76,8 @@ struct AICombatFigures
 	Real		m_cost;							///< build cost, or a stand-in when the thing cannot be built
 	Real		m_range;						///< longest weapon range
 	Real		m_minRange;					///< shortest range of the longest-range weapon
-	Real		m_speed;						///< relative mobility: 0 immobile
+	Real		m_speed;						///< ground speed in world units per second (0: immobile)
+	Int			m_supportLevel;			///< 2: heals or repairs others, 1: builds and repairs structures (workers), 0: neither
 
 	enum { MAX_WEAPONS = 3 };
 	struct Weapon
@@ -278,8 +279,8 @@ public:
 	/// Damage that units picking 'target' a moment ago will deal to it (split fire).
 	Real assignedDamage( ObjectID target ) const;
 	/// Note that a unit has picked 'target' and will deal about 'damage' to it in the next seconds.
-	/// 'switched': the split-fire rule made the unit take another target than it would have.
-	void assignDamage( ObjectID target, Real damage, Bool switched );
+	/// 'flags' (AIPlayer::PICK_...) says what the target selection did, for the statistics of the trace.
+	void assignDamage( ObjectID target, Real damage, Int flags );
 
 protected:
 	virtual void crc( Xfer *xfer ) override;
@@ -356,8 +357,11 @@ private:
 	enum { LEDGER_SIZE = 32 };
 	AILedgerEntry	m_ledger[LEDGER_SIZE];		///< split fire: damage assigned to targets, see assignDamage
 
-	Int						m_splitPicks;			///< statistics for the trace: target picks, and picks changed by split fire
+	Int						m_splitPicks;			///< statistics for the trace: target picks, and picks changed by split fire, threat rules ...
 	Int						m_splitSwitches;
+	Int						m_threatSwitches;
+	Int						m_supportPicks;
+	Int						m_longRangePicks;
 	Bool					m_trace;					///< print decisions (test bench: variant "trace")
 	UnsignedInt		m_nextStatus;
 };

@@ -1917,10 +1917,10 @@ Real Player::getAiAssignedDamage(ObjectID target)
 }
 
 //=============================================================================
-void Player::assignAiDamage(ObjectID target, Real damage, Bool switched)
+void Player::assignAiDamage(ObjectID target, Real damage, Int flags)
 {
 	if (m_ai)
-		m_ai->expertAssignDamage(target, damage, switched);
+		m_ai->expertAssignDamage(target, damage, flags);
 }
 
 //=============================================================================

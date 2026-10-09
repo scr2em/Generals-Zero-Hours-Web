@@ -51,11 +51,19 @@ Real AIStrategy::assignedDamage( ObjectID target ) const
 	return 0.0f;
 }
 
-void AIStrategy::assignDamage( ObjectID target, Real damage, Bool switched )
+void AIStrategy::assignDamage( ObjectID target, Real damage, Int flags )
 {
 	++m_splitPicks;
-	if (switched)
+	if (flags & AIPlayer::PICK_SPLIT)
 		++m_splitSwitches;
+	if (flags & AIPlayer::PICK_THREAT)
+		++m_threatSwitches;
+	if (flags & AIPlayer::PICK_SUPPORT)
+		++m_supportPicks;
+	if (flags & AIPlayer::PICK_LONGRANGE)
+		++m_longRangePicks;
+	if (damage <= 0.0f)
+		return;
 	const UnsignedInt now = TheGameLogic->getFrame();
 	const UnsignedInt expire = now + secondsToFrames(skill().m_splitWindowSeconds);
 

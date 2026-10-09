@@ -123,6 +123,9 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_noSavingUntil(0),
 	m_splitPicks(0),
 	m_splitSwitches(0),
+	m_threatSwitches(0),
+	m_supportPicks(0),
+	m_longRangePicks(0),
 	m_trace(FALSE),
 	m_nextStatus(0)
 {
@@ -151,7 +154,7 @@ void AIStrategy::newMap()
 		{ "focus", AIPlayer::AIF_FOCUS }, { "wave", AIPlayer::AIF_WAVE }, { "retreat", AIPlayer::AIF_RETREAT },
 		{ "scout", AIPlayer::AIF_SCOUT }, { "counter", AIPlayer::AIF_COUNTER }, { "save", AIPlayer::AIF_SAVE },
 		{ "starve", AIPlayer::AIF_STARVE }, { "siege", AIPlayer::AIF_SIEGE }, { "defend", AIPlayer::AIF_DEFEND },
-		{ "split", AIPlayer::AIF_SPLIT } };
+		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT } };
 	const char *offList = strstr(variant.str(), "off-");
 	if (offList)
 	{
@@ -236,7 +239,8 @@ void AIStrategy::update()
 						if (isManageableTeam(tm)) managedUnits += n; else if (n > 0) { unmanaged += n; AI_TRACE("  unmanaged team %s active %d units %d", tm->getPrototype()->getName().str(), tm->isActive() ? 1 : 0, n); }
 					}
 				AI_TRACE("army: managed units %d unmanaged units %d value %.0f siege shortage %.2f", managedUnits, unmanaged, m_armyValue, m_siegeShortage);
-				AI_TRACE("split fire: %d target picks, %d changed by the rule", m_splitPicks, m_splitSwitches);
+				AI_TRACE("target picks %d: changed by split fire %d, by the threat rules %d; support units %d; out-ranging units %d",
+					m_splitPicks, m_splitSwitches, m_threatSwitches, m_supportPicks, m_longRangePicks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
 					m_enemy.roleValue(AIROLE_DEFENCE), m_enemy.roleValue(AIROLE_PRODUCTION), m_enemy.roleValue(AIROLE_ECONOMY),

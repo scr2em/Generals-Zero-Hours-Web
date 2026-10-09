@@ -264,6 +264,7 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "SmartPowers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_smartPowers ) },
 			{ "SplitFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSplitFire ) },
 			{ "SplitWindowSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splitWindowSeconds ) },
+			{ "ThreatTargets",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useThreatTargets ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -628,9 +629,12 @@ static void priorityFunc(Object *obj, void *userData)
 
 //-----------------------------------------------------------------------------
 /**
- * Target selection of the Expert computer player: focus fire.  Among the few nearest candidates it
- * prefers what shoots at it, then what can be finished off, and what is within reach, instead of just
- * the closest thing.  Units that stand together make the same choice, so they share their targets.
+ * Target selection of the Expert computer player.  Among the few nearest candidates it prefers
+ *  - what can hurt our units around here most (threat first), then healers and repairers (support),
+ *    then what outranges us (artillery and the like) when it is within reach,
+ *  - what can be finished off, what is within reach, what is near,
+ *  - and, with split fire, not what other units have already assigned enough damage to.
+ * Units that stand together make the same choice, so they share their targets.
  * Never used for human players or the other difficulties.
  */
 static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter **filters )
@@ -644,11 +648,35 @@ static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter
 	Player *owner = me->getControllingPlayer();
 	const AISkillSettings &skill = TheAI->getAiData()->m_expertSkill;
 	const Bool split = skill.m_useSplitFire && !owner->isAiFeatureOff(AIPlayer::AIF_SPLIT);
+	const Bool threatFirst = skill.m_useThreatTargets && !owner->isAiFeatureOff(AIPlayer::AIF_THREAT);
 
-	Object *best = nullptr;
-	Real bestScore = 0.0f;
-	Object *bestPlain = nullptr;	// the pick without the split fire rule
-	Real bestPlainScore = 0.0f;
+	// Our units around here: what a target can do to them is what makes it dangerous.
+	enum { MAX_MATES = 8 };
+	const AICombatFigures *mates[MAX_MATES];
+	Int numMates = 0;
+	Real mateCost = 0.0f;
+	if (threatFirst)
+	{
+		PartitionFilterAlive alive;
+		PartitionFilterRelationship friends(me, PartitionFilterRelationship::ALLOW_ALLIES);
+		PartitionFilter *mateFilters[] = { &friends, &alive, nullptr };
+		SimpleObjectIterator *mateIter = ThePartitionManager->iterateObjectsInRange(me->getPosition(), 150.0f, FROM_CENTER_2D, mateFilters);
+		MemoryPoolObjectHolder mateHolder(mateIter);
+		for (Object *m = mateIter->first(); m && numMates < MAX_MATES; m = mateIter->next())
+		{
+			const AICombatFigures *mf = AICombatModel::figures(m->getTemplate());
+			if (mf == nullptr || !mf->m_armed || mf->m_structure)
+				continue;
+			mates[numMates++] = mf;
+			mateCost += mf->m_cost;
+		}
+	}
+
+	// Three picks are tracked to measure what each rule changes: the original formula (A), with the threat
+	// rules (B), and with split fire as well (C, the result).
+	Object *best = nullptr, *bestB = nullptr, *bestA = nullptr;
+	Real bestScore = 0.0f, bestScoreB = 0.0f, bestScoreA = 0.0f;
+	Int bestKind = 0;
 	Int examined = 0;
 	for (Object *e = iter->first(); e && examined < 8; e = iter->next(), ++examined)
 	{
@@ -662,33 +690,87 @@ static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter
 		if (body && body->getMaxHealth() > 0.0f)
 			health = body->getHealth() / body->getMaxHealth();
 
-		Real score = 0.0f;
-		const Real threat = AICombatModel::killRate(f, mine);
-		if (threat > 0.0f)
-			score += 60.0f + (threat * 600.0f > 30.0f ? 30.0f : threat * 600.0f);	// it can hurt us: first
-		else if (f->m_armed)
-			score += 25.0f;
-		else if (!f->m_structure)
-			score += 15.0f;
-		else
-			score += 5.0f;
-
-		score += 40.0f * (1.0f - health);																				// finish what is hurt
+		// What does not depend on the kind of rules.
+		Real common = 40.0f * (1.0f - health);																	// finish what is hurt
 		const Real dps = AICombatModel::damagePerSecond(mine, f);
 		if (dps > 0.0f)
-			score += 25.0f / (1.0f + (health * f->m_maxHealth / dps) / 3.0f);			// quick kills
+			common += 25.0f / (1.0f + (health * f->m_maxHealth / dps) / 3.0f);		// quick kills
 		if (dist <= mine->m_range)
-			score += 20.0f;																												// in reach right now
-		score -= 40.0f * (dist >= range ? 1.0f : dist / range);									// near is better
+			common += 20.0f;																											// in reach right now
+		common -= 40.0f * (dist >= range ? 1.0f : dist / range);								// near is better
 
-		if (bestPlain == nullptr || score > bestPlainScore)
+		// The original rule: it can hurt this unit: first.
+		Real scoreA = common;
+		const Real threat = AICombatModel::killRate(f, mine);
+		if (threat > 0.0f)
+			scoreA += 60.0f + (threat * 600.0f > 30.0f ? 30.0f : threat * 600.0f);
+		else if (f->m_armed)
+			scoreA += 25.0f;
+		else if (!f->m_structure)
+			scoreA += 15.0f;
+		else
+			scoreA += 5.0f;
+
+		Real scoreB = scoreA;
+		Int kind = 0;
+		if (threatFirst)
 		{
-			bestPlain = e;
-			bestPlainScore = score;
+			// Threat: the share of the value of our units around here that it destroys every second.
+			Real rate = 0.0f;
+			if (numMates > 0)
+			{
+				for (Int i = 0; i < numMates; ++i)
+					rate += mates[i]->m_cost * AICombatModel::killRate(f, mates[i]);
+				rate /= (mateCost > 0.0f ? mateCost : 1.0f);
+			}
+			else
+			{
+				rate = threat;
+			}
+
+			scoreB = common;
+			if (rate > 0.0f)
+			{
+				scoreB += 55.0f + 40.0f * rate / (rate + 0.04f);
+				if (f->m_supportLevel >= 2)
+					scoreB += 8.0f;			// armed and mending the others: a priority among the threats
+			}
+			else if (f->m_supportLevel >= 2)
+			{
+				scoreB += 48.0f;		// healers and repairers keep the others going
+				kind = 1;
+			}
+			else if (f->m_armed)
+				scoreB += 25.0f;
+			else if (f->m_supportLevel == 1)
+				scoreB += 30.0f;		// workers
+			else if (!f->m_structure)
+				scoreB += 15.0f;
+			else
+				scoreB += 5.0f;
+
+			// What outranges us hurts from where we cannot answer: when it is within reach, take it.
+			if (f->m_armed && !f->m_structure && f->m_range >= 1.35f * mine->m_range && dist <= mine->m_range + 10.0f)
+			{
+				scoreB += 12.0f;
+				kind = 2;
+			}
+		}
+
+		if (bestA == nullptr || scoreA > bestScoreA)
+		{
+			bestA = e;
+			bestScoreA = scoreA;
+		}
+		if (bestB == nullptr || scoreB > bestScoreB)
+		{
+			bestB = e;
+			bestScoreB = scoreB;
 		}
 
 		// Split fire: damage that other units have already assigned to the target counts against it, so
 		// that once enough is on its way to kill it the rest of the group takes the next target.
+		Real score = scoreB;
 		if (split && body)
 		{
 			const Real assigned = owner->getAiAssignedDamage(e->getID());
@@ -703,14 +785,28 @@ static Object *pickTacticalTarget( const Object *me, Real range, PartitionFilter
 		{
 			best = e;
 			bestScore = score;
+			bestKind = kind;
 		}
 	}
 
-	if (split && best)
+	if (best)
 	{
-		const Real dps = AICombatModel::damagePerSecond(mine, AICombatModel::figures(best->getTemplate()));
-		if (dps > 0.0f)
-			owner->assignAiDamage(best->getID(), dps * skill.m_splitWindowSeconds, best != bestPlain);
+		Int flags = 0;
+		if (best != bestB)
+			flags |= AIPlayer::PICK_SPLIT;
+		if (bestB != bestA)
+			flags |= AIPlayer::PICK_THREAT;
+		if (bestKind == 1)
+			flags |= AIPlayer::PICK_SUPPORT;
+		else if (bestKind == 2)
+			flags |= AIPlayer::PICK_LONGRANGE;
+		Real assign = 0.0f;
+		if (split)
+		{
+			const Real d = AICombatModel::damagePerSecond(mine, AICombatModel::figures(best->getTemplate()));
+			assign = d * skill.m_splitWindowSeconds;
+		}
+		owner->assignAiDamage(best->getID(), assign, flags);
 	}
 	return best;
 }
@@ -1106,6 +1202,7 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_smartPowers = true;
 	ex.m_useSplitFire = true;
 	ex.m_splitWindowSeconds = 2.0f;
+	ex.m_useThreatTargets = true;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1155,6 +1252,7 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferBool( &sk.m_smartPowers );
 		xfer->xferBool( &sk.m_useSplitFire );
 		xfer->xferReal( &sk.m_splitWindowSeconds );
+		xfer->xferBool( &sk.m_useThreatTargets );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

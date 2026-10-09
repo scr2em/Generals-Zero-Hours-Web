@@ -102,6 +102,14 @@ const AICombatFigures *AICombatModel::figures(const ThingTemplate *tt)
 			if (w == nullptr)
 				continue;
 
+			// A weapon that heals makes its owner a support unit, not a fighter.
+			if (w->getDamageType() == DAMAGE_HEALING)
+			{
+				if (w->getPrimaryDamage(noBonus) > 0.0f)
+					f->m_supportLevel = 2;
+				continue;
+			}
+
 			Real damage = w->getPrimaryDamage(noBonus);
 			const Real secondary = w->getSecondaryDamage(noBonus);
 			if (secondary > 0.0f)
@@ -173,6 +181,20 @@ const AICombatFigures *AICombatModel::figures(const ThingTemplate *tt)
 	f->m_armor = as ? as->getArmorTemplate() : nullptr;
 
 	f->m_speed = f->m_structure ? 0.0f : 1.0f;
+
+	// Support: healing and repairing units (by their modules), and workers that build and repair structures.
+	if (!f->m_structure)
+	{
+		const ModuleInfo &mods = tt->getBehaviorModuleInfo();
+		for (Int i = 0; i < mods.getCount(); ++i)
+		{
+			const AsciiString name = mods.getNthName(i);
+			if (strstr(name.str(), "HealContain") != nullptr || strstr(name.str(), "RepairDock") != nullptr)
+				f->m_supportLevel = 2;
+		}
+		if (f->m_supportLevel < 1 && tt->isKindOf(KINDOF_DOZER))
+			f->m_supportLevel = 1;
+	}
 
 	// Role.
 	AIRole role = AIROLE_STRUCTURE;
