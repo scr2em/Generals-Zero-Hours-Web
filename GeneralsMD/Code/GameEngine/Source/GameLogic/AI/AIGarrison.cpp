@@ -80,7 +80,7 @@ Bool AIStrategy::isGarrisoned( ObjectID id ) const
 	for (Int i = 0; i < m_numCleaners; ++i)
 		if (m_cleaners[i] == id)
 			return TRUE;
-	return FALSE;
+	return isBunkerMan(id);
 }
 
 /// Enemy armed ground units seen in the base in the last seconds: their value and the place of the biggest.
@@ -220,8 +220,8 @@ void AIStrategy::updateGarrisonDefence()
 				if (obj->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION) || obj->testStatus(OBJECT_STATUS_SOLD) || obj->isDisabled())
 					continue;
 				ContainModuleInterface *contain = obj->getContain();
-				if (contain == nullptr || !contain->isGarrisonable() || healthShare(obj) < 0.25f)
-					continue;
+				if (contain == nullptr || !contain->isGarrisonable() || healthShare(obj) < 0.25f || isGarrisonPost(obj))
+					continue;		// (the posts have their own garrison for good: AIBunker.cpp)
 				const Int max = contain->getContainMax();
 				Int free = (max > 0 ? max : 0) - (Int)contain->getContainCount();
 				for (Int g = 0; g < m_numGarrisoned; ++g)

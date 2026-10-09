@@ -157,6 +157,14 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bdDamageFrame(0),
 	m_nextBaseDefence(0),
 	m_bdWeakFrame(0),
+	m_numBunkerMen(0),
+	m_nextBunker(0),
+	m_nextBunkerTrain(0),
+	m_bunkerQueueFrame(0),
+	m_bunkerQueued(0),
+	m_bunkerPosts(0),
+	m_bunkerEntered(0),
+	m_bunkerTrained(0),
 	m_airPhase(0),
 	m_airTransport(INVALID_ID),
 	m_numSquad(0),
@@ -254,6 +262,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_garrisoned, 0, sizeof(m_garrisoned));
 	memset(m_abilityUsed, 0, sizeof(m_abilityUsed));
 	memset(m_squad, 0, sizeof(m_squad));
+	memset(m_bunkerMen, 0, sizeof(m_bunkerMen));
 	memset(m_airPath, 0, sizeof(m_airPath));
 	memset(m_airBack, 0, sizeof(m_airBack));
 	m_airTarget.zero();
@@ -296,7 +305,8 @@ void AIStrategy::applyVariant()
 		{ "georally", AIPlayer::AIF_GEORALLY }, { "geosites", AIPlayer::AIF_GEOSITES },
 		{ "garrison", AIPlayer::AIF_GARRISON }, { "clear", AIPlayer::AIF_CLEAR },
 		{ "ability", AIPlayer::AIF_ABILITY },
-		{ "airborne", AIPlayer::AIF_AIRBORNE } };
+		{ "airborne", AIPlayer::AIF_AIRBORNE },
+		{ "bunker", AIPlayer::AIF_BUNKER } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -427,6 +437,7 @@ void AIStrategy::update()
 				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
 				AI_TRACE("garrisons: %d infantry entered (%d unit-seconds inside, %d of them firing), %d structures of the enemy attacked (%d brought down), %d holding now", m_garrisonEntered, m_garrisonSeconds, m_garrisonFiring, m_garrisonClearJobs, m_garrisonClears, m_numGarrisoned);
 				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
+				AI_TRACE("bunkers: %d posts, %d men inside or on the way, %d entered so far, %d infantry trained for them", m_bunkerPosts, m_numBunkerMen, m_bunkerEntered, m_bunkerTrained);
 				AI_TRACE("airborne: %d missions, %d drops, %d targets destroyed, %d aircraft lost, %d times no safe way", m_airMissions, m_airDrops, m_airKills, m_airLost, m_airNoPath);
 				AI_TRACE("routes: %d waves routed around defences, %d breaches started (%d with the defences down)", m_routesPlanned, m_breachesStarted, m_breachKills);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
@@ -443,6 +454,7 @@ void AIStrategy::update()
 	updateGarrison();
 	updateAbilities();
 	updateAirborne();
+	updateBunkers();
 
 	if (now >= m_nextTeamEval)
 	{
@@ -2223,7 +2235,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 11;
+	XferVersion currentVersion = 12;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2382,6 +2394,15 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferUnsignedInt(&m_airAssaultStart);
 		xfer->xferUnsignedInt(&m_airCooldown);
 		xfer->xferUnsignedInt(&m_nextAirCheck);
+	}
+	if (version >= 12)
+	{
+		xfer->xferInt(&m_numBunkerMen);
+		xfer->xferUser(m_bunkerMen, sizeof(m_bunkerMen));
+		xfer->xferUnsignedInt(&m_nextBunker);
+		xfer->xferUnsignedInt(&m_nextBunkerTrain);
+		xfer->xferUnsignedInt(&m_bunkerQueueFrame);
+		xfer->xferInt(&m_bunkerQueued);
 	}
 }
 

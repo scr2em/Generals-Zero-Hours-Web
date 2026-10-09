@@ -1,0 +1,33 @@
+{
+ "description": "Two bunkers on the Ironwood build list (a structure with a TransportContain for 4 infantry whose passengers may fire out; no weapon of its own), a build button for them in the worker's command set, a transport slot for the infantry. The computer players build them (the skirmish build code builds the build list entries of the power kind by itself; the bunker is of that kind and of the defence kind). For the standing garrisons (bunker).",
+ "edits": [
+  {
+   "file": "data/ini/object.ini",
+   "append": "\n; Bench overlay: a bunker: a structure with a container for 4 infantry whose passengers may fire out; it has no weapon of its own.\n; (KindOf FS_POWER is how the skirmish build code picks it up by itself: it builds the entries of the power kind of the build list.)\nObject IronwoodBunker\n  Buildable = Yes\n  Scale = 0.7\n  Side = Ironwood\n  EditorSorting = STRUCTURE\n  DisplayName = OBJECT:IronwoodPowerPlant\n  Draw = W3DModelDraw ModuleTag_Draw\n    OkToChangeModelColor = Yes\n    DefaultConditionState\n      Model = iw_power\n    End\n  End\n  KindOf = STRUCTURE SELECTABLE IMMOBILE FS_BASE_DEFENSE FS_POWER SCORE CAN_SEE_THROUGH_STRUCTURE\n  Body = StructureBody ModuleTag_Body\n    MaxHealth = 700.0\n    InitialHealth = 700.0\n  End\n  ArmorSet\n    Conditions = None\n    Armor = IronwoodStructureArmor\n    DamageFX = None\n  End\n  Behavior = TransportContain ModuleTag_Contain\n    Slots = 4\n    PassengersAllowedToFire = Yes\n    AllowInsideKindOf = INFANTRY\n    ExitDelay = 100\n    NumberOfExitPaths = 1\n    DamagePercentToUnits = 0%\n    GoAggressiveOnExit = Yes\n  End\n  Behavior = DestroyDie ModuleTag_Destroy\n  End\n  Behavior = FXListDie ModuleTag_DeathFX\n    DeathFX = FX_StarterBuildingDie\n  End\n  Prerequisites\n    Object = IronwoodPowerPlant\n  End\n  BuildCost = 300\n  BuildTime = 8.0\n  VisionRange = 220.0\n  ShroudClearingRange = 260.0\n  RadarPriority = STRUCTURE\n  Geometry = CYLINDER\n  GeometryMajorRadius = 16.0\n  GeometryMinorRadius = 16.0\n  GeometryHeight = 20.0\n  GeometryIsSmall = No\nEnd"
+  },
+  {
+   "file": "data/ini/commandbutton.ini",
+   "append": "\n; Bench overlay: the worker can build the bunker.\nCommandButton Command_ConstructIronwoodBunker\n  Command = DOZER_CONSTRUCT\n  Object = IronwoodBunker\n  TextLabel = CONTROLBAR:ConstructIronwoodBarracks\n  ButtonImage = SP_Barracks\n  ButtonBorderType = BUILD\n  DescriptLabel = CONTROLBAR:ToolTipConstructIronwoodBarracks\nEnd"
+  },
+  {
+   "file": "data/ini/commandset.ini",
+   "find": "  3  = Command_ConstructIronwoodFactory\n  13 = Command_AttackMove",
+   "replace": "  3  = Command_ConstructIronwoodFactory\n  4  = Command_ConstructIronwoodBunker\n  13 = Command_AttackMove"
+  },
+  {
+   "file": "data/ini/aidata.ini",
+   "find": "    Structure IronwoodFactory\n      Location = X:60 Y:-60\n      Rebuilds = 3\n      Angle = 0.0\n      InitiallyBuilt = No\n      AutomaticallyBuild = Yes\n    End\n",
+   "replace": "    Structure IronwoodFactory\n      Location = X:60 Y:-60\n      Rebuilds = 3\n      Angle = 0.0\n      InitiallyBuilt = No\n      AutomaticallyBuild = Yes\n    End\n    Structure IronwoodBunker\n      Location = X:150 Y:0\n      Rebuilds = 3\n      Angle = 0.0\n      InitiallyBuilt = No\n      AutomaticallyBuild = Yes\n    End\n    Structure IronwoodBunker\n      Location = X:0 Y:150\n      Rebuilds = 3\n      Angle = 0.0\n      InitiallyBuilt = No\n      AutomaticallyBuild = Yes\n    End\n"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  BuildCost = 150\n  BuildTime = 6.0",
+   "replace": "  TransportSlotCount = 1\n  BuildCost = 150\n  BuildTime = 6.0"
+  },
+  {
+   "file": "data/ini/object.ini",
+   "find": "  BuildCost = 250\n  BuildTime = 8.0",
+   "replace": "  TransportSlotCount = 1\n  BuildCost = 250\n  BuildTime = 8.0"
+  }
+ ]
+}
