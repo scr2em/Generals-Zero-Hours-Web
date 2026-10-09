@@ -32,6 +32,7 @@
 #include "Common/Team.h"
 #include "GameLogic/AI.h"
 #include "GameLogic/AIProtect.h"
+#include "GameLogic/AIRoute.h"
 
 class AIPlayer;
 class Object;
@@ -382,6 +383,19 @@ private:
 	void orderRaiders( Object *target, const Coord3D *aim );
 	void dropDeadRaiders();
 
+	// avoid static defences (AIRoute.cpp)
+	enum { MAX_BREACHERS = 6, MAX_BREACH_TARGETS = 3 };
+	Bool routeOn() const;
+	Bool routeActive() const;
+	Int collectDefenceCircles( AIRouteCircle *circles, Int maxCircles, ObjectID *ids ) const;
+	void planWaveRoute( const Coord3D &from, const Coord3D &objective );
+	void advanceWaveRoute( const Coord3D &waveCenter );
+	Bool routeHolds( const AITeamRecord *rec, const Coord3D &teamCenter ) const;
+	Bool isBreacher( ObjectID id ) const;
+	void startBreach( const Coord3D &from, const Coord3D &objective, const AIRouteCircle *circles, const ObjectID *ids, Int numCircles );
+	void orderBreacher( ObjectID id );
+	void updateBreach();
+
 	// repair and heal (AIRepair.cpp)
 	enum { MAX_PATIENTS = 6, MAX_SITES = 8 };
 	Bool repairOn() const;
@@ -486,6 +500,23 @@ private:
 	Int						m_raidKills;
 	Int						m_raidPullbacks;
 	Int						m_raidLosses;
+	Coord3D				m_route[AIROUTE_MAX_POINTS];		///< the waypoints of the wave that is out (then its objective)
+	Int						m_routeLen;
+	Int						m_routeIdx;
+	UnsignedInt		m_routeLegStart;
+	UnsignedInt		m_routeArrived;
+	ObjectID			m_breachers[MAX_BREACHERS];			///< units that out-range the defences that cover the objective, sent ahead
+	Int						m_numBreachers;
+	ObjectID			m_breachTargets[MAX_BREACH_TARGETS];
+	Int						m_numBreachTargets;
+	Coord3D				m_breachStage;
+	UnsignedInt		m_breachStart;
+	UnsignedInt		m_nextBreachCheck;
+	Bool					m_breachHold;										///< the wave waits at the staging point for the breachers
+	Bool					m_breachFallback;								///< the breachers have fallen back to the wave because enemy troops came for them
+	Int						m_routesPlanned;								///< statistics for the trace
+	Int						m_breachesStarted;
+	Int						m_breachKills;
 	AIPatient			m_patients[MAX_PATIENTS];		///< repair and heal trips
 	Int						m_numPatients;
 	ObjectID			m_sites[MAX_SITES];					///< repair and heal pads we own

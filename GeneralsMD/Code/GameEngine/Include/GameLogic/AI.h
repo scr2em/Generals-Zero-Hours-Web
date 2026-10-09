@@ -187,6 +187,13 @@ struct AISkillSettings
 	Real m_repairBelow;				///< A unit hurt below this share of its health (0..1) goes for repairs.
 	Real m_repairTripSeconds;	///< Longest trip to a pad, at the unit's speed.
 	Real m_repairDozerBelow;	///< A structure hurt below this share of its health is repaired by an idle dozer when it is out of the dozers' own reach.
+
+	// ---- batch 2: avoid static defences ----
+	Bool m_useRoute;					///< Waves go around the reach of seen defences, and units that out-range defences covering the objective destroy them first.
+	Real m_routeMargin;				///< Distance added to a defence's weapon range for the area a wave stays out of.
+	Real m_routeMaxDetour;		///< A way around is accepted when it is at most this many times the straight way.
+	Real m_breachRangeFactor;	///< A unit breaches a defence when its weapon range is at least this many times the defence's.
+	Real m_breachHoldSeconds;	///< The wave waits this long at the staging point for the breachers.
 };
 
 class AISideBuildList : public MemoryPoolObject

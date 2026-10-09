@@ -297,6 +297,11 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "RepairBelow",					INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairBelow ) },
 			{ "RepairTripSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_repairTripSeconds ) },
 			{ "RepairDozerBelow",			INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairDozerBelow ) },
+			{ "AvoidDefences",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRoute ) },
+			{ "RouteMargin",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_routeMargin ) },
+			{ "RouteMaxDetour",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_routeMaxDetour ) },
+			{ "BreachRangeFactor",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachRangeFactor ) },
+			{ "BreachHoldSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachHoldSeconds ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1267,6 +1272,11 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_repairBelow = 0.55f;
 	ex.m_repairTripSeconds = 30.0f;
 	ex.m_repairDozerBelow = 0.85f;
+	ex.m_useRoute = true;
+	ex.m_routeMargin = 60.0f;
+	ex.m_routeMaxDetour = 1.8f;
+	ex.m_breachRangeFactor = 1.12f;
+	ex.m_breachHoldSeconds = 80.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1349,6 +1359,11 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_repairBelow );
 		xfer->xferReal( &sk.m_repairTripSeconds );
 		xfer->xferReal( &sk.m_repairDozerBelow );
+		xfer->xferBool( &sk.m_useRoute );
+		xfer->xferReal( &sk.m_routeMargin );
+		xfer->xferReal( &sk.m_routeMaxDetour );
+		xfer->xferReal( &sk.m_breachRangeFactor );
+		xfer->xferReal( &sk.m_breachHoldSeconds );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

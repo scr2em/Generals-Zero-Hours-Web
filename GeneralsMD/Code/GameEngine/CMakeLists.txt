@@ -237,6 +237,7 @@ set(GAMEENGINE_SRC
     Include/GameLogic/AIPlayer.h
     Include/GameLogic/AISkirmishPlayer.h
     Include/GameLogic/AIProtect.h
+    Include/GameLogic/AIRoute.h
     Include/GameLogic/AIStrategy.h
     Include/GameLogic/AIStateMachine.h
     Include/GameLogic/AITNGuard.h
@@ -840,6 +841,7 @@ set(GAMEENGINE_SRC
     Source/GameLogic/AI/AITactics.cpp
     Source/GameLogic/AI/AIProtect.cpp
     Source/GameLogic/AI/AIRaid.cpp
+    Source/GameLogic/AI/AIRoute.cpp
     Source/GameLogic/AI/AIRepair.cpp
     Source/GameLogic/AI/AICombatModel.cpp
     Source/GameLogic/AI/AIEnemyModel.cpp

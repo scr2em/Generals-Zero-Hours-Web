@@ -1,0 +1,10 @@
+{
+ "description": "The rocketeer's weapon reaches 260 (the gun tower of the 'towers' fixture reaches 200): units that out-range a defence.",
+ "edits": [
+  {
+   "file": "data/ini/weapon.ini",
+   "find": "AttackRange = 160.0\n  MinimumAttackRange = 10.0",
+   "replace": "AttackRange = 260.0\n  MinimumAttackRange = 10.0"
+  }
+ ]
+}

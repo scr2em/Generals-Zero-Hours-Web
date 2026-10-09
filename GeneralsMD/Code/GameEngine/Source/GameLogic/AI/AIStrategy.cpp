@@ -151,6 +151,19 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_raidCooldown(0),
 	m_nextRaidCheck(0),
 	m_raidNoteFrame(0),
+	m_routeLen(0),
+	m_routeIdx(0),
+	m_routeLegStart(0),
+	m_routeArrived(0),
+	m_numBreachers(0),
+	m_numBreachTargets(0),
+	m_breachStart(0),
+	m_nextBreachCheck(0),
+	m_breachHold(FALSE),
+	m_breachFallback(FALSE),
+	m_routesPlanned(0),
+	m_breachesStarted(0),
+	m_breachKills(0),
 	m_numPatients(0),
 	m_numSites(0),
 	m_nextSiteScan(0),
@@ -178,6 +191,10 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_steps, 0, sizeof(m_steps));
 	memset(m_raiders, 0, sizeof(m_raiders));
 	memset(m_patients, 0, sizeof(m_patients));
+	memset(m_route, 0, sizeof(m_route));
+	memset(m_breachers, 0, sizeof(m_breachers));
+	memset(m_breachTargets, 0, sizeof(m_breachTargets));
+	m_breachStage.zero();
 	memset(m_sites, 0, sizeof(m_sites));
 	m_raidAim.zero();
 	m_scoutTarget.zero();
@@ -208,7 +225,7 @@ void AIStrategy::newMap()
 		{ "split", AIPlayer::AIF_SPLIT }, { "threat", AIPlayer::AIF_THREAT }, { "kite", AIPlayer::AIF_KITE },
 		{ "fight", AIPlayer::AIF_FIGHT }, { "merge", AIPlayer::AIF_MERGE }, { "spread", AIPlayer::AIF_SPREAD },
 		{ "raid", AIPlayer::AIF_RAID }, { "protect", AIPlayer::AIF_PROTECT },
-		{ "repair", AIPlayer::AIF_REPAIR } };
+		{ "repair", AIPlayer::AIF_REPAIR }, { "route", AIPlayer::AIF_ROUTE } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -326,6 +343,7 @@ void AIStrategy::update()
 				AI_TRACE("raids: %d launched, %d gatherers killed, %d pulled back, %d raiders lost%s", m_raidsLaunched, m_raidKills, m_raidPullbacks, m_raidLosses, m_numRaiders ? " (a party is out)" : "");
 				AI_TRACE("protect: %d alarms, %d protectors sent, %d returned, %d away now", m_protect.numAlarms(), m_protect.numResponses(), m_protect.numReturns(), m_protect.numAway());
 				AI_TRACE("repair and heal: %d trips to pads, %d units mended, %d structure repairs by dozers, %d on their way, %d pads known", m_repairTrips, m_repairsDone, m_dozerRepairs, m_numPatients, m_numSites);
+				AI_TRACE("routes: %d waves routed around defences, %d breaches started (%d with the defences down)", m_routesPlanned, m_breachesStarted, m_breachKills);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
@@ -925,9 +943,10 @@ void AIStrategy::reinforceWave()
 		rec.m_mode = AITEAM_ATTACKING;
 		rec.m_modeFrame = now;
 		rec.m_orderFrame = now;
-		rec.m_target = m_waveObjective;
+		const Coord3D goal = routeActive() ? m_route[m_routeIdx] : m_waveObjective;
+		rec.m_target = goal;
 		rec.m_idleSince = 0;
-		orderTeamAttackMove(team, &m_waveObjective);
+		orderTeamAttackMove(team, &goal);
 	}
 }
 
@@ -1428,6 +1447,9 @@ void AIStrategy::updateArmy()
 			m_waveObjective = objective;
 			for (Int i = 0; i < m_numTeams; ++i)
 				m_teams[i].m_inWave = TRUE;
+			// Around the seen defences, or against those that cover the objective: waypoints first.
+			planWaveRoute(center, objective);
+			const Coord3D first = routeActive() ? m_route[0] : objective;
 			for (Int i = 0; i < m_numTeams; ++i)
 			{
 				AITeamRecord &rec = m_teams[i];
@@ -1436,9 +1458,9 @@ void AIStrategy::updateArmy()
 					continue;
 				rec.m_mode = AITEAM_ATTACKING;
 				rec.m_modeFrame = now;
-				rec.m_target = objective;
+				rec.m_target = first;
 				rec.m_idleSince = 0;
-				orderTeamAttackMove(team, &objective);
+				orderTeamAttackMove(team, &first);
 			}
 		}
 		else
@@ -1450,7 +1472,10 @@ void AIStrategy::updateArmy()
 	{
 		// The wave is spent (most of it dead or run away): gather again.
 		if (value >= 0.25f * m_launchValue && m_numTeams > 0 && weight > 0.0f)
+		{
+			advanceWaveRoute(center);
 			checkWaveOnTheWay(&center);
+		}
 		if (m_armyState == ARMY_ATTACK && mergeOn())
 			reinforceWave();
 		if (m_armyState != ARMY_ATTACK)
@@ -1592,6 +1617,13 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 		{
 			rec->m_badSince = 0;
 		}
+	}
+
+	// A team of the wave that stands at a waypoint waits for the others there.
+	if (routeHolds(rec, center))
+	{
+		rec->m_idleSince = 0;
+		return;
 	}
 
 	switch (rec->m_mode)
@@ -2074,7 +2106,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 5;
+	XferVersion currentVersion = 6;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2151,6 +2183,23 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferUser(m_sites, sizeof(m_sites));
 		xfer->xferUnsignedInt(&m_nextSiteScan);
 		xfer->xferUnsignedInt(&m_nextRepair);
+	}
+	if (version >= 6)
+	{
+		xfer->xferUser(m_route, sizeof(m_route));
+		xfer->xferInt(&m_routeLen);
+		xfer->xferInt(&m_routeIdx);
+		xfer->xferUnsignedInt(&m_routeLegStart);
+		xfer->xferUnsignedInt(&m_routeArrived);
+		xfer->xferInt(&m_numBreachers);
+		xfer->xferUser(m_breachers, sizeof(m_breachers));
+		xfer->xferInt(&m_numBreachTargets);
+		xfer->xferUser(m_breachTargets, sizeof(m_breachTargets));
+		xfer->xferCoord3D(&m_breachStage);
+		xfer->xferUnsignedInt(&m_breachStart);
+		xfer->xferUnsignedInt(&m_nextBreachCheck);
+		xfer->xferBool(&m_breachHold);
+		xfer->xferBool(&m_breachFallback);
 	}
 }
 
