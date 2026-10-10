@@ -847,6 +847,7 @@ set(GAMEENGINE_SRC
     Source/GameLogic/AI/AISkirmishPlayer.cpp
     Source/GameLogic/AI/AIStrategy.cpp
     Source/GameLogic/AI/AITactics.cpp
+    Source/GameLogic/AI/AIAllyHelp.cpp
     Source/GameLogic/AI/AIBaseDefence.cpp
     Source/GameLogic/AI/AIGeo.cpp
     Source/GameLogic/AI/AIAbility.cpp
