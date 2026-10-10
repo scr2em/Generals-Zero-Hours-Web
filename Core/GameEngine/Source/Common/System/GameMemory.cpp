@@ -134,7 +134,11 @@ DECLARE_PERF_TIMER(MemoryPoolInitFilling)
 
 #ifdef MEMORYPOOL_BOUNDINGWALL
 
+	#if defined(__LP64__) || defined(_WIN64)
+	#define WALLCOUNT (4)	// a wall is a multiple of MEM_BOUND_ALIGNMENT (16), so the user data stays aligned
+	#else
 	#define WALLCOUNT (2)	// default setting of 8 requires 4*4*2==32 extra bytes PER BLOCK
+	#endif
 	#define WALLSIZE	(WALLCOUNT * sizeof(Int))
 
 #endif
@@ -201,10 +205,14 @@ static Bool theMainInitFlag = false;
 
 /// @todo srj -- make this work for 8
 #if defined(__LP64__) || defined(_WIN64)
-// TheSuperHackers @fix 64-bit builds (the native headless build): blocks hold 8-byte pointers, keep them aligned.
-#define MEM_BOUND_ALIGNMENT 8
+// TheSuperHackers @fix 64-bit builds (the native headless build): blocks are 16-byte aligned, like malloc's. The global
+// operator new comes from here, and the system's C++ library (libc++, libstdc++), compiled for 16-byte aligned new,
+// stores to its objects with aligned SSE instructions (libc++'s std::filesystem::directory_iterator crashed on x86-64).
+#define MEM_BOUND_ALIGNMENT 16
+#define MEM_BLOCK_HEADER_ALIGN alignas(MEM_BOUND_ALIGNMENT)
 #else
 #define MEM_BOUND_ALIGNMENT 4
+#define MEM_BLOCK_HEADER_ALIGN
 #endif
 
 static Int roundUpMemBound(Int i);
@@ -403,7 +411,7 @@ public:
 	Note also that we directly allocate/free these with sysAllocate/sysFree, so ctors/dtors
 	are never executed, nor would virtual functions work -- I know, it's a little evil.
 */
-class MemoryPoolSingleBlock
+class MEM_BLOCK_HEADER_ALIGN MemoryPoolSingleBlock	// its size is a multiple of MEM_BOUND_ALIGNMENT: the user data follows it
 {
 private:
 
