@@ -158,6 +158,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_nextBaseDefence(0),
 	m_bdMuteUntil(0),
 	m_bdMuteValue(0.0f),
+	m_bdSeenFrame(0),
 	m_bdWeakFrame(0),
 	m_numBunkerMen(0),
 	m_nextBunker(0),
@@ -2207,19 +2208,32 @@ void AIStrategy::sendReinforcementsToThreat()
 			return;
 	}
 
-	AI_TRACE("base threatened (%.0f at (%.0f,%.0f)): recalling the army", threat, where.x, where.y);
 	if (m_ahActive)
 		endAllyHelp("our own base is under attack");
 	m_armyState = ARMY_GATHER;
 	m_armyStateFrame = now;
 	m_armyPeak = m_armyValue;
 	m_armyGrowthFrame = now;
+	Int recalled = 0, fighting = 0;
 	for (Int i = 0; i < m_numTeams; ++i)
 	{
 		AITeamRecord &rec = m_teams[i];
 		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
 		if (team == nullptr || !isManageableTeam(team))
 			continue;
+		// A team in a fight finishes it: turning its back on the enemy would cost it the units, and the fight would be lost too.
+		const Coord3D *p = team->getEstimateTeamPosition();
+		Real ours = 0.0f, theirs = 0.0f;
+		if (p && dist2D(*p, where) > 600.0f)
+		{
+			fightAdvantage(p, 450.0f, &ours, &theirs);
+			if (theirs > 0.0f)
+			{
+				++fighting;
+				continue;
+			}
+		}
+		++recalled;
 		rec.m_mode = AITEAM_DEFENDING;
 		rec.m_modeFrame = now;
 		rec.m_target = where;
@@ -2227,6 +2241,7 @@ void AIStrategy::sendReinforcementsToThreat()
 		rec.m_baseDefence = baseDefenceOn();
 		orderTeamAttackMove(team, &where);
 	}
+	AI_TRACE("base threatened (%.0f at (%.0f,%.0f)): %d team(s) recalled, %d team(s) in a fight stay in it", threat, where.x, where.y, recalled, fighting);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2743,6 +2758,7 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferInt(&m_surplusInfantry);
 		xfer->xferUnsignedInt(&m_nextContest);
 		xfer->xferReal(&m_expandCost);
+		xfer->xferUnsignedInt(&m_bdSeenFrame);
 	}
 }
 

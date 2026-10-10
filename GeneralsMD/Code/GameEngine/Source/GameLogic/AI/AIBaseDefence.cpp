@@ -81,10 +81,17 @@ Bool AIStrategy::baseAlarmBlocksWaves( UnsignedInt now ) const
 		return FALSE;
 	if (m_ai->isFeatureOff(AIPlayer::AIF_BDCAP))
 		return TRUE;
-	if (baseAlarmStale(now))
+	if (baseAlarmStale(now) || baseThreatUnseen(now))
 		return FALSE;
 	const Bool hit = m_bdDamageFrame != 0 && now - m_bdDamageFrame <= 8 * LOGICFRAMES_PER_SECOND;
 	return hit || m_bdValue * 3.0f >= m_armyValue;
+}
+
+/// The alarm is only about damage from something nobody has seen in the base zone for a while (long-range artillery, a field
+/// that burns): one team goes to look, the rest of the army keeps its role and the waves are not held back.
+Bool AIStrategy::baseThreatUnseen( UnsignedInt now ) const
+{
+	return m_bdActive && now - m_bdSince >= 20 * LOGICFRAMES_PER_SECOND && (m_bdSeenFrame == 0 || now - m_bdSeenFrame > 20 * LOGICFRAMES_PER_SECOND);
 }
 
 /// One of our objects took damage: when it stands inside the base zone and an enemy did it, that is a threat (reported by the body module).
@@ -103,7 +110,7 @@ void AIStrategy::noteBaseDamage( Object *victim, ObjectID attacker, Real amount 
 }
 
 /// Armed enemy units seen in the base zone in the last seconds (or the place of the latest damage): their value and where they are.
-Bool AIStrategy::findBaseThreat( Coord3D *where, Real *value ) const
+Bool AIStrategy::findBaseThreat( Coord3D *where, Real *value, Bool *seen ) const
 {
 	Coord3D base;
 	if (!m_ai->getBaseCenter(&base))
@@ -132,6 +139,7 @@ Bool AIStrategy::findBaseThreat( Coord3D *where, Real *value ) const
 		}
 	}
 	const Bool damaged = m_bdDamageFrame != 0 && now - m_bdDamageFrame <= 4 * LOGICFRAMES_PER_SECOND;
+	*seen = threat >= sk.m_baseDefenceMinValue;
 	if (now < m_bdMuteUntil && !damaged && threat < 2.0f * m_bdMuteValue)
 		return FALSE;		// the force that stood about without hurting anything for a minute (see updateBaseDefence)
 	if (threat < sk.m_baseDefenceMinValue && !damaged)
@@ -174,7 +182,10 @@ void AIStrategy::updateBaseDefence()
 	const Bool respond = baseDefenceOn();
 	Coord3D where;
 	Real value = 0.0f;
-	const Bool threat = findBaseThreat(&where, &value);
+	Bool seen = FALSE;
+	const Bool threat = findBaseThreat(&where, &value, &seen);
+	if (threat && seen)
+		m_bdSeenFrame = now;
 
 	if (!threat)
 	{
@@ -299,6 +310,53 @@ void AIStrategy::updateBaseDefence()
 			m_bdWeakFrame = now;
 			AI_TRACE("BASEDEF: %d team(s) at home (%.0f) stay together at the rally point against %.0f (nothing of ours is hit)", count, homeValue, value);
 		}
+		return;
+	}
+	// Only unseen damage for a while: the team nearest to it looks, the others that were sent go back to their role.
+	if (baseThreatUnseen(now))
+	{
+		Int keep = -1;
+		Real keepDist = 0.0f;
+		for (Int i = 0; i < m_numTeams; ++i)
+		{
+			Team *team = TheTeamFactory->findTeamByID(m_teams[i].m_team);
+			const Coord3D *p = team ? team->getEstimateTeamPosition() : nullptr;
+			if (p == nullptr || !isManageableTeam(team) || !(m_teams[i].m_baseDefence && m_teams[i].m_mode == AITEAM_DEFENDING))
+				continue;
+			if (keep < 0 || dist2D(*p, where) < keepDist)
+			{
+				keep = i;
+				keepDist = dist2D(*p, where);
+			}
+		}
+		Int released = 0;
+		for (Int i = 0; i < m_numTeams; ++i)
+		{
+			AITeamRecord &rec = m_teams[i];
+			if (i == keep || !(rec.m_baseDefence && rec.m_mode == AITEAM_DEFENDING))
+				continue;
+			rec.m_baseDefence = FALSE;
+			rec.m_mode = AITEAM_FREE;
+			rec.m_modeFrame = now;
+			rec.m_orderFrame = 0;
+			++released;
+		}
+		if (keep < 0 && count > 0)
+		{
+			Int nearest = 0;
+			for (Int c = 1; c < count; ++c)
+			{
+				const Coord3D *a = TheTeamFactory->findTeamByID(m_teams[order[c]].m_team)->getEstimateTeamPosition();
+				const Coord3D *b = TheTeamFactory->findTeamByID(m_teams[order[nearest]].m_team)->getEstimateTeamPosition();
+				if (dist2D(*a, where) < dist2D(*b, where))
+					nearest = c;
+			}
+			AITeamRecord &rec = m_teams[order[nearest]];
+			sendTeamToBase(TheTeamFactory->findTeamByID(rec.m_team), rec, where);
+			++m_bdOrders;
+		}
+		if (released > 0)
+			AI_TRACE("BASEDEF: only unseen damage at (%.0f,%.0f) for 20 s: one team looks, %d team(s) go back to their role", where.x, where.y, released);
 		return;
 	}
 	Int sent = 0;

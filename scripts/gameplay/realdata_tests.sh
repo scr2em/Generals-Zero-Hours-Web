@@ -55,6 +55,9 @@
 #   * enemy supply near ours: "CONTEST: enemy <supply center> at (x,y), D from our supply center: N team(s) ... attack it"
 #     when the enemy builds a supply center next to one of the Expert's.
 #   * expansion: "EXPAND: supply center at the supply source at (x,y)" at least once in the first 10 minutes.
+#   * base defence: damage by an enemy nobody sees gives "BASEDEF: only unseen damage at (x,y) for 20 s: one team looks,
+#     N team(s) go back to their role" (not the whole army at home); a recall during a wave says "base threatened ...:
+#     N team(s) recalled, M team(s) in a fight stay in it".
 #
 # Options:
 #   --quick           fewer games (about a third of the time)
