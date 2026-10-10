@@ -1,6 +1,6 @@
 {
  "name": "starter-formation-column",
- "description": "Smoke check only (starter content, says nothing about gameplay): a click move in a column: rows of two; every unit ends within 30 of its slot at the destination, facing the move.",
+ "description": "Smoke check only (starter content, says nothing about gameplay): a click move in a column: rows of two; every unit ends within 30 of its slot at the destination, facing the move (a unit pushed off its slot by a later one goes back: at most two trips back, no third).",
  "map": "Ironwood Crossing",
  "players": "human:Ironwood,idle:Ironwood",
  "seed": 1,
@@ -18,5 +18,6 @@
   "wait 1200",
   "dump army",
   "expect shape army column"
- ]
+ ],
+ "log": [{ "match": "^ASSIST formation return .*\\(trip 3\\)", "max": 0 }]
 }

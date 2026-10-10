@@ -1,6 +1,6 @@
 {
  "name": "formation-column",
- "description": "a click move in a column: rows of two; every unit ends within 30 of its slot at the destination, facing the move; the tanks stand ahead of the rocket soldiers (tough units in front, long range behind).",
+ "description": "a click move in a column: rows of two; every unit ends within 30 of its slot at the destination, facing the move (a unit pushed off its slot by a later one goes back: at most two trips back, no third); the tanks stand ahead of the rocket soldiers (tough units in front, long range behind).",
  "map": "tournamenta",
  "players": "human:America:-1:1,idle:China:-1:2",
  "seed": 1,
@@ -19,5 +19,6 @@
   "dump army",
   "expect shape army column",
   "expect ahead tanks rockets"
- ]
+ ],
+ "log": [{ "match": "^ASSIST formation return .*\\(trip 3\\)", "max": 0 }]
 }

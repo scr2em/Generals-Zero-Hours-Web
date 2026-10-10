@@ -35,7 +35,11 @@
 # an attack by themselves, stance-split-retaliate (tournamenta, human:America against idle:China; eight Rangers with split
 # fire, a Red Guard shoots at them, a second one 20 frames later): assists/stance-split-retaliate.trace.txt has between one and
 # eight "ASSIST stance split: unit N leaves A (enough on its way) for B" (A the first Red Guard, never back to it), both Red
-# Guards dead within 300 frames and every Ranger alive. See docs/PLAYER_ASSISTS.md for the other scenarios.
+# Guards dead within 300 frames and every Ranger alive. For the column, formation-column (tournamenta, three Crusaders, four
+# Rangers, three Missile Defenders in rows of two): every unit within 30 of its slot (assists/formation-column.trace.txt,
+# "expect shape army column" with maxError below 30), the Crusaders ahead of the Missile Defenders, and any unit pushed off
+# its slot by a late one sent back ("ASSIST formation return id=N ... (trip 1)" or "(trip 2)", never "(trip 3)").
+# See docs/PLAYER_ASSISTS.md for the other scenarios.
 #
 # Options:
 #   --quick           fewer games (about a third of the time)

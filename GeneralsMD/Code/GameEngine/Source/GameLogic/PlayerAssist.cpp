@@ -116,6 +116,7 @@ void PlayerAssist::logicUpdate()
 	m_protect.update( now );
 	updateStances( now );
 	updateRepeat( now );
+	updateSlots( now );
 	if (now >= m_pruneFrame)
 	{
 		m_pruneFrame = now + 2 * LOGICFRAMES_PER_SECOND;
@@ -251,9 +252,26 @@ void PlayerAssist::crc( Xfer *x )
 }
 
 //-------------------------------------------------------------------------------------------------
+void PlayerAssist::xferUnit( Xfer *xfer, UnsignedByte version, UnitState &st )
+{
+	xfer->xferUnsignedByte( &st.m_formation );
+	if (version < 7)
+		return;	// older saves keep no slots: the units of a formation move are left where they stand
+	xfer->xferUnsignedByte( &st.m_slotPhase );
+	if (st.m_slotPhase == SLOT_NONE)
+		return;
+	xfer->xferUnsignedByte( &st.m_slotReturns );
+	xfer->xferInt( &st.m_slotFid );
+	xfer->xferCoord3D( &st.m_slot );
+	xfer->xferUnsignedInt( &st.m_slotUntil );
+	xfer->xferUnsignedInt( &st.m_awaySince );
+	xfer->xferCoord3D( &st.m_awayPos );
+}
+
+//-------------------------------------------------------------------------------------------------
 void PlayerAssist::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 6;
+	XferVersion currentVersion = 7;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -301,7 +319,7 @@ void PlayerAssist::xfer( Xfer *xfer )
 			ObjectID id = INVALID_ID;
 			UnitState st;
 			xfer->xferObjectID( &id );
-			xfer->xferUnsignedByte( &st.m_formation );
+			xferUnit( xfer, version, st );
 			m_units[id] = st;
 		}
 	}
@@ -311,7 +329,7 @@ void PlayerAssist::xfer( Xfer *xfer )
 		{
 			ObjectID id = it->first;
 			xfer->xferObjectID( &id );
-			xfer->xferUnsignedByte( &it->second.m_formation );
+			xferUnit( xfer, version, it->second );
 		}
 	}
 }

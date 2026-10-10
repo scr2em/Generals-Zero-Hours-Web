@@ -188,11 +188,27 @@ public:
 	virtual void loadPostProcess() override;
 
 private:
+	/// Where a unit of a formation move goes, and whether it is still kept there (AssistFormation.cpp, updateSlots).
+	enum { SLOT_NONE = 0, SLOT_MOVING, SLOT_ARRIVED, SLOT_RETURNING };
 	struct UnitState
 	{
 		UnsignedByte	m_formation;
+		UnsignedByte	m_slotPhase;		///< SLOT_
+		UnsignedByte	m_slotReturns;	///< times it was sent back to the slot in this move
+		Int						m_slotFid;			///< the formation id of the move (the slot is kept while the unit has it)
+		Coord3D				m_slot;					///< its slot at the destination
+		UnsignedInt		m_slotUntil;		///< the slot is no longer kept after this frame
+		UnsignedInt		m_awaySince;		///< the frame it was first seen standing off its slot (0: not)
+		Coord3D				m_awayPos;			///< where it stood then
+		UnitState() : m_formation( 0 ), m_slotPhase( SLOT_NONE ), m_slotReturns( 0 ), m_slotFid( 0 ), m_slotUntil( 0 ), m_awaySince( 0 )
+		{
+			m_slot.x = m_slot.y = m_slot.z = 0.0f;
+			m_awayPos = m_slot;
+		}
 	};
 	typedef std::map<ObjectID, UnitState> UnitMap;			// ordered by object id: deterministic iteration
+	void updateSlots( UnsignedInt now );
+	void xferUnit( Xfer *xfer, UnsignedByte version, UnitState &st );		///< version: of PlayerAssist::xfer
 
 	/// Idle army units that were sent to the attacked place, and where they stood.
 	struct DefendState

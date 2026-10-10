@@ -24,7 +24,9 @@
 // the destination, turned to face the way the group moves (or the way the player dragged), gives every unit the
 // slot as its formation offset and marks the units as one formation of the game.  The game's formation movement
 // then takes over: the units follow the same path shifted by their offsets, at the speed of the slowest member,
-// so they arrive together and in shape.
+// so they arrive together and in shape.  For a while after it arrived, a unit that is pushed off its slot (the game
+// moves idle units out of the way of a vehicle that drives through, such as a late member of the formation) goes back
+// (updateSlots).
 //
 // Which unit gets which slot: the roles come from the weapons, armor and body of the thing template (no names).
 // Tough, short range units take the front rows, long range units the back rows, support units (healers, repairers),
@@ -40,6 +42,7 @@
 #include "Common/Player.h"
 #include "Common/ThingTemplate.h"
 #include "GameLogic/AI.h"
+#include "GameLogic/AIStateMachine.h"
 #include "GameLogic/AIStrategy.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Module/AIUpdate.h"
@@ -50,6 +53,14 @@
 #include "GameLogic/TerrainLogic.h"
 #include "GameLogic/Weapon.h"
 #include "GameLogic/Pathfinder/PathfindConstants.h"
+
+// Keeping the slots after a formation move (updateSlots)
+static const UnsignedInt SLOT_CHECK_FRAMES = 5;													///< how often the units are looked at
+static const Real SLOT_TOLERANCE = 20.0f;															///< a unit this close stands on its slot
+static const UnsignedInt SLOT_SETTLE_FRAMES = LOGICFRAMES_PER_SECOND;	///< standing still off its slot this long: send it back
+static const UnsignedInt SLOT_KEEP_FRAMES = 30 * LOGICFRAMES_PER_SECOND;	///< the slot is kept this long after the unit arrived
+static const UnsignedInt SLOT_TRIP_FRAMES = 180 * LOGICFRAMES_PER_SECOND;	///< a unit that has not arrived by then is left alone
+static const UnsignedByte SLOT_MAX_RETURNS = 3;												///< trips back per move
 
 //-------------------------------------------------------------------------------------------------
 static Bool slotLess( const AssistSlot &a, const AssistSlot &b )
@@ -534,15 +545,128 @@ Bool PlayerAssist::prepareFormationMove( AIGroup *group, const Coord3D *dest )
 	// hand the slots to the game's formation movement
 	ASSIST_DEBUG(( "ASSIST formation move type=%d units=%d angle=%.1f width=%.0f dest=%.0f,%.0f spacing=%.0f", type, (int)mem.size(),
 		angle * 180.0f / 3.14159265f, width, dest->x, dest->y, spacing ));
-	const FormationID fid = TheAI->getNextFormationID();
 	for (size_t i = 0; i < mem.size(); ++i)
 	{
 		if (mem[i].m_slot < 0)
 			return FALSE;
+	}
+	const FormationID fid = TheAI->getNextFormationID();
+	const UnsignedInt now = TheGameLogic->getFrame();
+	for (size_t i = 0; i < mem.size(); ++i)
+	{
 		ASSIST_DEBUG(( "ASSIST slot id=%d %s role=%d row=%d offset=%.0f,%.0f", (int)mem[i].m_id, mem[i].m_obj->getTemplate()->getName().str(),
 			mem[i].m_role, mem[i].m_row, slotOffset[mem[i].m_slot].x, slotOffset[mem[i].m_slot].y ));
 		mem[i].m_obj->setFormationOffset( slotOffset[mem[i].m_slot] );
 		mem[i].m_obj->setFormationID( fid );
+
+		// the slot is kept: a unit that is pushed off it after it arrived goes back (updateSlots)
+		UnitState &st = m_units[mem[i].m_id];
+		st.m_slotPhase = SLOT_MOVING;
+		st.m_slotReturns = 0;
+		st.m_slotFid = (Int)fid;
+		st.m_slot.x = dest->x + slotOffset[mem[i].m_slot].x;
+		st.m_slot.y = dest->y + slotOffset[mem[i].m_slot].y;
+		st.m_slot.z = TheTerrainLogic->getGroundHeight( st.m_slot.x, st.m_slot.y );
+		st.m_slotUntil = now + SLOT_TRIP_FRAMES;
+		st.m_awaySince = 0;
 	}
 	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/// Units of a formation hold their slots while the rest of the formation comes in.
+///
+/// The units of a formation move do not arrive together: one that has further to go, turns slowly or is held up
+/// arrives late, and in a narrow shape (a column has two lanes) it has to pass units that already stand in their
+/// slots.  The game moves an idle unit out of the way of a vehicle that drives through (AI_MOVE_OUT_OF_THE_WAY), and
+/// that unit then stays where it was pushed.  So: a unit that arrived at its slot and is later found standing still
+/// off it (pushed away, not given anything else to do) is sent back.  The slot is kept only for this move: a new order
+/// (a new formation id), anything the unit does by itself (an attack, a retreat), SLOT_KEEP_FRAMES after it arrived
+/// or SLOT_MAX_RETURNS trips back end it.
+void PlayerAssist::updateSlots( UnsignedInt now )
+{
+	if (now % SLOT_CHECK_FRAMES != 0)
+		return;
+
+	for (UnitMap::iterator it = m_units.begin(); it != m_units.end(); ++it)
+	{
+		UnitState &st = it->second;
+		if (st.m_slotPhase == SLOT_NONE)
+			continue;
+
+		Object *obj = TheGameLogic->findObjectByID( it->first );
+		AIUpdateInterface *ai = obj ? obj->getAIUpdateInterface() : nullptr;
+		if (ai == nullptr || obj->isEffectivelyDead() || (Int)obj->getFormationID() != st.m_slotFid || now > st.m_slotUntil ||
+			obj->isDisabledByType( DISABLED_HELD ) || obj->getContainedBy() != nullptr)
+		{
+			st.m_slotPhase = SLOT_NONE;
+			continue;
+		}
+
+		const Coord3D *pos = obj->getPosition();
+		const Real dx = pos->x - st.m_slot.x;
+		const Real dy = pos->y - st.m_slot.y;
+		const Bool onSlot = dx * dx + dy * dy <= SLOT_TOLERANCE * SLOT_TOLERANCE;
+		const Bool idle = ai->isIdle();
+
+		switch (st.m_slotPhase)
+		{
+			case SLOT_MOVING:
+				// on its way; it counts as arrived once it stands idle on its slot (one that stops short is left alone)
+				if (idle && onSlot)
+				{
+					st.m_slotPhase = SLOT_ARRIVED;
+					st.m_slotUntil = now + SLOT_KEEP_FRAMES;
+					st.m_awaySince = 0;
+				}
+				break;
+
+			case SLOT_RETURNING:
+				if (!idle)
+				{
+					// still on the way back, unless something else (the player, a fight) took over
+					if (ai->getLastCommandSource() != CMD_FROM_AI || ai->getCurrentStateID() != AI_MOVE_TO)
+						st.m_slotPhase = SLOT_NONE;
+					break;
+				}
+				st.m_slotPhase = SLOT_ARRIVED;
+				st.m_awaySince = 0;
+				FALLTHROUGH;
+
+			case SLOT_ARRIVED:
+			default:
+				if (!idle)
+				{
+					// it was given something to do: the slot is no longer its business
+					st.m_slotPhase = SLOT_NONE;
+					break;
+				}
+				if (onSlot)
+				{
+					st.m_awaySince = 0;
+					break;
+				}
+				// off the slot: wait until it has stood still for a moment (it is not being pushed any more)
+				if (st.m_awaySince == 0 || fabs( pos->x - st.m_awayPos.x ) > 1.0f || fabs( pos->y - st.m_awayPos.y ) > 1.0f)
+				{
+					st.m_awaySince = now;
+					st.m_awayPos = *pos;
+					break;
+				}
+				if (now - st.m_awaySince < SLOT_SETTLE_FRAMES)
+					break;
+				if (st.m_slotReturns >= SLOT_MAX_RETURNS)
+				{
+					st.m_slotPhase = SLOT_NONE;
+					break;
+				}
+				++st.m_slotReturns;
+				st.m_slotPhase = SLOT_RETURNING;
+				st.m_awaySince = 0;
+				ASSIST_DEBUG(( "ASSIST formation return id=%d to %.0f,%.0f from %.0f away (trip %d)", (int)it->first, st.m_slot.x, st.m_slot.y,
+					sqrtf( dx * dx + dy * dy ), (int)st.m_slotReturns ));
+				ai->aiMoveToPosition( &st.m_slot, CMD_FROM_AI );
+				break;
+		}
+	}
 }

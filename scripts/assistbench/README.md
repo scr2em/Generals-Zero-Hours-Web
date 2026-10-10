@@ -120,7 +120,7 @@ Every unit must meet the condition (`any=1`: one is enough).
 
 | scenario | checks |
 |---|---|
-| `formation-line`, `-column`, `-wedge`, `-box`, `-loose` | a click move in that formation: every unit on its slot at the destination; the tanks ahead of the rocket soldiers (column, wedge, box, loose) |
+| `formation-line`, `-column`, `-wedge`, `-box`, `-loose` | a click move in that formation: every unit on its slot at the destination; the tanks ahead of the rocket soldiers (column, wedge, box, loose); column: a unit pushed off its slot by a late one is sent back (`ASSIST formation return id=N ... (trip 1)`), never a third time |
 | `formation-keep` | keep shape: after a move the units stand as before, relative to each other |
 | `formation-drag` | drag to aim: the line on the dragged front line, facing away; a narrow drag with the box gives rows as wide as the drag |
 | `formation-hotkey-group` | a hotkey group keeps its formation when it is selected again |

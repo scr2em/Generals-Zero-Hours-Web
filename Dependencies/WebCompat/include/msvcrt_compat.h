@@ -99,7 +99,11 @@ char *_ui64toa(unsigned long long value, char *buffer, int radix);
 #define _strtoui64 strtoull
 
 /* Wide strings (16-bit wchar_t, see wchar16.cpp) */
+#if defined(__APPLE__)
+#include <wctype.h>	/* the macOS SDK has iswascii() as a function; a macro would break its declaration */
+#else
 #define iswascii(c) (((c) & ~0x7F) == 0)
+#endif
 int _wcsicmp(const wchar_t *a, const wchar_t *b);
 int _wcsnicmp(const wchar_t *a, const wchar_t *b, size_t n);
 wchar_t *_wcsupr(wchar_t *s);
