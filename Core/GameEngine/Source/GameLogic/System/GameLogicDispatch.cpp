@@ -567,6 +567,7 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 		case GameMessage::MSG_ASSIST_STANCE:
 		case GameMessage::MSG_ASSIST_BASE_DEFEND:
 		case GameMessage::MSG_ASSIST_BASE_RETURN:
+		case GameMessage::MSG_ASSIST_REPEAT_PRODUCTION:
 		{
 #if RTS_ZEROHOUR
 			// player assists: only carried out when the match allows them

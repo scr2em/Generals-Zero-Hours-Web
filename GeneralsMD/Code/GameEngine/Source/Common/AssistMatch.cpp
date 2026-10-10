@@ -51,6 +51,10 @@
 //     unprotect                                    MSG_ASSIST_UNPROTECT for the selection
 //     idle army|all|workers                        what the idle hotkeys do: select the next idle army unit, all idle army units
 //                                                  or the next idle worker (PlayerAssist::pickIdle, MSG_CREATE_SELECTED_GROUP)
+//     produce <factory> <template>                 select the building and queue the unit, as the command bar does
+//                                                  (MSG_CREATE_SELECTED_GROUP, MSG_QUEUE_UNIT_CREATE)
+//     repeat <factories> on|off [reserve=<money>]  MSG_ASSIST_REPEAT_PRODUCTION (the reserve is kept until given again, default 0);
+//     repeat - reserve reserve=<money>             only the reserve, as when it is changed in the options during a match
 //     send <command> [int:<n>|bool:<0|1>|real:<x>|pos:<pos>|obj:<objects>]...
 //                                                  any other command of the player by name (MSG_ASSIST_STANCE or ASSIST_STANCE),
 //                                                  with its arguments in order (obj: appends every object), e.g. the orders of
@@ -60,6 +64,7 @@
 //     damage <objects> <amount>[%] [by=<objects>]  damage (or a share of the full health) as if the first of by= had hit them
 //                                                  (that is what raises a protect alarm); armour does not count
 //     kill <objects>
+//     money <slot> <amount>                        set a player's money (a test setup, like spawn)
 //   Time and checks
 //     wait <frames>
 //     until [not] <condition> [max=<frames>]       wait until the condition holds (a check: fails after max=, default 900)
@@ -91,6 +96,9 @@
 //   alive / dead / damaged / idle <objects>
 //   selection <objects> [exact=1]        the units are in the selection the script made last (select, idle ...); exact=1: and nothing else
 //   count <objects> <op><n>              the number of live objects in the set compared with n (op: = <= >= < >; "4" is "=4")
+//   repeating <objects>                  repeat production is on for the buildings
+//   queued <factory> <op><n>             the number of entries in the production queue of the (first) building
+//   cash <slot> <op><n>                  the player's money
 //
 // Every check is printed as "ASSISTMATCH_CHECK PASS|FAIL ..." and the end result as "ASSISTMATCH_RESULT {json}".
 //
@@ -105,6 +113,7 @@
 #include "Common/GameEngine.h"
 #include "Common/GlobalData.h"
 #include "Common/MessageStream.h"
+#include "Common/Money.h"
 #include "Common/MultiplayerSettings.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
@@ -118,6 +127,7 @@
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Module/AIUpdate.h"
 #include "GameLogic/Module/BodyModule.h"
+#include "GameLogic/Module/ProductionUpdate.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/Pathfinder/PathfindConstants.h"
 #include "GameLogic/PlayerAssist.h"
@@ -403,7 +413,7 @@ const VerbInfo kVerbs[] = {
 	{ "spawn", 2 }, { "name", 2 }, { "snapshot", 1 }, { "dump", 1 },
 	{ "select", 1 }, { "group", 1 }, { "selectgroup", 1 }, { "formation", 1 }, { "fmove", 1 },
 	{ "move", 1 }, { "attackmove", 1 }, { "guard", 1 }, { "attack", 1 }, { "stop", 0 },
-	{ "protect", 1 }, { "unprotect", 0 }, { "send", 1 }, { "idle", 1 },
+	{ "protect", 1 }, { "unprotect", 0 }, { "send", 1 }, { "idle", 1 }, { "produce", 2 }, { "repeat", 2 }, { "money", 2 },
 	{ "ai", 2 }, { "damage", 2 }, { "kill", 1 },
 	{ "wait", 1 }, { "until", 2 }, { "expect", 2 },
 };
@@ -418,7 +428,7 @@ const CondInfo kConds[] = {
 	{ "formation", 2 }, { "shape", 2 }, { "sameshape", 1 }, { "ahead", 2 }, { "nearline", 3 }, { "near", 2 },
 	{ "linked", 1 }, { "unlinked", 1 }, { "protects", 2 }, { "state", 2 }, { "athome", 1 }, { "homeat", 2 },
 	{ "alive", 1 }, { "dead", 1 }, { "damaged", 1 }, { "idle", 1 }, { "atsnapshot", 1 }, { "apart", 1 }, { "health", 3 },
-	{ "selection", 1 }, { "count", 2 },
+	{ "selection", 1 }, { "count", 2 }, { "repeating", 1 }, { "queued", 2 }, { "cash", 2 },
 };
 
 Bool parseScript(const std::string &text, std::vector<Step> &out, std::string &error)
@@ -452,8 +462,12 @@ Bool parseScript(const std::string &text, std::vector<Step> &out, std::string &e
 			{
 				if (word.empty())
 					continue;
+				// key=value is an option when the key is a word ("<=3", ">=4" and "=0" are arguments: comparisons)
 				const size_t eq = word.find('=');
-				if (eq != std::string::npos && eq > 0 && !s.args.empty())
+				Bool isKey = eq != std::string::npos && eq > 0;
+				for (size_t k = 0; isKey && k < eq; ++k)
+					isKey = isalnum((unsigned char)word[k]) || word[k] == '_';
+				if (isKey && !s.args.empty())
 					s.opts[lowered(word.substr(0, eq))] = word.substr(eq + 1);
 				else
 					s.args.push_back(word);
@@ -557,6 +571,7 @@ public:
 	{
 		for (Int i = 0; i < 3; ++i)
 			m_lastIdle[i] = INVALID_ID;
+		m_reserve = 0;
 	}
 
 	Bool setup(std::string &error);
@@ -590,6 +605,7 @@ private:
 	Int m_stepsDone;
 	Bool m_assistsAllowed;
 	ObjectID m_lastIdle[3];		// the unit each idle pick chose last (PlayerAssist::IdlePick), as the hotkeys remember it
+	Int m_reserve;						// the money reserve the repeat commands carry (the option of the player)
 
 	std::vector<Check> m_checks;
 	std::map<std::string, std::vector<ObjectID> > m_names;
@@ -1142,10 +1158,45 @@ Eval Runner::evaluate(const Step &s, size_t first)
 	const Bool any = s.opt("any", "0") == "1";
 	std::string error;
 
+	if (cond == "cash")
+	{
+		Int slot = -1, want = 0;
+		std::string op;
+		Player *player = parseSigned(a[0], slot) ? ThePlayerList->getPlayerFromSlotIndex(slot) : nullptr;
+		if (player == nullptr || !parseCompare(a[1], op, want))
+		{
+			e.fail("cash <slot> <op><n>, e.g. cash 0 >=1500");
+			return e;
+		}
+		const Int money = (Int)player->getMoney()->countMoney();
+		e.num("money", money);
+		e.ok = compare(money, op, want);
+		e.detail = format("player %d has %d (wanted %s%d)", slot, money, op.c_str(), want);
+		return e;
+	}
+
 	std::vector<ObjectID> ids;
 	if (!resolveObjects(a[0], ids, error))
 	{
 		e.fail(error);
+		return e;
+	}
+
+	if (cond == "queued")
+	{
+		std::string op;
+		Int want = 0;
+		Object *o = ids.empty() ? nullptr : TheGameLogic->findObjectByID(ids[0]);
+		ProductionUpdateInterface *pu = o ? o->getProductionUpdateInterface() : nullptr;
+		if (pu == nullptr || !parseCompare(a[1], op, want))
+		{
+			e.fail("queued <building> <op><n>: needs a live building with a production queue");
+			return e;
+		}
+		const Int n = (Int)pu->getProductionCount();
+		e.num("queued", n);
+		e.ok = compare(n, op, want);
+		e.detail = format("%d entries in the queue (wanted %s%d)", n, op.c_str(), want);
 		return e;
 	}
 
@@ -1510,6 +1561,8 @@ Eval Runner::evaluate(const Step &s, size_t first)
 			pass = o->getBodyModule() && o->getBodyModule()->getHealth() < o->getBodyModule()->getMaxHealth();
 		else if (cond == "idle")
 			pass = o->getAIUpdateInterface() && o->getAIUpdateInterface()->isIdle();
+		else if (cond == "repeating")
+			pass = ThePlayerAssist->repeatOn(ids[i]);
 		if (pass)
 			++good;
 	}
@@ -1770,6 +1823,62 @@ void Runner::runStep(Int index, const Step &s, std::string &fatal)
 	}
 	else if (verb == "unprotect")
 		message(GameMessage::MSG_ASSIST_UNPROTECT);
+	else if (verb == "produce")
+	{
+		// as the command bar does it: the building is selected, then the unit is queued with a new production id
+		std::vector<Object *> objs;
+		const ThingTemplate *tt = TheThingFactory->findTemplate(AsciiString(a[1].c_str()));
+		ProductionUpdateInterface *pu = nullptr;
+		if (!resolveLive(a[0], objs, error))
+			;
+		else if (tt == nullptr)
+			error = "unknown template '" + a[1] + "'";
+		else if ((pu = objs[0]->getProductionUpdateInterface()) == nullptr)
+			error = "'" + a[0] + "' has no production queue";
+		else
+		{
+			GameMessage *sel = message(GameMessage::MSG_CREATE_SELECTED_GROUP);
+			sel->appendBooleanArgument(TRUE);
+			sel->appendObjectIDArgument(objs[0]->getID());
+			m_selection.assign(1, objs[0]->getID());
+			GameMessage *msg = message(GameMessage::MSG_QUEUE_UNIT_CREATE);
+			msg->appendIntegerArgument(tt->getTemplateID());
+			msg->appendIntegerArgument(pu->requestUniqueUnitID());
+		}
+	}
+	else if (verb == "repeat")
+	{
+		// (Int on: 0 off, 1 on, 2 only the reserve; Int reserve; buildings ...), see AssistUIRepeat.cpp send()
+		const std::string mode = lowered(a[1]);
+		std::vector<ObjectID> ids;
+		if (s.has("reserve") && !parseSigned(s.opt("reserve"), m_reserve))
+			error = "bad reserve '" + s.opt("reserve") + "'";
+		else if (mode != "on" && mode != "off" && mode != "reserve")
+			error = "repeat <buildings> on|off, or repeat - reserve reserve=<money>";
+		else if (mode != "reserve" && !resolveObjects(a[0], ids, error))
+			;
+		else
+		{
+			GameMessage *msg = message(GameMessage::MSG_ASSIST_REPEAT_PRODUCTION);
+			msg->appendIntegerArgument(mode == "on" ? 1 : mode == "off" ? 0 : 2);
+			msg->appendIntegerArgument(m_reserve);
+			for (size_t i = 0; mode != "reserve" && i < ids.size(); ++i)
+				msg->appendObjectIDArgument(ids[i]);
+		}
+	}
+	else if (verb == "money")
+	{
+		Int slot = -1, amount = 0;
+		Player *player = parseSigned(a[0], slot) ? ThePlayerList->getPlayerFromSlotIndex(slot) : nullptr;
+		if (player == nullptr || !parseSigned(a[1], amount) || amount < 0)
+			error = "money <slot> <amount>";
+		else
+		{
+			Money *money = player->getMoney();
+			money->withdraw(money->countMoney(), FALSE);
+			money->deposit((UnsignedInt)amount, FALSE, FALSE);
+		}
+	}
 	else if (verb == "idle")
 	{
 		// what an idle hotkey does (AssistUIIdle.cpp): the same pick, then a new selection as a click makes it

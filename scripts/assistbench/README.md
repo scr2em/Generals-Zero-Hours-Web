@@ -74,6 +74,9 @@ dispatcher and the assists exactly as clicks and hotkeys do (and as a replay wou
 | `protect <protectors> <protected>` or `protect <protectors> group=<n>` | MSG_ASSIST_PROTECT |
 | `unprotect` | MSG_ASSIST_UNPROTECT for the selection |
 | `idle army\|all\|workers` | what the idle hotkeys do: the same pick (`PlayerAssist::pickIdle`), then MSG_CREATE_SELECTED_GROUP |
+| `produce <building> <template>` | selects the building and queues the unit, as the command bar does (MSG_QUEUE_UNIT_CREATE) |
+| `repeat <buildings> on\|off [reserve=<money>]`, `repeat - reserve reserve=<money>` | MSG_ASSIST_REPEAT_PRODUCTION (the reserve is kept for the next ones; default 0) |
+| `money <slot> <amount>` | sets a player's money (a test setup) |
 | `send <command> [int:\|bool:\|real:\|pos:\|obj:]...` | any command of the player by name, e.g. `send ASSIST_STANCE int:2 int:2 int:70` |
 | `ai <objects> attack <objects>` / `move\|attackmove\|guard <pos>` / `stop` | direct orders for any player's units (attackers) |
 | `damage <objects> <amount>[%] [by=<objects>]` | damage as if `by` had hit them (raises a protect alarm) |
@@ -102,6 +105,9 @@ Every unit must meet the condition (`any=1`: one is enough).
 | `linked`, `unlinked`, `protects <objects> <protected>`, `state <objects> home\|responding\|returning`, `athome <objects> [tol=45]`, `homeat <objects> <pos> [tol=60]` | protect links |
 | `alive`, `dead`, `damaged`, `idle`, `health <objects> above\|below <percent>` | units |
 | `selection <objects> [exact=1]` | the units are in the selection the script made last (`select`, `idle`); `exact=1`: nothing else is |
+| `repeating <objects>` | repeat production is on for the buildings |
+| `queued <building> <op><n>` | entries in the production queue of the building |
+| `cash <slot> <op><n>` | the player's money |
 | `count <objects> <op><n>` | the number of live objects (with `all:` the units of a template) compared with n: `=2`, `>=4`, `<=0` |
 
 ### What the real-data scenarios check
@@ -117,6 +123,7 @@ Every unit must meet the condition (`any=1`: one is enough).
 | `base-defend` | base under attack: idle army units go to the attacked command center and back to where they stood |
 | `stance-retreat-rally`, `-repair`, `-heal` | retreat when damaged: to the rally point, to a repair building, to a heal building, and back (repair and heal buildings are assumptions to confirm) |
 | `stance-kite`, `stance-spread`, `stance-split` | the stance's decision lines while a fight goes on |
+| `repeat-production` | a Ranger is built again and again; it waits while money minus cost is below the reserve; it stops when switched off |
 | `idle-select` | idle hotkeys: the next idle army unit by id (round again), never a busy one; all idle army units; the next idle worker |
 
 `base-defend` and the `stance-*` scenarios need the commits that add MSG_ASSIST_BASE_DEFEND and MSG_ASSIST_STANCE; on a

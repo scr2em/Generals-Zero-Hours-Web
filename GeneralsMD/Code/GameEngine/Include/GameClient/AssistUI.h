@@ -262,3 +262,16 @@ public:
 	static void reset();
 	static Bool translate( const GameMessage *msg );	///< true when the message is used up
 };
+
+
+//-------------------------------------------------------------------------------------------------
+/// Repeat production (AssistUIRepeat.cpp).
+class AssistRepeatUI
+{
+public:
+	static void init();
+	static void reset();
+	static void reserveChanged();							///< the reserve of the options changed: tell the simulation
+	static Bool translate( const GameMessage *msg );	///< true when the message is used up
+	static void drawOverlays( View *view );
+};

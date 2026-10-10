@@ -28,6 +28,8 @@
 #   stance-replay    all four stances at once, recorded and played back
 #   odds             the odds meter: own riflemen selected, the mouse over an enemy rifleman gives a favourable verdict
 #   coverage         the defence coverage view: rings of a ground and an air defence, uncovered stretches of the base edge
+#   repeat-replay    repeat production on the headquarters (W, Alt+Q): the worker is built again; recorded and played back
+#   repeat-save      the same, saved and loaded from the pause menu: the repeat state is in the save and goes on
 site=$(cd "$1" && pwd)
 out=${2:-${TMPDIR:-/tmp}/zh-assist-flows}
 here=$(cd "$(dirname "$0")" && pwd)
@@ -41,7 +43,7 @@ MENU="c:515,449"; PAUSE_EXIT="c:399,412"; YES="c:318,368"; OK_REPORT="c:699,566"
 REPLAY_ROW="c:62,100"; REPLAY_PLAY="c:124,502"
 ASSIST_CHECKBOX="c:565,480"		# "Player assists allowed" on the skirmish setup screen
 ASSIST_BUTTON="c:208,481"			# "Player assists..." on the Options screen
-OPT_FORMATIONS="c:400,67"; OPT_CLOSE="c:399,325"		# in the Player assists dialog
+OPT_FORMATIONS="c:400,67"; OPT_CLOSE="c:399,385"		# in the Player assists dialog
 
 # the units the matches start with: left of the base, in the first screen
 UNITS="0:IronwoodRifleman:6+0:IronwoodTank:3+0:IronwoodRocketeer:4+0:IronwoodScout:2"
@@ -165,6 +167,24 @@ run stance-replay "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~4~x~IronwoodRif
 	W:ASSIST~stance~set~mask=8~value=8 W:ASSISTTEST~created~3~x~IronwoodRifleman~for~player~1 f:1500 \
 	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:600 \
 	K:2:ASSIST~stance~set~mask=8 N:CRC~Mismatch N:RuntimeError" --arg -assistTest --arg "$ALL_UNITS" --arg -assistDebug --options AssistStances=1
+
+# 12. Repeat production: the headquarters is selected, W queues a worker, Alt+Q switches repeat on; the worker is built again.
+#     Recorded and played back (no CRC mismatch, the same orders), and saved and loaded (the state is in the save).
+REPEAT_ON="W:ASSIST~match~allowed=1 k:Home w:5 c:400,215 w:3 s:hq k:KeyW w:3 kd:Alt w:1 k:KeyQ w:1 ku:Alt \
+	W:ASSIST~repeat~production:~factory~[0-9]+~on~.IronwoodWorker. s:repeat"
+REPEATED="W:ASSIST~repeat~production:~factory~[0-9]+~queues~IronwoodWorker~again"
+run repeat-replay "w:3 $SKIRMISH w:3 $START $REPEAT_ON $REPEATED f:900 \
+	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:900 \
+	K:2:ASSIST~repeat~production:~factory~[0-9]+~queues~IronwoodWorker~again N:CRC~Mismatch N:RuntimeError" --arg -assistDebug --options AssistRepeatProduction=1
+
+PAUSE_SAVELOAD="c:399,316"; NEW_SAVE_ROW="c:65,100"; SAVE_BUTTON="c:124,502"; OK_SAVE="c:302,350"
+FIRST_SAVE_ROW="c:92,116"; LOAD_BUTTON="c:326,502"; CONFIRM_YES="c:312,330"
+# (saved before the first worker is out: the worker that is built again after the load shows that the state was loaded)
+run repeat-save "w:3 $SKIRMISH w:3 $START $REPEAT_ON N:queues~IronwoodWorker~again \
+	$MENU w:4 $PAUSE_SAVELOAD w:4 $NEW_SAVE_ROW w:1 $SAVE_BUTTON w:3 $OK_SAVE w:4 s:saved \
+	$PAUSE_SAVELOAD w:4 $FIRST_SAVE_ROW w:1 $LOAD_BUTTON w:3 $CONFIRM_YES W:ASSIST~loaded:~allowed=1,~repeat~production~on~1~buildings s:loaded \
+	$REPEATED s:repeated N:could~not~be~loaded N:Error~loading~block N:RuntimeError" \
+	--arg -assistDebug --options AssistRepeatProduction=1 --profile "$out/repeat-save/profile"
 
 echo "$failed flow(s) failed"
 exit $((failed > 0))

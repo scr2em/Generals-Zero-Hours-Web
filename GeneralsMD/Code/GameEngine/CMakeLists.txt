@@ -871,10 +871,12 @@ set(GAMEENGINE_SRC
     Source/GameClient/AssistUIOdds.cpp
     Source/GameClient/AssistUICoverage.cpp
     Source/GameClient/AssistUIIdle.cpp
+    Source/GameClient/AssistUIRepeat.cpp
     Source/Common/AssistOptions.cpp
     Source/GameLogic/AssistFormation.cpp
     Source/GameLogic/AssistStance.cpp
     Source/GameLogic/AssistIdle.cpp
+    Source/GameLogic/AssistRepeat.cpp
     Source/GameLogic/AI/AIEnemyModel.cpp
     Source/GameLogic/AI/AIStates.cpp
     Source/GameLogic/AI/AITNGuard.cpp

@@ -44,6 +44,8 @@ PlayerAssist::PlayerAssist()
 	m_aimAngle = 0.0f;
 	m_aimWidth = 0.0f;
 	m_pruneFrame = 0;
+	for (Int i = 0; i < MAX_DEFEND; ++i)
+		m_repeatReserve[i] = 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -67,7 +69,11 @@ void PlayerAssist::reset()
 	for (Int i = 0; i < MAX_LEDGERS; ++i)
 		m_ledgers[i].clear();
 	for (Int i = 0; i < MAX_DEFEND; ++i)
+	{
 		m_defend[i] = DefendState();
+		m_repeatReserve[i] = 0;
+	}
+	m_repeat.clear();
 	m_aimValid = FALSE;
 	m_pruneFrame = 0;
 }
@@ -109,6 +115,7 @@ void PlayerAssist::logicUpdate()
 	const UnsignedInt now = TheGameLogic->getFrame();
 	m_protect.update( now );
 	updateStances( now );
+	updateRepeat( now );
 	if (now >= m_pruneFrame)
 	{
 		m_pruneFrame = now + 2 * LOGICFRAMES_PER_SECOND;
@@ -192,6 +199,10 @@ Bool PlayerAssist::onMessage( GameMessage *msg, Player *player, AIGroup *group )
 			baseReturn( player );
 			return TRUE;
 
+		case GameMessage::MSG_ASSIST_REPEAT_PRODUCTION:
+			setRepeat( player, msg );
+			return TRUE;
+
 		default:
 			break;
 	}
@@ -242,7 +253,7 @@ void PlayerAssist::crc( Xfer *x )
 //-------------------------------------------------------------------------------------------------
 void PlayerAssist::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 4;
+	XferVersion currentVersion = 5;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -276,6 +287,9 @@ void PlayerAssist::xfer( Xfer *xfer )
 	if (version >= 4)
 		xferStances( xfer );
 
+	if (version >= 5)
+		xferRepeat( xfer );
+
 	UnsignedInt count = (UnsignedInt)m_units.size();
 	xfer->xferUnsignedInt( &count );
 
@@ -305,4 +319,5 @@ void PlayerAssist::xfer( Xfer *xfer )
 //-------------------------------------------------------------------------------------------------
 void PlayerAssist::loadPostProcess()
 {
+	ASSIST_DEBUG(( "ASSIST loaded: allowed=%d, repeat production on %d buildings", m_allowed ? 1 : 0, (int)m_repeat.size() ));
 }

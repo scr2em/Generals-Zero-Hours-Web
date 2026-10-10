@@ -1,0 +1,42 @@
+{
+ "name": "starter-repeat-production",
+ "description": "Smoke check only (starter content, says nothing about gameplay): repeat production on a barracks: one rifleman queued by hand is built again and again; with the money below cost plus reserve it waits; with money it goes on; switched off it stops after the unit in the queue.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn shop 0:IronwoodBarracks:1 at=cc:0^0,-300",
+  "wait 5",
+  "money 0 1000",
+  "repeat shop on",
+  "wait 2",
+  "expect repeating shop",
+  "expect count all:0:IronwoodRifleman =0",
+  "produce shop IronwoodRifleman",
+  "until count all:0:IronwoodRifleman >=3 max=1200",
+  "expect queued shop =1",
+  "money 0 450",
+  "repeat - reserve reserve=1000",
+  "until count all:0:IronwoodRifleman >=4 max=600",
+  "wait 300",
+  "expect count all:0:IronwoodRifleman =4",
+  "expect queued shop =0",
+  "expect cash 0 <1150",
+  "money 0 3000",
+  "until count all:0:IronwoodRifleman >=5 max=600",
+  "repeat shop off",
+  "wait 2",
+  "expect not repeating shop",
+  "until queued shop =0 max=600",
+  "wait 400",
+  "expect count all:0:IronwoodRifleman =6",
+  "expect queued shop =0"
+ ],
+ "log": [
+  "^ASSIST repeat production: factory \\d+ on \\(nothing yet\\), reserve 0",
+  { "match": "^ASSIST repeat production: factory \\d+ queues IronwoodRifleman again", "min": 3 },
+  "^ASSIST repeat production: reserve 1000 for player",
+  "^ASSIST repeat production: factory \\d+ waits: money \\d+, cost 150, reserve 1000",
+  "^ASSIST repeat production: factory \\d+ off"
+ ]
+}

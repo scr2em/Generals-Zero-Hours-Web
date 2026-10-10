@@ -45,6 +45,7 @@ class GameMessage;
 class Xfer;
 class Object;
 class Player;
+class ThingTemplate;
 
 //-------------------------------------------------------------------------------------------------
 /// The formations that the player can pick.  The values are part of the network messages.
@@ -151,6 +152,21 @@ public:
 	/// smallest id above 'after' (the unit the hotkey picked last time), or the first one again.  Prints the ASSIST line of the pick (-assistDebug).  Used by the hotkeys and the test bench.
 	static void pickIdle( const Player *player, Int pick, ObjectID after, std::vector<ObjectID> &out );
 
+	// ---- repeat production (AssistRepeat.cpp) ----------------------------------------------------
+	/// A production building that repeat production can be switched on for (a structure with a production queue).
+	static Bool isRepeatFactory( const Object *obj );
+	Bool repeatOn( ObjectID factory ) const;
+	/// The unit it builds again (null: none yet, it waits for the player to queue one).
+	const ThingTemplate *repeatUnit( ObjectID factory ) const;
+	/// It wants to build again but may not yet (money below cost plus reserve, or the unit cannot be built now).
+	Bool repeatWaiting( ObjectID factory ) const;
+	/// The money the player keeps: repeat production never takes the money below it.
+	Int repeatReserve( Int playerIndex ) const;
+	/// The buildings of a player that repeat, ordered by id.
+	void repeatList( Int playerIndex, std::vector<ObjectID> &out ) const;
+	/// A unit came out of a building (Player::onUnitCreated).
+	void onUnitProduced( Object *factory, Object *unit );
+
 	// ---- formations (AssistFormation.cpp) ------------------------------------------------------
 	/// The formation set for this unit (AFORM_NONE if it has none).
 	Int formationOf( ObjectID id ) const;
@@ -226,6 +242,22 @@ private:
 	Object *pickOtherTarget( Object *unit, Object *current, Real range, AITactics::SplitLedger &ledger, UnsignedInt now, const AITactics::Params &params );
 	void xferStances( Xfer *xfer );
 
+	/// Repeat production of one building.
+	struct RepeatState
+	{
+		const ThingTemplate	*m_unit;						///< the unit it builds again (null: none yet)
+		UnsignedInt					m_producedFrame;		///< the frame its last unit came out
+		UnsignedInt					m_queueCount;				///< entries in its queue at the end of the last update
+		Bool								m_waiting;					///< its queue ran empty by a unit coming out: build m_unit again when allowed
+		Int									m_owner;						///< the player index it was switched on for
+		UnsignedByte				m_logged;						///< why it waits, as last printed (0: not waiting)
+		RepeatState() : m_unit( nullptr ), m_producedFrame( 0 ), m_queueCount( 0 ), m_waiting( FALSE ), m_owner( -1 ), m_logged( 0 ) {}
+	};
+	typedef std::map<ObjectID, RepeatState> RepeatMap;
+	void setRepeat( Player *player, const GameMessage *msg );
+	void updateRepeat( UnsignedInt now );
+	void xferRepeat( Xfer *xfer );
+
 	void setFormation( AIGroup *group, Int type );
 	void formationMove( AIGroup *group, Int type, const Coord3D &a, const Coord3D &b, Bool attackMove );
 	void pruneDead();
@@ -237,6 +269,8 @@ private:
 	DefendState			m_defend[MAX_DEFEND];
 	StanceMap			m_stances;
 	AITactics::SplitLedger	m_ledgers[MAX_LEDGERS];			///< split fire: per player, damage assigned to targets
+	RepeatMap			m_repeat;													///< repeat production, per building
+	Int						m_repeatReserve[MAX_DEFEND];			///< repeat production: the money each player keeps
 
 	// the drag a formation move was given (valid only while the command is being carried out)
 	Bool				m_aimValid;

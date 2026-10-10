@@ -822,6 +822,7 @@ void AssistUI::reset()
 	AssistAlertUI::reset();
 	AssistOddsUI::reset();
 	AssistIdleUI::reset();
+	AssistRepeatUI::reset();
 	for (size_t i = 0; i < s_panels.size(); ++i)
 		s_panels[i]->destroy();
 	s_selection.m_valid = FALSE;
@@ -853,6 +854,7 @@ void AssistUI::update()
 	AssistCoverageUI::init();
 	AssistAlertUI::init();
 	AssistOddsUI::init();
+	AssistRepeatUI::init();
 	if (s_toolbar == nullptr)
 		s_toolbar = new ToolbarPanel;
 	AssistIdleUI::init();		// after the toolbar: it is placed below it
@@ -883,6 +885,7 @@ void AssistUI::drawOverlays( View *view )
 	AssistCoverageUI::drawOverlays( view );
 	AssistAlertUI::drawOverlays( view );
 	AssistOddsUI::drawOverlays( view );
+	AssistRepeatUI::drawOverlays( view );
 }
 
 //=================================================================================================
@@ -984,9 +987,32 @@ void AssistUI::drawAim()
 
 namespace
 {
-	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_STANCES = 6, OPT_IDLE = 7, OPT_CLOSE = 100 };
+	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_STANCES = 6, OPT_IDLE = 7,
+		OPT_REPEAT = 8, OPT_CLOSE = 100 };
 
-	struct ToggleRow { Int id; const wchar_t *label; Bool *value; };
+	// rows with a number and "-" / "+" buttons (ids VALUE_DOWN + row, VALUE_UP + row)
+	enum { OPT_RESERVE = 50, VALUE_DOWN = 1000, VALUE_UP = 2000 };
+	struct ValueRow
+	{
+		Int						m_id;
+		const wchar_t	*m_format;			///< the label, with %d for the value
+		Int						*m_value;
+		Int						m_step, m_min, m_max;
+		void					(*m_changed)();
+	};
+	const ValueRow valueRows[] =
+	{
+		{ OPT_RESERVE, L"Repeat production keeps this much money: %d", &TheAssistOptions.m_repeatReserve, 250, 0, 100000, &AssistRepeatUI::reserveChanged },
+	};
+	const ValueRow *valueRow( Int id )
+	{
+		for (size_t i = 0; i < ARRAY_SIZE( valueRows ); ++i)
+		{
+			if (valueRows[i].m_id == id)
+				return &valueRows[i];
+		}
+		return nullptr;
+	}
 }
 
 class AssistOptionsDialog : public AssistPanel
@@ -1004,6 +1030,14 @@ public:
 		addButton( OPT_ODDS, 0, L"Odds meter: point at an enemy group to see who would win", nullptr );
 		addButton( OPT_ALERT, 0, L"Base under attack: one click sends idle army units to defend", nullptr );
 		addButton( OPT_IDLE, 0, L"Idle hotkeys: select idle army units and workers, idle counter", nullptr );
+		addButton( OPT_REPEAT, 0, L"Repeat production: buildings build their last unit again", nullptr );
+		for (size_t i = 0; i < ARRAY_SIZE( valueRows ); ++i)
+		{
+			addButton( valueRows[i].m_id, 0, L"", nullptr );
+			find( valueRows[i].m_id )->m_enabled = FALSE;
+			addButton( VALUE_DOWN + valueRows[i].m_id, 0, L"-", nullptr );
+			addButton( VALUE_UP + valueRows[i].m_id, 0, L"+", nullptr );
+		}
 		addButton( 200, 0, L"All assists are off until switched on here.", nullptr );
 		addButton( 201, 0, L"Those that give orders also need \"Player assists allowed\" in the match setup.", nullptr );
 		addButton( OPT_CLOSE, 0, L"Close", nullptr );
@@ -1042,6 +1076,14 @@ public:
 		find( OPT_ODDS )->m_on = TheAssistOptions.m_odds;
 		find( OPT_STANCES )->m_on = TheAssistOptions.m_stances;
 		find( OPT_IDLE )->m_on = TheAssistOptions.m_idleKeys;
+		find( OPT_REPEAT )->m_on = TheAssistOptions.m_repeatProduction;
+		for (size_t i = 0; i < ARRAY_SIZE( valueRows ); ++i)
+		{
+			const ValueRow &r = valueRows[i];
+			find( r.m_id )->m_label.format( r.m_format, *r.m_value );
+			find( VALUE_DOWN + r.m_id )->m_enabled = *r.m_value > r.m_min;
+			find( VALUE_UP + r.m_id )->m_enabled = *r.m_value < r.m_max;
+		}
 	}
 
 	virtual Bool refresh() override { return TRUE; }
@@ -1056,6 +1098,8 @@ public:
 		for (size_t i = 0; i < m_buttons.size(); ++i)
 		{
 			AssistButton &b = m_buttons[i];
+			if (b.m_id >= VALUE_DOWN)
+				continue;		// placed with their row, below
 			if (b.m_id == OPT_CLOSE)
 			{
 				yy += AssistUI::px( 10 );
@@ -1071,6 +1115,19 @@ public:
 			b.m_h = b.m_flat ? AssistUI::px( 14 ) : rowH;
 			b.m_y = yy;
 			yy += b.m_h + gap;
+			if (valueRow( b.m_id ))
+			{
+				// the "-" and "+" buttons at the right end of the row
+				const Int bw = AssistUI::px( 30 );
+				b.m_w -= 2 * (bw + gap);
+				AssistButton *down = find( VALUE_DOWN + b.m_id );
+				AssistButton *up = find( VALUE_UP + b.m_id );
+				down->m_x = b.m_x + b.m_w + gap;
+				up->m_x = down->m_x + bw + gap;
+				down->m_y = up->m_y = b.m_y;
+				down->m_w = up->m_w = bw;
+				down->m_h = up->m_h = b.m_h;
+			}
 		}
 		*h = yy + AssistUI::px( 4 );
 		*x = ((Int)TheDisplay->getWidth() - *w) / 2;
@@ -1088,8 +1145,24 @@ public:
 			case OPT_ODDS: TheAssistOptions.m_odds = !TheAssistOptions.m_odds; break;
 			case OPT_STANCES: TheAssistOptions.m_stances = !TheAssistOptions.m_stances; break;
 			case OPT_IDLE: TheAssistOptions.m_idleKeys = !TheAssistOptions.m_idleKeys; break;
+			case OPT_REPEAT: TheAssistOptions.m_repeatProduction = !TheAssistOptions.m_repeatProduction; break;
 			case OPT_CLOSE: closeDialog(); return;
-			default: return;
+			default:
+			{
+				const Int row = id >= VALUE_UP ? id - VALUE_UP : id - VALUE_DOWN;
+				const ValueRow *r = id >= VALUE_DOWN ? valueRow( row ) : nullptr;
+				if (r == nullptr)
+					return;
+				Int v = *r->m_value + (id >= VALUE_UP ? r->m_step : -r->m_step);
+				v = v < r->m_min ? r->m_min : (v > r->m_max ? r->m_max : v);
+				if (v == *r->m_value)
+					return;
+				*r->m_value = v;
+				ASSIST_DEBUG(( "ASSIST option %d = %d", row, v ));
+				if (r->m_changed)
+					r->m_changed();
+				break;
+			}
 		}
 		TheAssistOptions.save();
 		refreshValues();
@@ -1098,6 +1171,16 @@ public:
 	virtual void drawGlyph( const AssistButton &b, Int x, Int y, Color color ) override
 	{
 		const Int h = b.m_h;
+		if (valueRow( b.m_id ))
+		{
+			AssistUI::text( b.m_label, x + b.m_x + AssistUI::px( 8 ), y + b.m_y + (h - AssistUI::px( 12 )) / 2, GameMakeColor( 230, 235, 245, 255 ), 10 );
+			return;
+		}
+		if (b.m_id >= VALUE_DOWN)
+		{
+			AssistUI::text( b.m_label, x + b.m_x, y + b.m_y + (h - AssistUI::px( 14 )) / 2, color, 12, TRUE, b.m_w );
+			return;
+		}
 		if (b.m_id == OPT_CLOSE || b.m_flat)
 		{
 			AssistUI::text( b.m_label, x + b.m_x, y + b.m_y + (b.m_flat ? 0 : (h - AssistUI::px( 12 )) / 2), b.m_flat ? GameMakeColor( 170, 185, 205, 255 ) : color, b.m_flat ? 8 : 11, !b.m_flat, b.m_w );
@@ -1270,7 +1353,7 @@ GameMessageDisposition AssistUI::translate( const GameMessage *msg )
 		invalidateSelection();	// the selection may have changed since the last frame
 
 	if (AssistProtectUI::translate( msg ) || AssistStanceUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ) || AssistOddsUI::translate( msg ) ||
-			AssistIdleUI::translate( msg ))
+			AssistIdleUI::translate( msg ) || AssistRepeatUI::translate( msg ))
 		return DESTROY_MESSAGE;
 
 	// ---- hotkeys -----------------------------------------------------------------------------

@@ -14,6 +14,7 @@ and are the same on every machine.
 | Odds meter | display | With own armed units selected, Alt+O and hover a visible enemy: favourable / even / unfavourable |
 | Unit stances | orders | Stance panel above the command bar for the selected units: Alt+K kite, Alt+R retreat when damaged (off / 30 / 50 / 70%), Alt+S spread out, Alt+X split fire. A player order always wins over a stance |
 | Idle hotkeys | selection | Alt+I selects the next idle army unit and centres the view on it, Ctrl+Alt+I selects all idle army units, Alt+W the next idle worker (builders and supply gatherers). The "Idle" counter at the top right shows how many stand idle; its buttons do the same |
+| Repeat production | orders | Select a production building: "Production" panel above the command bar, or Alt+Q. When its queue runs empty because the last unit came out, it queues that unit again, as long as the money stays at or above the reserve set in the options ("Repeat production keeps this much money", default 0) and the unit can still be built. Cancelling the queue by hand stops it until you queue a unit again. A "REPEAT" tag marks the buildings that repeat ("REPEAT (waiting)" while the money or the rules hold it back) |
 
 ## Checks on the real game data
 
@@ -54,6 +55,20 @@ skirmish against an Easy AI with the assist switched on, and look for the `ASSIS
    whenever the numbers change, with A the idle army units and W the idle dozers and trucks (a truck on its supply round
    and a dozer at work are not counted). Alt+I: the view jumps to one idle unit after the other; Ctrl+Alt+I selects them
    all; Alt+W selects a worker that stands idle. A unit that is moving, fighting or inside a building is never picked.
+
+**Repeat production** ("Player assists allowed" ticked)
+1. Scripted: `scripts/assistbench/scenarios/realdata/repeat-production.json`. A pass: every check passes and the trace has
+   `ASSIST repeat production: factory N on (nothing yet), reserve 0`, at least three
+   `... queues AmericaInfantryRanger again (money M, cost C, reserve 0)`, `... reserve 1000 for player P`,
+   `... waits: money M, cost C, reserve 1000` (M - C below 1000), `... queues AmericaInfantryRanger again (money 5000, ...)`
+   and `... off`.
+2. By hand: select a War Factory, queue one tank and press Alt+Q: `ASSIST repeat production: factory N on (<tank>), reserve R`.
+   Each time the tank comes out: `... built <tank>` and `... queues <tank> again (money M, cost C, reserve R)` with
+   M - C at least R. Set the reserve above your money in the options: `... waits: money M, cost C, reserve R` and the
+   building shows "REPEAT (waiting)". Cancel the queue: `... queue emptied by the player, waits for a new order`. Lose the
+   prerequisite (sell the radar for a unit that needs it): `... cannot build <unit> now (reason 1), waits`.
+3. Save the game with repeat on and load it: `ASSIST loaded: allowed=1, repeat production on N buildings`, and it goes on.
+4. Record the match and play it back: the same `queues ... again` lines and no `CRC Mismatch`.
 
 **Replays:** record the match, play it back, and check that the log has no `CRC Mismatch` line.
 
