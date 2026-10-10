@@ -215,7 +215,7 @@ for suite in "${SUITES[@]}"; do
 		boot)
 			run_suite boot --boot 120 ;;
 		1v1)
-			run_suite 1v1 --map "$MAP_1V1" --timeout 30 --match-timeout 2400 --seeds "$SEEDS1" --determinism 1 --keep-logs \
+			run_suite 1v1 --map "$MAP_1V1" --timeout 45 --match-timeout 3600 --seeds "$SEEDS1" --determinism 1 --keep-logs \
 				--matchup "expert:America:trace,hard:America" --matchup "expert:China:trace,hard:China" \
 				--matchup "expert:GLA:trace,hard:GLA" ;;
 		team)

@@ -351,6 +351,12 @@ static const FieldParse s_skillFieldParse[] =
 		{ "SurplusReserve",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusReserve ) },
 		{ "SurplusStartSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusStartSeconds ) },
 		{ "SurplusInfantryShare",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusInfantryShare ) },
+		{ "SurplusStrength",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusStrength ) },
+		{ "SurplusRichMoney",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusRichMoney ) },
+		{ "IncomeHackers",			INI::parseInt,		nullptr, offsetof( AISkillSettings, m_incomeHackers ) },
+		{ "IncomeStartSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_incomeStartSeconds ) },
+		{ "CaptureIncome",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useCapture ) },
+		{ "CaptureStartSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_captureStartSeconds ) },
 		{ "SurplusAircraft",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_surplusAircraft ) },
 		{ "RazeBases",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRaze ) },
 		{ "RazeRadius",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_razeRadius ) },
@@ -365,6 +371,9 @@ static const FieldParse s_skillFieldParse[] =
 		{ "AdaptivePlans",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_adaptivePlans ) },
 		{ "AssaultAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_assaultAdvantage ) },
 		{ "AssaultMinutes",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_assaultMinutes ) },
+		{ "SuperweaponStrike",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useStrike ) },
+		{ "StrikeWaitSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_strikeWaitSeconds ) },
+		{ "TunnelAssault",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useTunnelAssault ) },
 		{ nullptr,								nullptr,					nullptr, 0 }
 	};
 
@@ -1259,7 +1268,7 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_counterStrength = 1.0f;
 	ex.m_engageAdvantage = 1.3f;
 	ex.m_retreatAdvantage = 0.65f;
-	ex.m_waveHoldSeconds = 100000.0f;	// no early launch of an army that has stopped growing: it went out too small (measured with the real data)
+	ex.m_waveHoldSeconds = 180.0f;	// an army that has stopped growing goes after 3 minutes (40 s sent it out too small, never let it stall for good: measured with the real data)
 	ex.m_minWaveValue = 12000.0f;	// real units cost 300-2000: 2000 was a handful of units (tuned on the starter content)
 	ex.m_waveSizeScale = 1.0f;
 	ex.m_useRetreat = true;
@@ -1357,6 +1366,12 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_surplusStartSeconds = 150.0f;
 	ex.m_surplusInfantryShare = 1.0f;
 	ex.m_surplusAircraft = false;
+	ex.m_surplusStrength = 0.5f;
+	ex.m_surplusRichMoney = 4000.0f;
+	ex.m_incomeHackers = 24;	// twice what the Hard AI keeps with the real data (12-14): the income that does not run out
+	ex.m_incomeStartSeconds = 300.0f;
+	ex.m_useCapture = true;
+	ex.m_captureStartSeconds = 60.0f;
 	ex.m_useRaze = true;
 	ex.m_razeRadius = 700.0f;
 	ex.m_huntAdvantage = 2.0f;
@@ -1370,6 +1385,9 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_adaptivePlans = true;
 	ex.m_assaultAdvantage = 1.8f;
 	ex.m_assaultMinutes = 10.0f;
+	ex.m_useStrike = true;
+	ex.m_strikeWaitSeconds = 45.0f;
+	ex.m_useTunnelAssault = true;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1507,6 +1525,12 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_surplusStartSeconds );
 		xfer->xferReal( &sk.m_surplusInfantryShare );
 		xfer->xferBool( &sk.m_surplusAircraft );
+		xfer->xferReal( &sk.m_surplusStrength );
+		xfer->xferReal( &sk.m_surplusRichMoney );
+		xfer->xferInt( &sk.m_incomeHackers );
+		xfer->xferReal( &sk.m_incomeStartSeconds );
+		xfer->xferBool( &sk.m_useCapture );
+		xfer->xferReal( &sk.m_captureStartSeconds );
 		xfer->xferBool( &sk.m_useRaze );
 		xfer->xferReal( &sk.m_razeRadius );
 		xfer->xferReal( &sk.m_huntAdvantage );
@@ -1520,6 +1544,9 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferBool( &sk.m_adaptivePlans );
 		xfer->xferReal( &sk.m_assaultAdvantage );
 		xfer->xferReal( &sk.m_assaultMinutes );
+		xfer->xferBool( &sk.m_useStrike );
+		xfer->xferReal( &sk.m_strikeWaitSeconds );
+		xfer->xferBool( &sk.m_useTunnelAssault );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

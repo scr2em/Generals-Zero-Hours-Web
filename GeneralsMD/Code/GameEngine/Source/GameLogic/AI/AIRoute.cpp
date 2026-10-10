@@ -298,15 +298,25 @@ void AIStrategy::planWaveRoute( const Coord3D &from, const Coord3D &objective )
 	const Int count = AIPlanDetour(from, objective, circles, n, via, AIROUTE_MAX_POINTS, skill().m_routeMaxDetour, &extent);
 	if (count > 0)
 	{
+		// Only waypoints the army can walk to, one after the other (a point on a hill with no way on is dropped).
+		Coord3D prev = from;
+		Int kept = 0;
 		for (Int i = 0; i < count; ++i)
 		{
-			m_route[i] = via[i];
-			m_route[i].z = TheTerrainLogic->getGroundHeight(via[i].x, via[i].y);
+			Coord3D p = via[i];
+			p.z = TheTerrainLogic->getGroundHeight(p.x, p.y);
+			if (!groundReachable(prev, p, 60.0f) || !groundReachable(p, objective, 400.0f))
+			{
+				AI_TRACE("WAVE route: waypoint (%.0f,%.0f) dropped: no way there, or no way on from there", p.x, p.y);
+				continue;
+			}
+			m_route[kept++] = p;
+			prev = p;
 		}
-		m_routeLen = count;
+		m_routeLen = kept;
 		++m_routesPlanned;
 		const Real direct = dist2D(from, objective);
-		AI_TRACE("WAVE route: %d waypoint(s) around %d known defences, %.0f%% longer; first (%.0f,%.0f)", count, n,
+		AI_TRACE("WAVE route: %d of %d waypoint(s) kept around %d known defences, %.0f%% longer; first (%.0f,%.0f)", kept, count, n,
 			direct > 0.0f ? 100.0f * (AIPathLength(from, via, count, objective) / direct - 1.0f) : 0.0f, via[0].x, via[0].y);
 	}
 	else if (count < 0)
@@ -533,13 +543,13 @@ void AIStrategy::startBreach( const Coord3D &from, const Coord3D &objective, con
 
 	// The staging point: outside the reach of the defences, on the way from the army.
 	Coord3D stage;
-	const Real dx = from.x - objective.x, dy = from.y - objective.y;
-	const Real len = sqrtf(dx * dx + dy * dy);
-	if (len < 1.0f)
+	if (!pickStage(from, objective, maxReach, &stage))
+	{
+		AI_TRACE("BREACH skipped: no staging point the wave can reach on its side of the defences at (%.0f,%.0f)", objective.x, objective.y);
+		m_numBreachers = 0;
+		m_numBreachTargets = 0;
 		return;
-	stage.x = objective.x + dx / len * (maxReach + 60.0f);
-	stage.y = objective.y + dy / len * (maxReach + 60.0f);
-	stage.z = TheTerrainLogic->getGroundHeight(stage.x, stage.y);
+	}
 	if (m_routeLen < AIROUTE_MAX_POINTS)
 		m_route[m_routeLen++] = stage;
 	else

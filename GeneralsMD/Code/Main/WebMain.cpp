@@ -446,6 +446,8 @@ static void describeException( const char *what )
 // and for the log when -webframelog is on the command line.
 static unsigned s_frameCount = 0;
 static double s_busyMs = 0.0;	// time spent in executeFrame() since the last report
+static double s_worstMs = 0.0;	// the longest of those frames
+static double s_reportAt = 0.0;	// when the last report was made (emscripten_get_now)
 static bool s_logFrames = false;
 static bool s_logDirectStats = false;	// -webdirectstats: the read counters of the direct file mode, see WebStorage.cpp
 static const char *s_crashTest = nullptr;	// -webcrashtest=<oom|badalloc|ini|trap|abort>: fails on purpose after 60 frames, to test how the page reports it
@@ -480,7 +482,10 @@ static bool runFrames()
 			TheGameEngine->executeFrame();
 			WebPlatform_EndFrame();
 			// The time the thread was suspended is the browser's, not the game's.
-			s_busyMs += emscripten_get_now() - frameStart - ( WebPlatform_GetYieldedMs() - yieldedBefore );
+			const double busy = emscripten_get_now() - frameStart - ( WebPlatform_GetYieldedMs() - yieldedBefore );
+			s_busyMs += busy;
+			if( busy > s_worstMs )
+				s_worstMs = busy;
 
 			++s_frameCount;
 			if( s_crashTest && s_frameCount == 60 )
@@ -505,9 +510,16 @@ static bool runFrames()
 			if( s_frameCount % 30 == 0 )
 			{
 				// (__zhGameWindowed: what the game believes about its window, for tests: it is fullscreen while the page is.)
-				MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; window.__zhFrameMs = $2; window.__zhYields = $3; window.__zhGameWindowed = $4; },
-					s_frameCount, (unsigned)emscripten_get_heap_size(), s_busyMs / 30.0, WebPlatform_GetYieldCount(), TheDisplay ? (int)TheDisplay->getWindowed() : -1 );
+				// (__zhFps: frames per second over these 30 frames; __zhWorstFrameMs: the longest of them, the game's own time.)
+				const double now = emscripten_get_now();
+				const double fps = s_reportAt > 0.0 && now > s_reportAt ? 30000.0 / ( now - s_reportAt ) : 0.0;
+				s_reportAt = now;
+				MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; window.__zhFrameMs = $2; window.__zhYields = $3; window.__zhGameWindowed = $4;
+					window.__zhFps = $5; window.__zhWorstFrameMs = $6; if (window.__zhOnFrames) window.__zhOnFrames(); },
+					s_frameCount, (unsigned)emscripten_get_heap_size(), s_busyMs / 30.0, WebPlatform_GetYieldCount(), TheDisplay ? (int)TheDisplay->getWindowed() : -1,
+					fps, s_worstMs );
 				s_busyMs = 0.0;
+				s_worstMs = 0.0;
 				if( s_logFrames && s_frameCount % 300 == 0 )
 					printf( "frame %u (%u waits for the browser)\n", s_frameCount, WebPlatform_GetYieldCount() );
 			}

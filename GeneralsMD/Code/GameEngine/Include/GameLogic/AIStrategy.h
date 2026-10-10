@@ -36,6 +36,7 @@
 #include "GameLogic/AITacticsCore.h"
 
 class AIPlayer;
+class SpecialPowerModuleInterface;
 class Object;
 class Player;
 class Team;
@@ -486,6 +487,10 @@ private:
 	Real unitCounterScore( const AICombatFigures *f ) const;
 	void updateSurplus();
 	void adoptSurplusUnits();
+	enum { THREAT_INFANTRY = 0, THREAT_VEHICLE, THREAT_AIR, THREAT_STRUCTURE, NUM_THREATS, MAX_SURPLUS_KINDS = 24 };
+	Real surplusShare( const ThingTemplate *tmpl ) const;
+	void noteSurplusKind( const ThingTemplate *tmpl );
+	void coverageGaps( Real *gap, const AICombatFigures **threat ) const;
 
 	// razing (AIStrategy.cpp)
 	Bool razeStructures( Team *team, const Coord3D &center );
@@ -493,6 +498,8 @@ private:
 	void planSiege( const Coord3D &center );
 	Int siegeUnits( const AICombatFigures **defence, Real *siegeRange ) const;
 	Real poweredDefenceShare() const;
+	Bool groundReachable( const Coord3D &from, const Coord3D &to, Real within ) const;
+	Bool pickStage( const Coord3D &from, const Coord3D &target, Real reach, Coord3D *stage ) const;
 	void updateAssault();
 	// adaptive wave plans (AIStrategy.cpp)
 	enum { PLAN_EARLY = 0, PLAN_MASS, PLAN_SIEGE, NUM_PLANS };
@@ -551,6 +558,26 @@ private:
 	void noteBaseDamage( Object *victim, ObjectID attacker, Real amount );
 	Bool findBaseThreat( Coord3D *where, Real *value, Bool *seen ) const;
 	Bool baseThreatUnseen( UnsignedInt now ) const;
+	Bool isGroundThreat( const Object *source ) const;
+
+	// superweapon strike for a wave (AIStrategy.cpp)
+	SpecialPowerModuleInterface *strikePower( Object *weapon ) const;
+	Bool planStrike( const Coord3D &center, const Coord3D &defence );
+	void endStrike( const char *why );
+	void updateStrike();
+
+	// income (AIIncome.cpp, AICapture.cpp)
+	enum { MAX_CAPTURES = 8 };
+	void updateIncome();
+	void updateCapture();
+	Bool isCapturer( ObjectID id ) const;
+	Bool isIncomeBuilding( const ThingTemplate *tt ) const;
+
+	// tunnel assault (AITunnel.cpp)
+	enum { MAX_TUNNEL_SQUAD = 10 };
+	Bool isTunnelSquad( ObjectID id ) const;
+	void endTunnelMission( const char *why );
+	void updateTunnelAssault();
 	void sendTeamToBase( Team *team, AITeamRecord &rec, const Coord3D &where );
 	void updateBaseDefence();
 
@@ -720,6 +747,46 @@ private:
 	Int						m_huntOrders;
 	Int						m_contestOrders;
 	UnsignedInt		m_nextContest;
+	UnsignedInt		m_nextIncome;
+	ObjectID			m_captureUnit[MAX_CAPTURES];			///< captures under way: the infantry,
+	ObjectID			m_captureTarget[MAX_CAPTURES];		///< ... the building,
+	UnsignedInt		m_captureFrame[MAX_CAPTURES];			///< ... when it was sent,
+	Bool					m_captureOrdered[MAX_CAPTURES];		///< ... and whether it has the capture order (else it walks there)
+	Int						m_numCaptures;
+	UnsignedInt		m_nextCapture;
+	UnsignedInt		m_captureUpgradeFrame;
+	UnsignedInt		m_captureTrainFrame;
+	ObjectID			m_captureBan[MAX_CAPTURES];				///< places where a capturer was killed: the target,
+	UnsignedInt		m_captureBanUntil[MAX_CAPTURES];		///< ... until when it waits,
+	Int						m_captureBanCount[MAX_CAPTURES];		///< ... and how many were lost there
+	Int						m_numCaptureBans;
+	ObjectID			m_captureOrderFactory;							///< a capturer on order: the factory and the template id,
+	Int						m_captureOrderThing;
+	ObjectID			m_captureReserve;										///< ... and the one that came out (kept free for captures)
+	Real					m_captureCost;										///< money the capture waits for (kept back from the surplus production)
+	Int						m_captureOrders;									///< statistics for the trace
+	Int						m_captured;
+	Int						m_incomeOrders;									///< statistics for the trace
+	Int						m_incomeTrained;
+	Int						m_surplusKind[MAX_SURPLUS_KINDS];				///< the kinds of surplus units ordered (template ids) and how many of each
+	Int						m_surplusKindCount[MAX_SURPLUS_KINDS];
+	Int						m_numSurplusKinds;
+	Bool					m_strikePlanned;								///< a superweapon is kept for the defences in front of the wave
+	ObjectID			m_strikeWeapon;
+	Coord3D				m_strikeTarget;
+	UnsignedInt		m_strikeReady;									///< when the weapon was due to be ready
+	UnsignedInt		m_nextStrikePlan;
+	UnsignedInt		m_strikeFrame;									///< when it fired (0 = not yet)
+	Int						m_strikes;											///< statistics for the trace
+	ObjectID			m_tunnelSquad[MAX_TUNNEL_SQUAD];	///< tunnel assault: the group on its way through the network
+	Int						m_numTunnelSquad;
+	Int						m_tunnelPhase;									///< 0: none, 1: going into the tunnel at home, 2: out of the forward tunnel
+	UnsignedInt		m_tunnelStart;
+	UnsignedInt		m_tunnelCooldown;
+	UnsignedInt		m_nextTunnel;
+	Int						m_tunnelsSeen;									///< (trace) tunnels of ours at the last look, and the farthest from the base
+	Real					m_tunnelFarthest;
+	Int						m_tunnelDrops;									///< statistics for the trace
 	UnsignedInt		m_nextSiegePlan;
 	Int						m_plan;													///< the plan of the current (or next) wave
 	Real					m_planScore[NUM_PLANS];					///< running result of each plan in this match (value destroyed against value lost)

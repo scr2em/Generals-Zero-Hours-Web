@@ -852,7 +852,10 @@ set(GAMEENGINE_SRC
     Source/GameLogic/AI/AIGeo.cpp
     Source/GameLogic/AI/AIAbility.cpp
     Source/GameLogic/AI/AIBunker.cpp
+    Source/GameLogic/AI/AICapture.cpp
+    Source/GameLogic/AI/AIIncome.cpp
     Source/GameLogic/AI/AISurplus.cpp
+    Source/GameLogic/AI/AITunnel.cpp
     Source/GameLogic/AI/AIAirborne.cpp
     Source/GameLogic/AI/AIGarrison.cpp
     Source/GameLogic/AI/AIProtect.cpp

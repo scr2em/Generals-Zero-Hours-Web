@@ -75,6 +75,83 @@ Real AIStrategy::unitCounterScore( const AICombatFigures *f ) const
 	return score;
 }
 
+/// The share of the surplus units ordered so far that were of this kind.
+Real AIStrategy::surplusShare( const ThingTemplate *tmpl ) const
+{
+	for (Int i = 0; i < m_numSurplusKinds; ++i)
+		if (m_surplusKind[i] == (Int)tmpl->getTemplateID())
+			return (Real)m_surplusKindCount[i] / (Real)(m_surplusOrdered + 1);
+	return 0.0f;
+}
+
+void AIStrategy::noteSurplusKind( const ThingTemplate *tmpl )
+{
+	Int i = 0;
+	while (i < m_numSurplusKinds && m_surplusKind[i] != (Int)tmpl->getTemplateID())
+		++i;
+	if (i == m_numSurplusKinds)
+	{
+		if (m_numSurplusKinds >= MAX_SURPLUS_KINDS)
+			return;
+		m_surplusKind[i] = (Int)tmpl->getTemplateID();
+		m_surplusKindCount[i] = 0;
+		++m_numSurplusKinds;
+	}
+	++m_surplusKindCount[i];
+}
+
+/// Coverage: for each kind of enemy (infantry, vehicles, aircraft, structures), its share of the enemy value seen, less the share
+/// of our army that can damage the strongest of that kind seen (*threat).  gap[c] > 0: the army lacks units against that kind.
+void AIStrategy::coverageGaps( Real *gap, const AICombatFigures **threat ) const
+{
+	Real enemy[NUM_THREATS], cover[NUM_THREATS], top[NUM_THREATS];
+	for (Int c = 0; c < NUM_THREATS; ++c)
+	{
+		gap[c] = enemy[c] = cover[c] = top[c] = 0.0f;
+		threat[c] = nullptr;
+	}
+	for (Int e = 0; e < m_enemy.numComposition(); ++e)
+	{
+		const AIComposition &comp = m_enemy.composition()[e];
+		const AICombatFigures *f = AICombatModel::figures(TheThingFactory->findByTemplateID(comp.m_templateID));
+		if (f == nullptr)
+			continue;
+		const Int c = f->m_structure ? THREAT_STRUCTURE : (f->m_airborne ? THREAT_AIR : (f->m_infantry ? THREAT_INFANTRY : THREAT_VEHICLE));
+		enemy[c] += f->m_structure ? 0.5f * comp.m_value : comp.m_value;	// buildings count half: the army comes first
+		if (threat[c] == nullptr || f->m_cost > top[c])
+		{
+			threat[c] = f;
+			top[c] = f->m_cost;
+		}
+	}
+	Real enemyAll = 0.0f, ours = 0.0f;
+	for (Int c = 0; c < NUM_THREATS; ++c)
+		enemyAll += enemy[c];
+	if (enemyAll <= 0.0f)
+		return;
+	for (Int t = 0; t < m_numTeams; ++t)
+	{
+		Team *team = TheTeamFactory->findTeamByID(m_teams[t].m_team);
+		if (team == nullptr)
+			continue;
+		for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+		{
+			const AICombatFigures *f = it.cur() && !it.cur()->isEffectivelyDead() ? AICombatModel::figures(it.cur()->getTemplate()) : nullptr;
+			if (f == nullptr || !f->m_armed)
+				continue;
+			ours += f->m_cost;
+			for (Int c = 0; c < NUM_THREATS; ++c)
+				if (threat[c] && AICombatModel::damagePerSecond(f, threat[c]) > 0.0f)
+					cover[c] += f->m_cost;
+		}
+	}
+	for (Int c = 0; c < NUM_THREATS; ++c)
+	{
+		const Real need = enemy[c] / enemyAll - (ours > 0.0f ? cover[c] / ours : 0.0f);
+		gap[c] = need > 0.0f ? need : 0.0f;
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 void AIStrategy::updateSurplus()
 {
@@ -115,7 +192,7 @@ void AIStrategy::updateSurplus()
 			break;
 		}
 	}
-	const Real reserve = skill().m_surplusReserve + m_expandCost + pending;
+	const Real reserve = skill().m_surplusReserve + m_expandCost + m_captureCost + pending;
 	const Real infantryShare = skill().m_surplusInfantryShare;
 
 	// Siege: units that out-range the enemy defences seen and can hurt them come first while the army has too few.
@@ -127,6 +204,20 @@ void AIStrategy::updateSurplus()
 	if (money < reserve)
 		return;
 
+	// What the army lacks against what the enemy fields (coverage), and how much strength counts against price.
+	Real gap[NUM_THREATS];
+	const AICombatFigures *threat[NUM_THREATS];
+	coverageGaps(gap, threat);
+	const Bool rich = money - reserve > skill().m_surplusRichMoney;
+	const Real strength = rich ? 1.0f : skill().m_surplusStrength;
+
+	// The best unit of every idle factory first; the orders follow below.
+	enum { MAX_CHOICES = 16 };
+	struct Choice { Object *factory; const ThingTemplate *tmpl; Real score; Real cost; Bool idle; };
+	Choice choices[MAX_CHOICES];
+	Int numChoices = 0;
+	if (m_numSurplusOrders >= MAX_SURPLUS_ORDERS || m_numSurplusUnits + m_numSurplusOrders >= MAX_SURPLUS_UNITS)
+		return;
 	for (Player::PlayerTeamList::const_iterator it = m_player->getPlayerTeams()->begin(); it != m_player->getPlayerTeams()->end(); ++it)
 	{
 		for (DLINK_ITERATOR<Team> iter = (*it)->iterate_TeamInstanceList(); !iter.done(); iter.advance())
@@ -137,14 +228,13 @@ void AIStrategy::updateSurplus()
 			for (DLINK_ITERATOR<Object> oit = team->iterate_TeamMemberList(); !oit.done(); oit.advance())
 			{
 				Object *factory = oit.cur();
-				if (m_numSurplusOrders >= MAX_SURPLUS_ORDERS || m_numSurplusUnits + m_numSurplusOrders >= MAX_SURPLUS_UNITS)
-					return;
 				if (factory == nullptr || factory->isEffectivelyDead() || !factory->isKindOf(KINDOF_STRUCTURE) ||
 						factory->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION) || factory->testStatus(OBJECT_STATUS_SOLD))
 					continue;
 				ProductionUpdateInterface *pu = factory->getProductionUpdateInterface();
-				if (pu == nullptr || pu->getProductionCount() > 0)
+				if (pu == nullptr)
 					continue;
+				const Bool idle = pu->getProductionCount() == 0;	// a busy factory only tells what the army could get
 				const CommandSet *set = TheControlBar->findCommandSet(factory->getCommandSetString());
 				if (set == nullptr)
 					continue;
@@ -161,7 +251,7 @@ void AIStrategy::updateSurplus()
 							tmpl->isKindOf(KINDOF_TRANSPORT) || (tmpl->isKindOf(KINDOF_AIRCRAFT) && !skill().m_surplusAircraft) || tmpl->isKindOf(KINDOF_STRUCTURE))
 						continue;
 					const AICombatFigures *f = AICombatModel::figures(tmpl);
-					if (f == nullptr || !f->m_armed || !f->m_canHitGround)
+					if (f == nullptr || !f->m_armed || (!f->m_canHitGround && !(f->m_canHitAir && gap[THREAT_AIR] > 0.0f)))
 						continue;
 					if (tmpl->isKindOf(KINDOF_INFANTRY) && (Real)(m_surplusInfantry + 1) > infantryShare * (Real)(m_surplusOrdered + 1))
 						continue;
@@ -170,9 +260,23 @@ void AIStrategy::updateSurplus()
 						continue;
 					if (TheBuildAssistant->canMakeUnit(factory, tmpl) != CANMAKE_OK)
 						continue;
-					Real score = unitCounterScore(f);
+					// How well it counters what has been seen (0..2), times its strength: the price matters less the more strength counts
+					// (SurplusStrength 0: per dollar, 0.5: by the square root of the cost, 1: by the cost; rich: by the cost), so the army
+					// moves up to the stronger units as they unlock.  A kind that is a large part of the surplus army already counts less
+					// (a mix), and a unit that answers a kind of enemy the army cannot fight yet counts more (coverage).
+					Real score = 1.0f + unitCounterScore(f);
+					if (strength >= 0.75f)
+						score *= cost / 1000.0f;
+					else if (strength >= 0.25f)
+						score *= sqrtf(cost / 1000.0f);
+					score /= 1.0f + 3.0f * surplusShare(tmpl);
+					Real cover = 0.0f;
+					for (Int c = 0; c < NUM_THREATS; ++c)
+						if (gap[c] > 0.0f && threat[c] && AICombatModel::damagePerSecond(f, threat[c]) > 0.0f)
+							cover += gap[c];
+					score *= 1.0f + 3.0f * cover;
 					if (wantSiege && f->m_groundRange >= siegeRange && AICombatModel::damagePerSecond(f, defence) > 0.0f)
-						score += 2.0f;	// above every counter score (-1..1)
+						score *= 3.0f;	// the siege units the army lacks
 					if (best == nullptr || score > bestScore + 0.01f || (score > bestScore - 0.01f && cost > bestCost))
 					{
 						best = tmpl;
@@ -180,27 +284,68 @@ void AIStrategy::updateSurplus()
 						bestCost = cost;
 					}
 				}
-				if (best == nullptr || !pu->queueCreateUnit(best, pu->requestUniqueUnitID()))
-					continue;
-				m_surplusFactory[m_numSurplusOrders] = factory->getID();
-				m_surplusThing[m_numSurplusOrders] = best->getTemplateID();
-				m_surplusOrderFrame[m_numSurplusOrders] = now;
-				++m_numSurplusOrders;
-				++m_surplusOrdered;
-				if (best->isKindOf(KINDOF_INFANTRY))
-					++m_surplusInfantry;
-				m_surplusSpent += bestCost;
-				money -= bestCost;
-				AI_TRACE("SURPLUS: %s ordered at %s %u (counter score %.2f, cost %.0f, money left %.0f)", best->getName().str(),
-					factory->getTemplate()->getName().str(), factory->getID(), bestScore, bestCost, money);
+				if (best && numChoices < MAX_CHOICES)
+				{
+					choices[numChoices].factory = factory;
+					choices[numChoices].tmpl = best;
+					choices[numChoices].score = bestScore;
+					choices[numChoices].cost = bestCost;
+					choices[numChoices].idle = idle;
+					++numChoices;
+				}
 			}
 		}
+	}
+
+	// Across the factories: the best choices first, and a factory whose best unit is far behind the best of all waits (a barracks does
+	// not keep adding infantry while tanks are worth much more; it does when infantry answers what the army lacks).
+	Real top = 0.0f;
+	for (Int c = 0; c < numChoices; ++c)
+		if (choices[c].score > top)
+			top = choices[c].score;
+	for (Int pass = 0; pass < numChoices; ++pass)
+	{
+		Int pick = -1;
+		for (Int c = 0; c < numChoices; ++c)
+			if (choices[c].tmpl && (pick < 0 || choices[c].score > choices[pick].score))
+				pick = c;
+		if (pick < 0)
+			break;
+		Choice &ch = choices[pick];
+		const ThingTemplate *best = ch.tmpl;
+		ch.tmpl = nullptr;
+		if (!ch.idle || ch.score < 0.6f * top || money - ch.cost < reserve || m_numSurplusOrders >= MAX_SURPLUS_ORDERS)
+			continue;
+		ProductionUpdateInterface *pu = ch.factory->getProductionUpdateInterface();
+		if (!pu->queueCreateUnit(best, pu->requestUniqueUnitID()))
+			continue;
+		m_surplusFactory[m_numSurplusOrders] = ch.factory->getID();
+		m_surplusThing[m_numSurplusOrders] = best->getTemplateID();
+		m_surplusOrderFrame[m_numSurplusOrders] = now;
+		++m_numSurplusOrders;
+		++m_surplusOrdered;
+		if (best->isKindOf(KINDOF_INFANTRY))
+			++m_surplusInfantry;
+		noteSurplusKind(best);
+		m_surplusSpent += ch.cost;
+		money -= ch.cost;
+		AI_TRACE("SURPLUS: %s ordered at %s %u (score %.2f of best %.2f, cost %.0f, money left %.0f)", best->getName().str(),
+			ch.factory->getTemplate()->getName().str(), ch.factory->getID(), ch.score, top, ch.cost, money);
 	}
 }
 
 /// A unit came out of a factory: if it is one of the surplus orders, it waits at the rally point for a team.
 void AIStrategy::onUnitProduced( Object *factory, Object *unit )
 {
+	// The capturer that was trained for a capture (AICapture.cpp): it is ours to send, even when a team order took it.
+	if (m_captureOrderFactory == factory->getID() && m_captureOrderThing == (Int)unit->getTemplate()->getTemplateID())
+	{
+		if (unit->getTeam() != m_player->getDefaultTeam())
+			unit->setTeam(m_player->getDefaultTeam());
+		m_captureReserve = unit->getID();
+		m_captureOrderFactory = INVALID_ID;
+		return;
+	}
 	if (!surplusOn() || unit->getTeam() != m_player->getDefaultTeam())
 		return;	// a team order took it
 	for (Int i = 0; i < m_numSurplusOrders; ++i)

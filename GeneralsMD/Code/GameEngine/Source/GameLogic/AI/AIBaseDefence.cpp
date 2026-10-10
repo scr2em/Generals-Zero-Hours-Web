@@ -97,6 +97,14 @@ Bool AIStrategy::baseThreatUnseen( UnsignedInt now ) const
 }
 
 /// One of our objects took damage: when it stands inside the base zone and an enemy did it, that is a threat (reported by the body module).
+/// A unit that troops can fight on the ground: alive, not an aircraft, not a structure, not a projectile.
+Bool AIStrategy::isGroundThreat( const Object *source ) const
+{
+	if (source == nullptr || source->isEffectivelyDead())
+		return FALSE;
+	return !source->isKindOf(KINDOF_AIRCRAFT) && !source->isKindOf(KINDOF_STRUCTURE) && !source->isKindOf(KINDOF_PROJECTILE);
+}
+
 void AIStrategy::noteBaseDamage( Object *victim, ObjectID attacker, Real amount )
 {
 	Coord3D base;
@@ -106,6 +114,11 @@ void AIStrategy::noteBaseDamage( Object *victim, ObjectID attacker, Real amount 
 	if (dist2D(*victim->getPosition(), base) > zone)
 		return;
 	Object *source = TheGameLogic->findObjectByID(attacker);
+	// Only what troops can answer: not aircraft (the anti-air defences are for them, troops cannot chase planes), not structures
+	// (a superweapon, a defence that fires from outside the base), not shells and strikes whose source is gone (an artillery
+	// barrage, a missile).
+	if (!isGroundThreat(source))
+		return;
 	m_bdDamageFrame = TheGameLogic->getFrame();
 	// Where it comes from, when we can see it; else the place that was hit.
 	m_bdDamagePos = (source && enemyCanSee(source)) ? *source->getPosition() : *victim->getPosition();
@@ -126,7 +139,7 @@ Bool AIStrategy::findBaseThreat( Coord3D *where, Real *value, Bool *seen ) const
 	for (Int i = 0; i < m_enemy.numContacts(); ++i)
 	{
 		const AIContact &c = m_enemy.contacts()[i];
-		if (c.m_role > AIROLE_AIRCRAFT || now - c.m_lastSeen > 3 * LOGICFRAMES_PER_SECOND)
+		if (c.m_role >= AIROLE_AIRCRAFT || now - c.m_lastSeen > 3 * LOGICFRAMES_PER_SECOND)	// aircraft: not for the troops
 			continue;
 		if (dist2D(c.m_pos, base) > zone)
 			continue;

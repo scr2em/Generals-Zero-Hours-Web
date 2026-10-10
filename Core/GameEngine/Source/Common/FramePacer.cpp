@@ -87,9 +87,32 @@ void FramePacer::reset()
 	m_logicFramePhase = 1.0f;
 }
 
+#ifdef __EMSCRIPTEN__
+// The web build draws at least this many frames a second.
+static const Int WebMinRenderFps = 60;
+// Whether the logic time scale is on because of it (and not because the player turned it on).
+static Bool s_webLogicTimeScale = FALSE;
+#endif
+
 void FramePacer::setFramesPerSecondLimit( Int fps )
 {
 	DEBUG_LOG(("FramePacer::setFramesPerSecondLimit() - setting max fps to %d (TheGlobalData->m_useFpsLimit == %d)", fps, TheGlobalData->m_useFpsLimit));
+#ifdef __EMSCRIPTEN__
+	// A lower limit is the game speed (skirmish, scripts, the game's default of 30): the logic keeps that rate and the frames
+	// in between are interpolated, so the game runs as fast as before and only looks smoother.
+	if (fps > 0 && fps < WebMinRenderFps)
+	{
+		m_logicTimeScaleFPS = fps;
+		m_enableLogicTimeScale = TRUE;
+		s_webLogicTimeScale = TRUE;
+		fps = WebMinRenderFps;
+	}
+	else if (s_webLogicTimeScale)
+	{
+		m_enableLogicTimeScale = FALSE;
+		s_webLogicTimeScale = FALSE;
+	}
+#endif
 	m_maxFPS = fps;
 }
 

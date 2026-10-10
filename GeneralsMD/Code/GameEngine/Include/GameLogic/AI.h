@@ -263,6 +263,8 @@ struct AISkillSettings
 	Real m_surplusStartSeconds;	///< ... not before this time in the match (the build order of the scripts comes first).
 	Real m_surplusInfantryShare;	///< At most this share of the surplus units ordered so far is infantry (tanks crush infantry, which the combat model does not know).
 	Bool m_surplusAircraft;	///< Surplus production may build aircraft too.
+	Real m_surplusStrength;	///< How much a surplus unit's strength counts against its price: 0 = the best counter per dollar, 0.5 = by the square root of the cost, 1 = by the cost (stronger units as they unlock).
+	Real m_surplusRichMoney;	///< With more than the reserve plus this, strength counts fully (1): factory time is what is short.
 
 	// ---- razing and hunting ----
 	Bool m_useRaze;	///< A wave team that has arrived and has nothing to fight attacks the known enemy structures around it (attack-move and idle units leave buildings alone).
@@ -286,6 +288,17 @@ struct AISkillSettings
 	// ---- assault ----
 	Real m_assaultAdvantage;	///< The army commits to the attack (no retreat, reinforcements at once, alarms only for a real threat) when it is this many times the enemy forces seen; 0 = never,
 	Real m_assaultMinutes;	///< ... and not before this minute of the match.
+
+	// ---- income ----
+	Int m_incomeHackers;	///< At least this many units that earn money (HackInternetAIUpdate) are kept, trained by the Expert when the scripts did not; 0 = off.
+	Real m_incomeStartSeconds;	///< ... from this time on.
+	Bool m_useCapture;	///< Neutral buildings that pay money (oil derricks) are captured by infantry with the capture power (the upgrade is researched when needed).
+	Real m_captureStartSeconds;	///< ... from this time on.
+
+	// ---- superweapon strike and tunnel assault ----
+	Bool m_useStrike;	///< A wave that meets enemy defences waits outside their reach when a superweapon of ours is ready soon; the superweapon hits them, then the wave goes in.
+	Real m_strikeWaitSeconds;	///< ... ready within this many seconds.
+	Bool m_useTunnelAssault;	///< A tunnel of ours far from the base (a sneak attack) gets troops: units at home go into the tunnel network and come out there.
 };
 
 class AISideBuildList : public MemoryPoolObject

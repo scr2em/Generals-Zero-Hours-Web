@@ -292,6 +292,21 @@
 		width: 800px;
 		height: 600px;
 	}
+	#fps {
+		position: fixed;
+		top: 4px;
+		left: 6px;
+		z-index: 5;
+		padding: 1px 6px;
+		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.55);
+		color: #9be09b;
+		font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-variant-numeric: tabular-nums;
+		pointer-events: none;
+	}
+	#fps.slow { color: #f0c060; }
+	#fps.bad { color: #ff7b72; }
 	#toolbar {
 		position: fixed;
 		top: 8px;
@@ -583,6 +598,7 @@
 <div id="stage" hidden>
 	<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
 	<div id="loading">Loading&hellip;</div>
+	<div id="fps" title="Game frames per second, and the longest frame of the game's own work in the last half second" hidden></div>
 	<div id="toolbar">
 		<span id="mode-badge" hidden>Free starter content &middot; original placeholder game</span>
 		<span id="net-badge" hidden></span>
@@ -2231,6 +2247,17 @@ document.addEventListener('visibilitychange', () => {
 		else ctx.resume();
 	} catch (e) { /* ignore */ }
 });
+
+// The frame rate, top left: the game thread reports it every 30 frames (WebMain.cpp). Add ?fps=0 to the address to hide it.
+const fpsBox = $('fps');
+const showFps = params.get('fps') !== '0';
+window.__zhOnFrames = () => {
+	if (!showFps || !gameRunning || !window.__zhFps) return;
+	const fps = Math.round(window.__zhFps);
+	fpsBox.textContent = fps + ' fps · ' + Math.round(window.__zhWorstFrameMs || 0) + ' ms';
+	fpsBox.className = fps >= 55 ? '' : fps >= 30 ? 'slow' : 'bad';
+	fpsBox.hidden = false;
+};
 
 // Memory: the game can use about 4 GB. Say so before the browser refuses more.
 let memoryWarned = false;
