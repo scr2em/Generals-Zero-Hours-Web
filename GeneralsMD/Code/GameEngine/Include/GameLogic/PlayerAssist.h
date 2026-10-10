@@ -224,8 +224,11 @@ private:
 		ObjectID			m_splitTarget;			///< the target this unit has put on the split fire ledger
 		Real					m_splitDamage;
 		UnsignedInt		m_splitUntil;
+		UnsignedInt		m_orderFrame;				///< retreat: the frame the trip was last ordered
+		UnsignedByte	m_tries;						///< retreat: orders given for this trip to the facility
 		StanceState() : m_flags( 0 ), m_retreatPercent( 0 ), m_phase( 0 ), m_victim( INVALID_ID ), m_facility( INVALID_ID ), m_until( 0 ),
-			m_spacing( 0.0f ), m_spacingUntil( 0 ), m_noRetreatUntil( 0 ), m_splitTarget( INVALID_ID ), m_splitDamage( 0.0f ), m_splitUntil( 0 )
+			m_spacing( 0.0f ), m_spacingUntil( 0 ), m_noRetreatUntil( 0 ), m_splitTarget( INVALID_ID ), m_splitDamage( 0.0f ), m_splitUntil( 0 ),
+			m_orderFrame( 0 ), m_tries( 0 )
 		{
 			m_from.x = m_from.y = m_from.z = 0.0f;
 			m_to = m_from;
@@ -238,9 +241,11 @@ private:
 	void updateStances( UnsignedInt now );
 	void stanceUnit( Object *unit, StanceState &st, UnsignedInt now );
 	void startRetreat( Object *unit, StanceState &st, UnsignedInt now );
-	void endRetreat( Object *unit, StanceState &st );
+	void goToRally( Object *unit, StanceState &st, UnsignedInt now );
+	void updateRetreat( Object *unit, StanceState &st, UnsignedInt now, Real health );
+	void endRetreat( Object *unit, StanceState &st, Real health );
 	Object *pickOtherTarget( Object *unit, Object *current, Real range, AITactics::SplitLedger &ledger, UnsignedInt now, const AITactics::Params &params );
-	void xferStances( Xfer *xfer );
+	void xferStances( Xfer *xfer, UnsignedByte version );		///< version: of PlayerAssist::xfer
 
 	/// Repeat production of one building.
 	struct RepeatState

@@ -36,6 +36,7 @@
 #include "Common/ThingTemplate.h"
 #include "GameLogic/AI.h"
 #include "GameLogic/AIStrategy.h"
+#include "GameLogic/AIStateMachine.h"
 #include "GameLogic/AITacticsCore.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Module/AIUpdate.h"
@@ -49,7 +50,11 @@
 namespace
 {
 	const UnsignedInt LOOK_EVERY = 4;													// frames between two looks at a unit
-	const UnsignedInt RETREAT_FRAMES = 60 * LOGICFRAMES_PER_SECOND;		// longest time a unit is on its way to a place of repair
+	const UnsignedInt RETREAT_FRAMES = 180 * LOGICFRAMES_PER_SECOND;	// longest trip to a place of repair, the wait and the repair included
+	const UnsignedInt RALLY_FRAMES = 40 * LOGICFRAMES_PER_SECOND;			// longest trip to the rally point
+	const UnsignedInt STUCK_FRAMES = 3 * LOGICFRAMES_PER_SECOND;			// idle this long on a trip: the order was not carried out
+	const UnsignedInt RESCAN_FRAMES = 5 * LOGICFRAMES_PER_SECOND;			// waiting at the rally point: look for a place of repair again
+	const UnsignedByte MAX_TRIES = 3;																	// orders to the same place of repair before the rally point
 	const UnsignedInt BLOCK_FRAMES = 15 * LOGICFRAMES_PER_SECOND;			// after an order of the player a unit does not retreat for this long
 
 	Real dist2D( const Coord3D &a, const Coord3D &b )
@@ -303,10 +308,18 @@ static Bool visibleTo( const Object *victim, Int playerIndex )
 }
 
 //-------------------------------------------------------------------------------------------------
+/// Send the unit to the nearest place of repair or healing, or else to the rally point in front of the base.  Called
+/// when the unit drops below its threshold (it remembers where it stood, to go back there), and again when the place
+/// it was going to is gone or a place turns up while it waits at the rally point (where it stood is kept).
 void PlayerAssist::startRetreat( Object *unit, StanceState &st, UnsignedInt now )
 {
 	AIUpdateInterface *ai = unit->getAI();
 	Player *owner = unit->getControllingPlayer();
+
+	if (st.m_phase != PHASE_RETREAT && st.m_phase != PHASE_PARKED)
+		st.m_from = *unit->getPosition();
+	st.m_victim = INVALID_ID;
+	st.m_tries = 0;
 
 	FacilitySearch fs;
 	fs.m_unit = unit;
@@ -315,45 +328,165 @@ void PlayerAssist::startRetreat( Object *unit, StanceState &st, UnsignedInt now 
 	fs.m_heal = FALSE;
 	owner->iterateObjects( findFacility, &fs );
 
-	st.m_from = *unit->getPosition();
-	st.m_victim = INVALID_ID;
 	if (fs.m_best)
 	{
+		// enter a heal building (HealContain) or dock at a repair building (RepairDockUpdate): what a right click on it does
 		if (fs.m_heal)
 			ai->aiGetHealed( fs.m_best, CMD_FROM_AI );
 		else
 			ai->aiGetRepaired( fs.m_best, CMD_FROM_AI );
-		st.m_facility = fs.m_best->getID();
-		st.m_phase = PHASE_RETREAT;
-		st.m_until = now + RETREAT_FRAMES;
-		ASSIST_DEBUG(( "ASSIST stance retreat: unit %d at %d%% goes to %s %d", (int)unit->getID(), (int)(healthOf( unit ) * 100.0f), fs.m_heal ? "heal facility" : "repair facility", (int)fs.m_best->getID() ));
+		// An order the unit does not take changes nothing, not even the source of its last order (often the player's,
+		// which would then look like an order of the player): there is a trip only when the unit is on its way.
+		const AIStateType state = ai->getAIStateType();
+		if (state == AI_ENTER || state == AI_DOCK)
+		{
+			st.m_facility = fs.m_best->getID();
+			st.m_phase = PHASE_RETREAT;
+			st.m_until = now + RETREAT_FRAMES;
+			st.m_orderFrame = now;
+			st.m_tries = 1;
+			ASSIST_DEBUG(( "ASSIST stance retreat: unit %d at %d%% goes to %s %d", (int)unit->getID(), (int)(healthOf( unit ) * 100.0f), fs.m_heal ? "heal facility" : "repair facility", (int)fs.m_best->getID() ));
+			return;
+		}
+		ASSIST_DEBUG(( "ASSIST stance retreat: unit %d cannot use facility %d", (int)unit->getID(), (int)fs.m_best->getID() ));
+	}
+	goToRally( unit, st, now );
+}
+
+//-------------------------------------------------------------------------------------------------
+/// No place of repair: out of the fight to the rally point, and wait there.
+void PlayerAssist::goToRally( Object *unit, StanceState &st, UnsignedInt now )
+{
+	Coord3D rally;
+	st.m_facility = INVALID_ID;
+	st.m_tries = 0;
+	if (!rallyPointOf( unit->getControllingPlayer(), &rally ))
+	{
+		// no base: stay out of trouble where it is (a unit that was not on a trip yet is looked at again later)
+		if (st.m_phase == PHASE_RETREAT || st.m_phase == PHASE_PARKED)
+		{
+			st.m_phase = PHASE_PARKED;
+			st.m_to = *unit->getPosition();
+			st.m_until = now + RESCAN_FRAMES;
+		}
 		return;
 	}
-
-	Coord3D rally;
-	if (!rallyPointOf( owner, &rally ))
-		return;
-	st.m_facility = INVALID_ID;
+	// A move of the AI given to a busy unit (fighting, or on an order of the player) is only a detour of 20 seconds, after
+	// which it takes up what it was doing, and it keeps the source of that order: stop it first, so that the move is
+	// its order.
+	AIUpdateInterface *ai = unit->getAI();
+	if (!ai->isIdle())
+		ai->aiIdle( CMD_FROM_AI );
 	ai->aiMoveToPosition( &rally, CMD_FROM_AI );
 	st.m_phase = PHASE_RETREAT;
-	st.m_until = now + 40 * LOGICFRAMES_PER_SECOND;
+	st.m_until = now + RALLY_FRAMES;
+	st.m_orderFrame = now;
 	st.m_to = rally;
 	ASSIST_DEBUG(( "ASSIST stance retreat: unit %d at %d%% goes to the rally point %.0f,%.0f", (int)unit->getID(), (int)(healthOf( unit ) * 100.0f), rally.x, rally.y ));
 }
 
 //-------------------------------------------------------------------------------------------------
-/// The unit is healthy again (or gave up): back to where it was.
-void PlayerAssist::endRetreat( Object *unit, StanceState &st )
+/// A unit on its way to be repaired or healed, being mended, or waiting at the rally point.
+void PlayerAssist::updateRetreat( Object *unit, StanceState &st, UnsignedInt now, Real health )
+{
+	AIUpdateInterface *ai = unit->getAI();
+
+	if (st.m_facility != INVALID_ID)
+	{
+		// mended: the dock and the heal building let it go at full health (it is not looked at while it is inside)
+		if (health >= 0.999f || (health >= 0.97f && ai->isIdle()))
+		{
+			endRetreat( unit, st, health );
+			return;
+		}
+		Object *fac = TheGameLogic->findObjectByID( st.m_facility );
+		const Bool heal = unit->isKindOf( KINDOF_INFANTRY );
+		if (fac == nullptr || fac->isEffectivelyDead() ||
+				!(heal ? TheActionManager->canGetHealedAt( unit, fac, CMD_FROM_AI ) : TheActionManager->canGetRepairedAt( unit, fac, CMD_FROM_AI )))
+		{
+			ASSIST_DEBUG(( "ASSIST stance retreat: unit %d lost facility %d", (int)unit->getID(), (int)st.m_facility ));
+			startRetreat( unit, st, now );
+			return;
+		}
+		if (now >= st.m_until)
+		{
+			ASSIST_DEBUG(( "ASSIST stance retreat: unit %d gives up on facility %d (too long)", (int)unit->getID(), (int)st.m_facility ));
+			goToRally( unit, st, now );
+			return;
+		}
+		// Standing about without being mended: the building did not take it (full, or the way is blocked).  Again a few
+		// times, then the rally point.
+		if (ai->isIdle() && now >= st.m_orderFrame + STUCK_FRAMES)
+		{
+			if (st.m_tries < MAX_TRIES)
+			{
+				if (heal)
+					ai->aiGetHealed( fac, CMD_FROM_AI );
+				else
+					ai->aiGetRepaired( fac, CMD_FROM_AI );
+				++st.m_tries;
+				st.m_orderFrame = now;
+				ASSIST_DEBUG(( "ASSIST stance retreat: unit %d tries facility %d again", (int)unit->getID(), (int)st.m_facility ));
+			}
+			else
+			{
+				ASSIST_DEBUG(( "ASSIST stance retreat: unit %d cannot use facility %d", (int)unit->getID(), (int)st.m_facility ));
+				goToRally( unit, st, now );
+			}
+		}
+		return;
+	}
+
+	// at the rally point, or on the way: back to the fight once it healed by itself (an upgrade, a medic, a veteran's self-repair)
+	const Real enough = std::min( 0.97f, ((Real)st.m_retreatPercent + 35.0f) * 0.01f );
+	if (health >= enough)
+	{
+		endRetreat( unit, st, health );
+		return;
+	}
+	if (st.m_phase == PHASE_RETREAT)
+	{
+		const Bool arrived = dist2D( *unit->getPosition(), st.m_to ) < 80.0f;
+		if (arrived || now >= st.m_until || (ai->isIdle() && now >= st.m_orderFrame + STUCK_FRAMES))
+		{
+			// there: stop, rather than push about among the others for the very spot
+			if (arrived && !ai->isIdle())
+				ai->aiIdle( CMD_FROM_AI );
+			st.m_phase = PHASE_PARKED;
+			st.m_until = now + RESCAN_FRAMES;
+			ASSIST_DEBUG(( "ASSIST stance retreat: unit %d parks at the rally point", (int)unit->getID() ));
+		}
+		return;
+	}
+	// parked: now and then, look for a place of repair again (one may have been built)
+	if (now >= st.m_until)
+	{
+		st.m_until = now + RESCAN_FRAMES;
+		FacilitySearch fs;
+		fs.m_unit = unit;
+		fs.m_best = nullptr;
+		fs.m_bestDist = 0.0f;
+		fs.m_heal = FALSE;
+		unit->getControllingPlayer()->iterateObjects( findFacility, &fs );
+		if (fs.m_best)
+			startRetreat( unit, st, now );
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/// The unit is healthy again: back to where it was.
+void PlayerAssist::endRetreat( Object *unit, StanceState &st, Real health )
 {
 	AIUpdateInterface *ai = unit->getAI();
 	if (st.m_from.x != 0.0f || st.m_from.y != 0.0f)
 	{
 		const Coord3D back = st.m_from;
 		ai->aiAttackMoveToPosition( &back, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI );
-		ASSIST_DEBUG(( "ASSIST stance retreat: unit %d goes back to %.0f,%.0f", (int)unit->getID(), back.x, back.y ));
+		ASSIST_DEBUG(( "ASSIST stance retreat: unit %d goes back to %.0f,%.0f at %d%%", (int)unit->getID(), back.x, back.y, (int)(health * 100.0f + 0.5f) ));
 	}
 	st.m_phase = PHASE_NONE;
 	st.m_facility = INVALID_ID;
+	st.m_tries = 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -369,39 +502,31 @@ void PlayerAssist::stanceUnit( Object *unit, StanceState &st, UnsignedInt now )
 	if (st.m_phase != PHASE_NONE && ai->getLastCommandSource() == CMD_FROM_PLAYER)
 	{
 		if (st.m_phase == PHASE_RETREAT || st.m_phase == PHASE_PARKED)
+		{
 			st.m_noRetreatUntil = now + BLOCK_FRAMES;
+			ASSIST_DEBUG(( "ASSIST stance retreat: unit %d takes the order of the player (no retreat for %d s)", (int)unit->getID(), (int)(BLOCK_FRAMES / LOGICFRAMES_PER_SECOND) ));
+		}
 		st.m_phase = PHASE_NONE;
 		st.m_facility = INVALID_ID;
+		st.m_tries = 0;
 	}
 
 	const Real health = healthOf( unit );
 
-	// ---- the unit is on its way to be repaired, or waits at the rally point
+	// ---- the unit is on its way to be repaired, being mended, or waits at the rally point
 	if (st.m_phase == PHASE_RETREAT || st.m_phase == PHASE_PARKED)
 	{
-		if (health >= 0.97f)
-		{
-			endRetreat( unit, st );
-			return;
-		}
-		if (st.m_phase == PHASE_RETREAT)
-		{
-			const Bool arrived = st.m_facility == INVALID_ID ? dist2D( *unit->getPosition(), st.m_to ) < 80.0f : FALSE;
-			Object *fac = st.m_facility != INVALID_ID ? TheGameLogic->findObjectByID( st.m_facility ) : nullptr;
-			if (st.m_facility != INVALID_ID && (fac == nullptr || fac->isEffectivelyDead()))
-				st.m_phase = PHASE_PARKED;
-			else if (arrived || now >= st.m_until || (ai->isIdle() && now > st.m_until - RETREAT_FRAMES + 3 * LOGICFRAMES_PER_SECOND && st.m_facility == INVALID_ID))
-			{
-				st.m_phase = PHASE_PARKED;
-				ASSIST_DEBUG(( "ASSIST stance retreat: unit %d is out of the fight", (int)unit->getID() ));
-			}
-		}
-		else if (st.m_retreatPercent > 0 && health * 100.0f >= (Real)st.m_retreatPercent + 35.0f)
-		{
-			// it healed by itself: back to the fight
-			endRetreat( unit, st );
-		}
+		updateRetreat( unit, st, now, health );
 		return;
+	}
+
+	// ---- retreat when damaged: before anything else the stances do (a unit on a kite step pulls out too)
+	if ((st.m_flags & STANCE_RETREAT) != 0 && health * 100.0f < (Real)st.m_retreatPercent && now >= st.m_noRetreatUntil &&
+			((now + unit->getID()) % LOOK_EVERY) == 0)
+	{
+		startRetreat( unit, st, now );
+		if (st.m_phase == PHASE_RETREAT || st.m_phase == PHASE_PARKED)
+			return;
 	}
 
 	// ---- the unit is on a step (kite or spread)
@@ -462,14 +587,6 @@ void PlayerAssist::stanceUnit( Object *unit, StanceState &st, UnsignedInt now )
 	// ---- nothing going on: look at the unit now and then
 	if (((now + unit->getID()) % LOOK_EVERY) != 0)
 		return;
-
-	// retreat when damaged
-	if ((st.m_flags & STANCE_RETREAT) != 0 && health * 100.0f < (Real)st.m_retreatPercent && now >= st.m_noRetreatUntil)
-	{
-		startRetreat( unit, st, now );
-		if (st.m_phase == PHASE_RETREAT)
-			return;
-	}
 
 	Object *victim = ai->isAttacking() ? ai->getCurrentVictim() : nullptr;
 	const Real range = unit->getCurrentWeapon() ? unit->getCurrentWeapon()->getAttackRange( unit ) : 0.0f;
@@ -667,7 +784,7 @@ void PlayerAssist::updateStances( UnsignedInt now )
 }
 
 //-------------------------------------------------------------------------------------------------
-void PlayerAssist::xferStances( Xfer *xfer )
+void PlayerAssist::xferStances( Xfer *xfer, UnsignedByte version )
 {
 	const Bool loading = xfer->getXferMode() == XFER_LOAD;
 	UnsignedInt count = (UnsignedInt)m_stances.size();
@@ -700,6 +817,11 @@ void PlayerAssist::xferStances( Xfer *xfer )
 		xfer->xferObjectID( &st->m_splitTarget );
 		xfer->xferReal( &st->m_splitDamage );
 		xfer->xferUnsignedInt( &st->m_splitUntil );
+		if (version >= 6)
+		{
+			xfer->xferUnsignedInt( &st->m_orderFrame );
+			xfer->xferUnsignedByte( &st->m_tries );
+		}
 		if (loading)
 			m_stances[id] = loaded;
 		else

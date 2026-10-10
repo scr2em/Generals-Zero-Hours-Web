@@ -253,7 +253,7 @@ void PlayerAssist::crc( Xfer *x )
 //-------------------------------------------------------------------------------------------------
 void PlayerAssist::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 5;
+	XferVersion currentVersion = 6;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -285,7 +285,7 @@ void PlayerAssist::xfer( Xfer *xfer )
 	}
 
 	if (version >= 4)
-		xferStances( xfer );
+		xferStances( xfer, version );
 
 	if (version >= 5)
 		xferRepeat( xfer );

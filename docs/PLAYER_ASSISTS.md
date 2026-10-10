@@ -46,9 +46,20 @@ skirmish against an Easy AI with the assist switched on, and look for the `ASSIS
 | Stance | Setup | Expected lines |
 |---|---|---|
 | Kite | Select 6 out-ranging units (artillery or rocket units) facing an enemy infantry group, press Alt+K, attack. | `ASSIST stance set mask=1 ...`, then `ASSIST stance kite: unit N steps back from M`. |
-| Retreat | Select units in a fight and press Alt+R three times. | `percent=70`; then `ASSIST stance retreat: unit N at P% goes to repair facility M` (vehicles, with a repair pad), `... heal facility M` (infantry), or `... the rally point x,y`; after the heal, `... goes back to x,y`. |
+| Retreat | Scripted: `stance-retreat-heal`, `-repair`, `-rally` in `scripts/assistbench/scenarios/realdata` (see below). By hand: select units in a fight and press Alt+R three times. | `percent=70`; then `ASSIST stance retreat: unit N at P% goes to repair facility M` (vehicles, with a repair building), `... heal facility M` (infantry), or `... the rally point x,y` and `... parks at the rally point`; after the repair or heal, `... goes back to x,y at 100%`. A move order while it retreats: `... takes the order of the player (no retreat for 15 s)`. |
 | Spread | Face an enemy with artillery or blast weapons and press Alt+S. | `ASSIST stance spread: ... moves apart` or `... steps aside`. |
 | Split fire | Have 8+ units attack a few enemies and press Alt+X. | `ASSIST stance split: unit N leaves A (enough on its way) for B`. |
+
+**Retreat when damaged, scripted** (`realdata_tests.sh assists`). The repair and heal buildings are not named: the
+scenarios create the first structure of the America side with KindOf `REPAIR_PAD` / `HEAL_PAD` (else of any side) and
+the trace names it on the line `ASSISTTEST created 1 x <template> for player 0`. Check that it is a building the game
+really repairs vehicles / heals infantry at. A pass:
+- `stance-retreat-heal`: four `... at 40% goes to heal facility M`, four `... goes back to x,y at 100%`, no `rally point`
+  or `cannot` line, and the Rangers end where they stood. `ASSISTTEST cannot create @HEAL_PAD`: the data has no such
+  structure; `cannot use facility` or `goes to the rally point`: the building does not take Rangers in.
+- `stance-retreat-repair`: the same with three `... at 35% goes to repair facility M` and three `... at 100%`.
+- `stance-retreat-rally`: six `... at 35% goes to the rally point`, six `... parks at the rally point`, three
+  `... takes the order of the player`, no `facility` or `goes back` line.
 
 **Idle hotkeys** (no rule of the match needed: they only select)
 1. Scripted: `scripts/assistbench/scenarios/realdata/idle-select.json` (part of `realdata_tests.sh assists`). A pass: every
@@ -93,7 +104,9 @@ skirmish against an Easy AI with the assist switched on, and look for the `ASSIS
 
 ### Known gaps
 
-- **Retreat to a heal or repair building** has not been seen to finish: the unit reaches the building, but healing and the "goes back" line were not reached in a test.
-- **Retreat to the rally point** has not been exercised.
+- **Retreat when damaged** finishes on the starter content (smoke checks only: infantry healed in an infirmary and back,
+  vehicles repaired at a repair bay and back, the rally point and parking without one, the player's order winning, a full
+  infirmary, units with kite on hurt in a fight). It has not been run on the real data: which Zero Hour buildings repair and heal,
+  and whether real units get in, is what `stance-retreat-heal` / `-repair` / `-rally` check there.
 - **Air coverage** was checked only with a stand-in anti-air tower.
 - **Shared AI code:** stances use the same tactics code as the Expert AI (`AITacticsCore`). The Expert's behaviour was unchanged on the starter data (identical results and CRC timelines). The real-data AI runs in `scripts/gameplay/realdata_tests.sh` are the check for real factions.

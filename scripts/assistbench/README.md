@@ -64,7 +64,7 @@ dispatcher and the assists exactly as clicks and hotkeys do (and as a replay wou
 
 | step | what it does |
 |---|---|
-| `spawn <name> <entry>[+<entry>] [at=<pos>]` | creates units with `-assistTest` entries (`player:template:count[:ref:dx:dy]`); `at=` puts the first one there |
+| `spawn <name> <entry>[+<entry>] [at=<pos>]` | creates units with `-assistTest` entries (`player:template:count[:ref:dx:dy]`); `at=` puts the first one there. The template may be `@KINDOF` (`@REPAIR_PAD`, `@HEAL_PAD`): the first structure template with that KindOf, of the player's side if the data has one, else of any side; the trace line `ASSISTTEST created N x <template>` names it |
 | `name <name> <objects>` | names a set of objects |
 | `select <objects>` | MSG_CREATE_SELECTED_GROUP |
 | `group <n>` / `selectgroup <n>` | MSG_CREATE_TEAMn from the selection / MSG_SELECT_TEAMn |
@@ -121,7 +121,9 @@ Every unit must meet the condition (`any=1`: one is enough).
 | `protect-building`, `protect-unit`, `protect-group` | the link; an attacker hits the protected command center / tank / hotkey group (a member added later too); the protectors answer, go home after the fight; a move by hand moves the home; unprotect removes the link |
 | `assists-not-allowed` | formation and protect orders change nothing in a match that does not allow them |
 | `base-defend` | base under attack: idle army units go to the attacked command center and back to where they stood |
-| `stance-retreat-rally`, `-repair`, `-heal` | retreat when damaged: to the rally point, to a repair building, to a heal building, and back (repair and heal buildings are assumptions to confirm) |
+| `stance-retreat-heal` | four Rangers hurt to 40% (retreat at 70%) go into the heal building (`@HEAL_PAD`), come out at 100% and go back to where they stood |
+| `stance-retreat-repair` | three Crusaders hurt to 35% (retreat at 50%) dock at the repair building (`@REPAIR_PAD`), are repaired to 100% and go back |
+| `stance-retreat-rally` | without a repair building: three Crusaders hurt to 35% pull back to the rally point and park there; a move order of the player wins, and they pull back again only after the 15 s |
 | `stance-kite`, `stance-spread`, `stance-split` | the stance's decision lines while a fight goes on |
 | `repeat-production` | a Ranger is built again and again; it waits while money minus cost is below the reserve; it stops when switched off |
 | `idle-select` | idle hotkeys: the next idle army unit by id (round again), never a busy one; all idle army units; the next idle worker |

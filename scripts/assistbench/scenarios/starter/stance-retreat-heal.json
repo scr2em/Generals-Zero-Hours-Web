@@ -1,0 +1,30 @@
+{
+ "name": "starter-stance-retreat-heal",
+ "description": "Smoke check only (starter content, says nothing about gameplay): four riflemen with retreat at 70% are hurt to 40%; they go into the nearest heal building (KindOf HEAL_PAD, the infirmary), come out healed and go back to where they stood.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn hut 0:@HEAL_PAD:1 at=cc:0^0,-300",
+  "spawn rifles 0:IronwoodRifleman:4 at=cc:0^500,0",
+  "wait 5",
+  "select rifles",
+  "send ASSIST_STANCE int:2 int:2 int:70",
+  "wait 2",
+  "snapshot rifles",
+  "damage rifles 60%",
+  "until not atsnapshot rifles tol=60 max=150",
+  "until health rifles above 98 max=1800",
+  "until atsnapshot rifles tol=80 max=1200",
+  "wait 150",
+  "expect atsnapshot rifles tol=80",
+  "expect health rifles above 98"
+ ],
+ "log": [
+  "^ASSISTTEST created 1 x IronwoodInfirmary for player 0",
+  "^ASSIST stance set mask=2 value=2 percent=70 for 4 units",
+  { "match": "^ASSIST stance retreat: unit \\d+ at 40% goes to heal facility \\d+", "min": 4, "max": 4 },
+  { "match": "^ASSIST stance retreat: unit \\d+ goes back to -?\\d+,-?\\d+ at 100%", "min": 4, "max": 4 },
+  { "match": "^ASSIST stance retreat: unit \\d+ .*(rally point|cannot)", "max": 0 }
+ ]
+}

@@ -1,0 +1,30 @@
+{
+ "name": "starter-stance-retreat-repair",
+ "description": "Smoke check only (starter content, says nothing about gameplay): three tanks with retreat at 50% are hurt to 35%; they dock at the nearest repair building (KindOf REPAIR_PAD, the repair bay), are repaired and go back to where they stood.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn shop 0:@REPAIR_PAD:1 at=cc:0^0,-300",
+  "spawn tanks 0:IronwoodTank:3 at=cc:0^500,0",
+  "wait 5",
+  "select tanks",
+  "send ASSIST_STANCE int:2 int:2 int:50",
+  "wait 2",
+  "snapshot tanks",
+  "damage tanks 65%",
+  "until not atsnapshot tanks tol=60 max=150",
+  "until health tanks above 98 max=2700",
+  "until atsnapshot tanks tol=80 max=1200",
+  "wait 150",
+  "expect atsnapshot tanks tol=80",
+  "expect health tanks above 98"
+ ],
+ "log": [
+  "^ASSISTTEST created 1 x IronwoodRepairBay for player 0",
+  "^ASSIST stance set mask=2 value=2 percent=50 for 3 units",
+  { "match": "^ASSIST stance retreat: unit \\d+ at 35% goes to repair facility \\d+", "min": 3, "max": 3 },
+  { "match": "^ASSIST stance retreat: unit \\d+ goes back to -?\\d+,-?\\d+ at 100%", "min": 3, "max": 3 },
+  { "match": "^ASSIST stance retreat: unit \\d+ .*(rally point|cannot)", "max": 0 }
+ ]
+}
