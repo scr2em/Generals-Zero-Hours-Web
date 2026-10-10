@@ -136,7 +136,7 @@ run base-alert-replay "$ALERT_GAME $ALERT_DO f:300 \
 #    Where it stands on screen changes with the start position of the match, and it walks up to the headquarters while it
 #    shoots, so the mouse sweeps the patch of screen where it can be (any hover prints the verdict line).
 ODDS_SWEEP=""
-for y in 266 274 282 290; do for x in 680 688 696 704; do ODDS_SWEEP="$ODDS_SWEEP m:$x,$y w:1"; done; done
+for y in 270 278 286; do for x in 672 680 688 696 704 712 720 728 736; do ODDS_SWEEP="$ODDS_SWEEP m:$x,$y w:1"; done; done
 run odds "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodRifleman~for~player~1 w:3 k:Home w:5 r:120,345,260,400 w:4 \
 	kd:Alt w:1 k:KeyO w:1 ku:Alt w:2 W:ASSIST~odds~view~on s:viewon $ODDS_SWEEP W:ASSIST~odds~probe~armed s:hover W:ASSIST~odds~kind=1~ratio=[0-9.]+~own=[1-3]~enemy=1 s:odds \
 	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$ALERT_UNITS" --arg -assistDebug --options AssistOddsMeter=1
