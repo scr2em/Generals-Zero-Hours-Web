@@ -50,6 +50,8 @@
 #   * razing and hunting: a wave that stands in an enemy base attacks its structures ("razing: N attack orders on
 #     structures" grows); with no target known and a far stronger army, "team T HUNTS" lines. No team of the per-team
 #     lines ("  team T mode M ... target ... units N idle I") stands idle for minutes with a target it never reaches.
+#   * reinforcements: "team T: the force that went out is gone, N reinforcement(s) are the team now" can appear; such a
+#     team joins the next wave or follow-up group (it does not stay in the base until the end).
 #
 # Options:
 #   --quick           fewer games (about a third of the time)

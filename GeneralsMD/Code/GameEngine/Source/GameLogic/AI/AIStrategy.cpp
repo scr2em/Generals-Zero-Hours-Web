@@ -1730,6 +1730,18 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 	}
 	if (allCount == 0)
 		return;
+	if (reserves > 0 && count == 0 && rec->m_mode != AITEAM_FREE)
+	{
+		// The force that went out is gone: the reinforcements are the team now.  They are not part of the wave that is out; they
+		// gather at the rally point and go with the next wave or follow-up group.
+		AI_TRACE("team %u: the force that went out is gone, %d reinforcement(s) are the team now", team->getID(), reserves);
+		rec->m_idMark = INVALID_ID;
+		rec->m_inWave = FALSE;
+		rec->m_mode = AITEAM_FREE;
+		rec->m_modeFrame = now;
+		rec->m_orderFrame = 0;
+		rec->m_baseDefence = FALSE;
+	}
 	if (reserves > 0 && count > 0)
 	{
 		center.x /= count;
@@ -1852,6 +1864,16 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 			{
 				rec->m_idleSince = 0;
 				return;
+			}
+
+			// An attacking team that stands about far from its objective (its units were stopped, or it was given members since its
+			// order) gets the order again.
+			if (rec->m_mode == AITEAM_ATTACKING && !allIdle && 2 * idleCount >= count && dist2D(center, rec->m_target) > 300.0f &&
+					now - rec->m_orderFrame >= 20 * LOGICFRAMES_PER_SECOND)
+			{
+				rec->m_orderFrame = now;
+				orderTeamAttackMove(team, &rec->m_target);
+				break;
 			}
 
 			// Arrived and nothing to do.
