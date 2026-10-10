@@ -83,6 +83,8 @@ View::~View()
 {
 }
 
+Real TheAssistCameraHeightScale = 1.0f;
+
 void View::init()
 {
 	m_width = DEFAULT_VIEW_WIDTH;

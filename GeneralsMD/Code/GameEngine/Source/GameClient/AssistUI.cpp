@@ -24,6 +24,7 @@
 #include <algorithm>
 
 #include "Common/AssistOptions.h"
+#include "Common/GlobalData.h"
 #include "Common/NameKeyGenerator.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
@@ -75,6 +76,8 @@ namespace
 	AssistTextPool s_overlayPool;
 	AssistTextPool *s_pool = &s_overlayPool;
 	AssistUI::Selection s_selection;
+	Bool s_useUserScale = TRUE;
+	Real s_zoomLogged = 0.0f;					// the camera height (share of the game's limit) last printed
 
 	// the drag that aims a formation
 	Bool			s_aimEligible = FALSE;		// the right button went down where a drag would aim a formation
@@ -103,7 +106,13 @@ Real AssistUI::scale()
 		if (base < 1.0f)
 			base = 1.0f;
 	}
-	return base * (Real)TheAssistOptions.m_uiScalePercent / 100.0f;
+	return s_useUserScale ? base * (Real)TheAssistOptions.m_uiScalePercent / 100.0f : base;
+}
+
+//-------------------------------------------------------------------------------------------------
+void AssistUI::useUserScale( Bool use )
+{
+	s_useUserScale = use;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -211,6 +220,13 @@ static PooledText &nextText( Int pointSize )
 		s_pool->m_items.push_back( p );
 	}
 	PooledText &p = s_pool->m_items[s_pool->m_next++];
+	// the text grows with the player's UI scale (the resolution is in adjustFontSize already)
+	if (s_useUserScale && TheAssistOptions.m_uiScalePercent != 100)
+	{
+		pointSize = (pointSize * TheAssistOptions.m_uiScalePercent + 50) / 100;
+		if (pointSize < 6)
+			pointSize = 6;
+	}
 	if (p.m_pointSize != pointSize)
 	{
 		p.m_pointSize = pointSize;
@@ -318,6 +334,7 @@ AssistPanel::AssistPanel( const char *name ) : m_name( name )
 	m_fillAlpha = 190;
 	m_manual = FALSE;
 	m_stackLeft = FALSE;
+	m_fixedScale = FALSE;
 	s_panels.push_back( this );
 }
 
@@ -374,7 +391,9 @@ void AssistPanel::show( Bool visible )
 	if (visible)
 	{
 		Int x, y, w, h;
+		AssistUI::useUserScale( !m_fixedScale );
 		place( &x, &y, &w, &h );
+		AssistUI::useUserScale( TRUE );
 		m_window->winSetPosition( x, y );
 		m_window->winSetSize( w, h );
 	}
@@ -536,6 +555,8 @@ void AssistPanel::drawFunc( GameWindow *window, WinInstanceData *data )
 		}
 	}
 
+	AssistUI::useUserScale( !panel->m_fixedScale );
+
 	// this window's own strings
 	if (panel->m_texts == nullptr)
 		panel->m_texts = new AssistTextPool;
@@ -579,6 +600,7 @@ void AssistPanel::drawFunc( GameWindow *window, WinInstanceData *data )
 	}
 
 	AssistUI::usePool( nullptr );
+	AssistUI::useUserScale( TRUE );
 }
 
 //=================================================================================================
@@ -837,6 +859,22 @@ void AssistUI::update()
 	init();
 	invalidateSelection();
 
+	// the camera may zoom out as far as the player allows (the tactical view reads it, W3DView::applyMaxHeight)
+	TheAssistCameraHeightScale = (Real)TheAssistOptions.m_maxZoomPercent / 100.0f;
+	if (TheTacticalView && TheGlobalData && TheGlobalData->m_maxCameraHeight > 0.0f && AssistUI::playing())
+	{
+		// for the checks: how far out the camera is, in steps of a tenth of the game's limit beyond it
+		const Real share = TheTacticalView->getHeightAboveGround() / TheGlobalData->m_maxCameraHeight;
+		const Real step = floorf( share * 10.0f ) / 10.0f;
+		if (share > 1.01f && step != s_zoomLogged)
+		{
+			s_zoomLogged = step;
+			ASSIST_DEBUG(( "ASSIST camera zoomed out to %d%% of the game's limit (allowed %d%%)", (int)(share * 100.0f + 0.5f), TheAssistOptions.m_maxZoomPercent ));
+		}
+		else if (share <= 1.01f)
+			s_zoomLogged = 0.0f;
+	}
+
 	if (!AssistUI::playing())
 	{
 		for (size_t i = 0; i < s_panels.size(); ++i)
@@ -991,7 +1029,17 @@ namespace
 		OPT_REPEAT = 8, OPT_CLOSE = 100 };
 
 	// rows with a number and "-" / "+" buttons (ids VALUE_DOWN + row, VALUE_UP + row)
-	enum { OPT_RESERVE = 50, VALUE_DOWN = 1000, VALUE_UP = 2000 };
+	enum { OPT_RESERVE = 50, OPT_ZOOM = 51, OPT_UISCALE = 52, VALUE_DOWN = 1000, VALUE_UP = 2000 };
+
+	void zoomChanged()
+	{
+		ASSIST_DEBUG(( "ASSIST camera zoom-out allowance %d%% of the game's limit", TheAssistOptions.m_maxZoomPercent ));
+	}
+
+	void uiScaleChanged()
+	{
+		ASSIST_DEBUG(( "ASSIST panels scale %d%% (%.2f with the resolution)", TheAssistOptions.m_uiScalePercent, AssistUI::scale() ));
+	}
 	struct ValueRow
 	{
 		Int						m_id;
@@ -1003,6 +1051,8 @@ namespace
 	const ValueRow valueRows[] =
 	{
 		{ OPT_RESERVE, L"Repeat production keeps this much money: %d", &TheAssistOptions.m_repeatReserve, 250, 0, 100000, &AssistRepeatUI::reserveChanged },
+		{ OPT_ZOOM, L"Camera zoom-out: %d%% of the game's limit", &TheAssistOptions.m_maxZoomPercent, 25, 100, 300, &zoomChanged },
+		{ OPT_UISCALE, L"Size of the assist panels and the info strip: %d%%", &TheAssistOptions.m_uiScalePercent, 10, 50, 300, &uiScaleChanged },
 	};
 	const ValueRow *valueRow( Int id )
 	{
@@ -1021,6 +1071,7 @@ public:
 	AssistOptionsDialog() : AssistPanel( "AssistOptions" )
 	{
 		setManual( TRUE );
+		setFixedScale( TRUE );
 		m_fillAlpha = 252;
 		m_title = L"Player assists";
 		addButton( OPT_FORMATIONS, 0, L"Formations: picker, hotkeys, drag to aim", nullptr );

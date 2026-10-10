@@ -30,6 +30,8 @@
 #   coverage         the defence coverage view: rings of a ground and an air defence, uncovered stretches of the base edge
 #   repeat-replay    repeat production on the headquarters (W, Alt+Q): the worker is built again; recorded and played back
 #   repeat-save      the same, saved and loaded from the pause menu: the repeat state is in the save and goes on
+#   view-options     the dialog's "+" of the zoom-out and the panel size rows: Options.ini has them; in a match the mouse
+#                    wheel zooms out beyond the game's limit
 site=$(cd "$1" && pwd)
 out=${2:-${TMPDIR:-/tmp}/zh-assist-flows}
 here=$(cd "$(dirname "$0")" && pwd)
@@ -43,7 +45,8 @@ MENU="c:515,449"; PAUSE_EXIT="c:399,412"; YES="c:318,368"; OK_REPORT="c:699,566"
 REPLAY_ROW="c:62,100"; REPLAY_PLAY="c:124,502"
 ASSIST_CHECKBOX="c:565,480"		# "Player assists allowed" on the skirmish setup screen
 ASSIST_BUTTON="c:208,481"			# "Player assists..." on the Options screen
-OPT_FORMATIONS="c:400,67"; OPT_CLOSE="c:399,385"		# in the Player assists dialog
+OPT_FORMATIONS="c:400,67"; OPT_CLOSE="c:399,445"		# in the Player assists dialog
+OPT_ZOOM_UP="c:607,337"; OPT_UISCALE_UP="c:607,367"		# the "+" buttons of the zoom-out and panel size rows
 
 # the units the matches start with: left of the base, in the first screen
 UNITS="0:IronwoodRifleman:6+0:IronwoodTank:3+0:IronwoodRocketeer:4+0:IronwoodScout:2"
@@ -185,6 +188,15 @@ run repeat-save "w:3 $SKIRMISH w:3 $START $REPEAT_ON N:queues~IronwoodWorker~aga
 	$PAUSE_SAVELOAD w:4 $FIRST_SAVE_ROW w:1 $LOAD_BUTTON w:3 $CONFIRM_YES W:ASSIST~loaded:~allowed=1,~repeat~production~on~1~buildings s:loaded \
 	$REPEATED s:repeated N:could~not~be~loaded N:Error~loading~block N:RuntimeError" \
 	--arg -assistDebug --options AssistRepeatProduction=1 --profile "$out/repeat-save/profile"
+
+# 13. Camera zoom-out and panel size: the "+" buttons of the dialog (125% zoom-out, 110% panels) are in Options.ini; in a match
+#     the wheel zooms out beyond the game's limit.
+run view-options "w:3 $OPTIONS w:6 $ASSIST_BUTTON w:4 $OPT_ZOOM_UP w:2 $OPT_UISCALE_UP w:2 s:dialog \
+	W:ASSIST~camera~zoom-out~allowance~125% W:ASSIST~panels~scale~110% \
+	e:(async()=>{const~f=await~__zh.importer.readUserFile('command~and~conquer~generals~zero~hour~data/options.ini');const~t=await~f.text();return~/AssistMaxZoomPercent~=~125/.test(t)&&/AssistUIScalePercent~=~110/.test(t)})() \
+	$OPT_CLOSE w:3 c:702,566 w:5 $SKIRMISH w:3 $START W:ASSIST~match~allowed k:Home w:5 m:400,300 \
+	wheel:500 w:1 wheel:500 w:1 wheel:500 w:1 wheel:500 w:1 wheel:500 w:1 wheel:500 w:3 s:zoomed \
+	W:ASSIST~camera~zoomed~out~to~1[0-9][0-9]%~of~the~game's~limit~.allowed~125%. N:RuntimeError" --arg -assistDebug
 
 echo "$failed flow(s) failed"
 exit $((failed > 0))

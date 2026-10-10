@@ -31,3 +31,7 @@ extern AssistRightDragHook TheAssistRightDragHook;
 /// Called when the radar raises the "under attack" alert for the local player, with the place of the attack.
 typedef void (*AssistAlertHook)( const struct Coord3D *pos );
 extern AssistAlertHook TheAssistAlertHook;
+
+/// How far out the player may zoom the camera, as a share of the game's own limit (1: as the game has it).  A setting of
+/// the player (Options.ini), only for the view: the tactical view multiplies its highest camera height by it.
+extern Real TheAssistCameraHeightScale;

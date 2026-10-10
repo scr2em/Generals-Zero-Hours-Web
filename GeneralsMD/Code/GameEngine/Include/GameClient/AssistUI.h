@@ -85,6 +85,9 @@ public:
 	void	setStackLeft( Bool stack ) { m_stackLeft = stack; }
 	Bool	isStackLeft() const { return m_stackLeft; }
 	Bool	isManual() const { return m_manual; }
+	/// The panel keeps the size of the resolution and leaves out the player's UI scale (the options dialog: it must
+	/// stay usable whatever the scale is set to).
+	void	setFixedScale( Bool fixed ) { m_fixedScale = fixed; }
 	AssistButton *find( Int id );
 	/// Lay the buttons out in a row/grid: 'columns' per row, cells of w x h, a gap, below a title line.
 	void	flow( Int columns, Int cellW, Int cellH, Int gap, Int *outW, Int *outH );
@@ -101,6 +104,7 @@ private:
 	GameWindow	*m_window;
 	Bool				m_manual;				///< shown and hidden by its owner, not by AssistUI::update
 	Bool				m_stackLeft;			///< one of the panels stacked above the command bar at the left
+	Bool				m_fixedScale;			///< see setFixedScale()
 };
 
 //-------------------------------------------------------------------------------------------------
@@ -119,6 +123,8 @@ public:
 	static Bool playing();
 	/// Scale of the assist graphics: from the screen height, times the player's setting.
 	static Real scale();
+	/// Whether scale() and the text sizes follow the player's UI scale (on, except while a fixed-scale panel is placed or drawn).
+	static void useUserScale( Bool use );
 	static Int  px( Int designPixels );								///< designPixels * scale()
 	static Int  controlBarTop();											///< y of the top of the command bar (the panels sit above)
 	static Int  belowToolbar();												///< y just below the toolbar of the display assists (top right)

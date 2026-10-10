@@ -294,6 +294,12 @@ private:
 	Real m_initialGroundLevel;
 #endif
 
+	// TheSuperHackers @feature Player assists: the player may allow the camera to zoom out further (TheAssistCameraHeightScale).
+	Real m_defaultMaxHeightScale;	///< the max height of the default view, as given to setDefaultView()
+	Real m_assistHeightScale;			///< the player's zoom-out allowance in effect
+	void applyMaxHeight();				///< m_maxHeightAboveGround from the two
+	void scaleDrawSizeForHeight(ICoord2D &dimensions) const;	///< more terrain for a camera above the game's highest height
+
 	Region2D m_cameraAreaConstraints; ///< Camera should be constrained to be within this area
 	Bool m_cameraAreaConstraintsValid; ///< If false, recalculates the camera area constraints in the next render update
 	Bool m_recalcCameraConstraintsAfterScrolling; ///< Recalculates the camera area constraints after the user has moved the camera

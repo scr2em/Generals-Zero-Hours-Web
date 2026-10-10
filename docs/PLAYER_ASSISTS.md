@@ -15,6 +15,8 @@ and are the same on every machine.
 | Unit stances | orders | Stance panel above the command bar for the selected units: Alt+K kite, Alt+R retreat when damaged (off / 30 / 50 / 70%), Alt+S spread out, Alt+X split fire. A player order always wins over a stance |
 | Idle hotkeys | selection | Alt+I selects the next idle army unit and centres the view on it, Ctrl+Alt+I selects all idle army units, Alt+W the next idle worker (builders and supply gatherers). The "Idle" counter at the top right shows how many stand idle; its buttons do the same |
 | Repeat production | orders | Select a production building: "Production" panel above the command bar, or Alt+Q. When its queue runs empty because the last unit came out, it queues that unit again, as long as the money stays at or above the reserve set in the options ("Repeat production keeps this much money", default 0) and the unit can still be built. Cancelling the queue by hand stops it until you queue a unit again. A "REPEAT" tag marks the buildings that repeat ("REPEAT (waiting)" while the money or the rules hold it back) |
+| Camera zoom-out | view | Options → Player assists, "Camera zoom-out: N% of the game's limit" (100–300%, steps of 25): the mouse wheel zooms out that much further. The default view and the scripted cameras keep the game's height; more terrain is drawn while the camera is above it |
+| Panel size | view | "Size of the assist panels and the info strip" (50–300%, steps of 10): the boxes and the text of the assist panels, the info strip and the overlays' labels, on top of the size that follows the resolution. The Player assists dialog itself keeps its size |
 
 ## Checks on the real game data
 
@@ -69,6 +71,14 @@ skirmish against an Easy AI with the assist switched on, and look for the `ASSIS
    prerequisite (sell the radar for a unit that needs it): `... cannot build <unit> now (reason 1), waits`.
 3. Save the game with repeat on and load it: `ASSIST loaded: allowed=1, repeat production on N buildings`, and it goes on.
 4. Record the match and play it back: the same `queues ... again` lines and no `CRC Mismatch`.
+
+**Camera zoom-out and panel size** (no rule of the match needed: they only change the view)
+1. Set the zoom-out to 200% in the options: `ASSIST camera zoom-out allowance 200% of the game's limit`.
+2. In a match, roll the mouse wheel to zoom out as far as it goes: `ASSIST camera zoomed out to N% of the game's limit
+   (allowed 200%)` lines up to N close to 200. The terrain reaches the edges of the screen (no black border inside the
+   map). Backspace (camera reset) brings the usual height back. Set it to 100%: the camera comes down to the usual limit.
+3. Set the panel size to 150%: `ASSIST panels scale 150% (S with the resolution)`. The formation and stance panels, the
+   idle counter and the info strip are half again as large, text included; the dialog stays as it was.
 
 **Replays:** record the match, play it back, and check that the log has no `CRC Mismatch` line.
 
