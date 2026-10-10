@@ -58,6 +58,9 @@
 #   * base defence: damage by an enemy nobody sees gives "BASEDEF: only unseen damage at (x,y) for 20 s: one team looks,
 #     N team(s) go back to their role" (not the whole army at home); a recall during a wave says "base threatened ...:
 #     N team(s) recalled, M team(s) in a fight stay in it".
+#   * siege: against known ground defences "WAVE waits for its siege units", "SIEGE: the wave meets the defences at
+#     (x,y)", "BREACH: the first breacher is within range after S s", and in most games at least one "BREACH over: the
+#     defences are down".
 #
 # Options:
 #   --quick           fewer games (about a third of the time)

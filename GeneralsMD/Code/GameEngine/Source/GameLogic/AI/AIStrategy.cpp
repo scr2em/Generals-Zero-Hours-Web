@@ -179,6 +179,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_huntOrders(0),
 	m_contestOrders(0),
 	m_nextContest(0),
+	m_nextSiegePlan(0),
+	m_siegeWaitSince(0),
 	m_expandCost(0.0f),
 	m_airPhase(0),
 	m_airTransport(INVALID_ID),
@@ -259,6 +261,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_numBreachers(0),
 	m_numBreachTargets(0),
 	m_breachStart(0),
+	m_breachInRange(0),
 	m_nextBreachCheck(0),
 	m_breachHold(FALSE),
 	m_breachFallback(FALSE),
@@ -1627,6 +1630,25 @@ void AIStrategy::updateArmy()
 		const Bool equipped = m_siegeShortage <= 0.5f || now - m_armyGrowthFrame >= 2 * secondsToFrames(sk.m_waveHoldSeconds);
 		if ((value >= target && equipped) || (stalled && value >= stallNeed && equipped))
 		{
+			// Known defences on the ground: the wave takes its siege units along (they bring the defences down from outside
+			// their reach while the tanks guard them), or it waits for them a while.
+			if (sk.m_waveSiegeUnits > 0 && routeOn())
+			{
+				const AICombatFigures *defence = nullptr;
+				Real siegeRange = 0.0f;
+				const Int have = siegeUnits(&defence, &siegeRange);
+				if (defence != nullptr && have < sk.m_waveSiegeUnits)
+				{
+					if (m_siegeWaitSince == 0)
+					{
+						m_siegeWaitSince = now;
+						AI_TRACE("WAVE waits for its siege units: %d of %d out-range the defences seen (range %.0f)", have, sk.m_waveSiegeUnits, siegeRange);
+					}
+					if (now - m_siegeWaitSince < secondsToFrames(sk.m_waveSiegeWaitSeconds))
+						return;
+				}
+			}
+			m_siegeWaitSince = 0;
 			if (m_launchBlockedSince != 0 && now < m_nextLaunchCheck)
 				return;	// held back by the fight check: look again in a moment
 			if (rollMistake())
@@ -1674,6 +1696,7 @@ void AIStrategy::updateArmy()
 		{
 			advanceWaveRoute(center);
 			checkWaveOnTheWay(&center);
+			planSiege(center);
 		}
 		if (m_armyState == ARMY_ATTACK && mergeOn())
 			reinforceWave();
@@ -2130,6 +2153,106 @@ void AIStrategy::updateContest()
 		AI_TRACE("CONTEST: enemy %s at (%.0f,%.0f), %.0f from our supply center: %d team(s) (value %.0f) attack it (enemy army seen there %.0f)",
 			templateOf(target->m_templateID) ? templateOf(target->m_templateID)->getName().str() : "?", where.x, where.y, targetDist, sent, home, theirs);
 	}
+}
+
+/// The enemy ground defence with the longest reach that has been seen (*defence, nullptr when none), the range that out-ranges it
+/// (*siegeRange), and how many units of our teams have that range and can hurt it.
+Int AIStrategy::siegeUnits( const AICombatFigures **defence, Real *siegeRange ) const
+{
+	*defence = nullptr;
+	Real defenceRange = 0.0f;
+	for (Int i = 0; i < m_enemy.numContacts(); ++i)
+	{
+		const AIContact &c = m_enemy.contacts()[i];
+		if (c.m_role != AIROLE_DEFENCE)
+			continue;
+		const AICombatFigures *f = AICombatModel::figures(templateOf(c.m_templateID));
+		if (f && f->m_canHitGround && f->m_groundRange > defenceRange)
+		{
+			defenceRange = f->m_groundRange;
+			*defence = f;
+		}
+	}
+	*siegeRange = skill().m_breachRangeFactor * defenceRange;
+	if (*defence == nullptr)
+		return 0;
+	Int count = 0;
+	for (Int t = 0; t < m_numTeams; ++t)
+	{
+		Team *team = TheTeamFactory->findTeamByID(m_teams[t].m_team);
+		if (team == nullptr)
+			continue;
+		for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+		{
+			const AICombatFigures *f = it.cur() && !it.cur()->isEffectivelyDead() ? AICombatModel::figures(it.cur()->getTemplate()) : nullptr;
+			if (f && !f->m_airborne && f->m_groundRange >= *siegeRange && AICombatModel::damagePerSecond(f, *defence) > 0.0f)
+				++count;
+		}
+	}
+	return count;
+}
+
+/// A wave that is out meets known enemy defences on the ground (the route and the breach are planned when it starts, but a wave that
+/// stays out for long moves on to new objectives): the units that out-range the nearest of them bring it down from a distance while
+/// the wave waits outside its reach (startBreach).
+void AIStrategy::planSiege( const Coord3D &center )
+{
+	const UnsignedInt now = TheGameLogic->getFrame();
+	if (now < m_nextSiegePlan || !routeOn() || m_numBreachers > 0 || m_breachHold)
+		return;
+	m_nextSiegePlan = now + 30 * LOGICFRAMES_PER_SECOND;
+
+	const AIContact *nearest = nullptr;
+	Real nearestDist = 0.0f;
+	for (Int i = 0; i < m_enemy.numContacts(); ++i)
+	{
+		const AIContact &c = m_enemy.contacts()[i];
+		if (c.m_role != AIROLE_DEFENCE)
+			continue;
+		const AICombatFigures *f = AICombatModel::figures(templateOf(c.m_templateID));
+		if (f == nullptr || !f->m_canHitGround)
+			continue;
+		const Real d = dist2D(c.m_pos, center);
+		if (d < 1200.0f && (nearest == nullptr || d < nearestDist))
+		{
+			nearest = &c;
+			nearestDist = d;
+		}
+	}
+	if (nearest == nullptr)
+		return;
+
+	AIRouteCircle circles[AIROUTE_MAX_CIRCLES];
+	ObjectID ids[AIROUTE_MAX_CIRCLES];
+	const Int n = collectDefenceCircles(circles, AIROUTE_MAX_CIRCLES, ids);
+	const Coord3D target = nearest->m_pos;
+	m_routeLen = 0;
+	m_routeIdx = 0;
+	m_routeLegStart = 0;
+	m_routeArrived = 0;
+	startBreach(center, target, circles, ids, n);
+	if (!m_breachHold || m_routeLen == 0)
+	{
+		m_routeLen = 0;
+		return;
+	}
+	// The wave gathers at the staging point; afterwards it goes for the defences that were covered.
+	m_waveObjective = target;
+	const Coord3D stage = m_route[0];
+	for (Int i = 0; i < m_numTeams; ++i)
+	{
+		AITeamRecord &rec = m_teams[i];
+		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
+		if (team == nullptr || !rec.m_inWave || rec.m_mode == AITEAM_RETREATING || isAllyHelper(rec.m_team))
+			continue;
+		rec.m_mode = AITEAM_ATTACKING;
+		rec.m_modeFrame = now;
+		rec.m_orderFrame = now;
+		rec.m_target = stage;
+		rec.m_idleSince = 0;
+		orderTeamMove(team, &stage);
+	}
+	AI_TRACE("SIEGE: the wave meets the defences at (%.0f,%.0f): it waits at (%.0f,%.0f) while %d unit(s) out-range them", target.x, target.y, stage.x, stage.y, m_numBreachers);
 }
 
 /// Value of our other field teams near a place: the army an objective can count on to follow up.
@@ -2759,6 +2882,9 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferUnsignedInt(&m_nextContest);
 		xfer->xferReal(&m_expandCost);
 		xfer->xferUnsignedInt(&m_bdSeenFrame);
+		xfer->xferUnsignedInt(&m_nextSiegePlan);
+		xfer->xferUnsignedInt(&m_siegeWaitSince);
+		xfer->xferUnsignedInt(&m_breachInRange);
 	}
 }
 

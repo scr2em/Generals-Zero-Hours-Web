@@ -271,6 +271,11 @@ struct AISkillSettings
 	// ---- enemy supply near ours ----
 	Bool m_useContest;	///< An enemy economy structure (a supply center) built near one of ours is attacked at once by the teams at home.
 	Real m_contestRadius;	///< ... within this distance of our supply center.
+
+	// ---- siege ----
+	Int m_surplusSiegeUnits;	///< While the army has fewer units than this that out-range the enemy defences seen (BreachRangeFactor) and can hurt them, such units come first.
+	Int m_waveSiegeUnits;	///< When enemy ground defences are known, a wave waits until this many of our units out-range them (BreachRangeFactor),
+	Real m_waveSiegeWaitSeconds;	///< ... but not longer than this once it is ready otherwise.
 };
 
 class AISideBuildList : public MemoryPoolObject

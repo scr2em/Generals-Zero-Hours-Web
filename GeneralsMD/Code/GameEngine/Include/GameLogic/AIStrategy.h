@@ -95,6 +95,7 @@ struct AICombatFigures
 	Real		m_maxHealth;
 	Real		m_cost;							///< build cost, or a stand-in when the thing cannot be built
 	Real		m_range;						///< longest weapon range
+	Real		m_groundRange;				///< longest range of the weapons that hit ground targets (a defence's anti-air gun may reach further)
 	Real		m_minRange;					///< shortest range of the longest-range weapon
 	Real		m_maxSplash;				///< largest blast radius of the weapons (poison and radiation count as a cloud of 40)
 	Real		m_speed;						///< ground speed in world units per second (0: immobile)
@@ -489,6 +490,8 @@ private:
 	// razing (AIStrategy.cpp)
 	Bool razeStructures( Team *team, const Coord3D &center );
 	void updateContest();
+	void planSiege( const Coord3D &center );
+	Int siegeUnits( const AICombatFigures **defence, Real *siegeRange ) const;
 
 	// airborne insertion (AIAirborne.cpp)
 	enum { MAX_SQUAD = 8 };
@@ -656,7 +659,8 @@ private:
 	ObjectID			m_breachTargets[MAX_BREACH_TARGETS];
 	Int						m_numBreachTargets;
 	Coord3D				m_breachStage;
-	UnsignedInt		m_breachStart;
+	UnsignedInt		m_breachStart;									///< when the breach began; the hold time counts from m_breachInRange
+	UnsignedInt		m_breachInRange;								///< when the first breacher came within range of a target (0 = still on its way)
 	UnsignedInt		m_nextBreachCheck;
 	Bool					m_breachHold;										///< the wave waits at the staging point for the breachers
 	Bool					m_breachFallback;								///< the breachers have fallen back to the wave because enemy troops came for them
@@ -705,6 +709,8 @@ private:
 	Int						m_huntOrders;
 	Int						m_contestOrders;
 	UnsignedInt		m_nextContest;
+	UnsignedInt		m_nextSiegePlan;
+	UnsignedInt		m_siegeWaitSince;								///< the army was ready but for its siege units since this frame (0 = not waiting)
 	Real					m_expandCost;										///< money an expansion waits for (kept back from the surplus production)
 	Int						m_airPhase;											///< airborne insertion: 0 = no mission
 	ObjectID			m_airTransport;

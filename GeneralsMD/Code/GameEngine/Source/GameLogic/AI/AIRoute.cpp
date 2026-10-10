@@ -255,10 +255,10 @@ Int AIStrategy::collectDefenceCircles( AIRouteCircle *circles, Int maxCircles, O
 		if (c.m_role != AIROLE_DEFENCE)
 			continue;
 		const AICombatFigures *f = AICombatModel::figures(TheThingFactory->findByTemplateID(c.m_templateID));
-		if (f == nullptr || !f->m_armed || !f->m_canHitGround || f->m_range <= 0.0f)
+		if (f == nullptr || !f->m_armed || !f->m_canHitGround || f->m_groundRange <= 0.0f)
 			continue;
 		circles[n].m_center = c.m_pos;
-		circles[n].m_radius = f->m_range + margin;
+		circles[n].m_radius = f->m_groundRange + margin;	// how far it reaches our ground army
 		if (ids)
 			ids[n] = c.m_id;
 		++n;
@@ -453,12 +453,15 @@ void AIStrategy::startBreach( const Coord3D &from, const Coord3D &objective, con
 			const AICombatFigures *f = AICombatModel::figures(obj->getTemplate());
 			if (f == nullptr || !f->m_armed || f->m_structure || f->m_airborne || f->m_speed <= 0.0f || !f->m_canHitGround)
 				continue;
-			if (f->m_range < sk.m_breachRangeFactor * defenceRange)
+			if (f->m_groundRange < sk.m_breachRangeFactor * defenceRange)
+				continue;
+			// Only units with the wave: one that would walk alone across the map to its firing spot is lost on the way.
+			if (dist2D(*obj->getPosition(), from) > 600.0f)
 				continue;
 			if (structure && AICombatModel::damagePerSecond(f, structure) <= 0.0f)
 				continue;
 			Int pos = m_numBreachers;
-			while (pos > 0 && ranges[pos - 1] < f->m_range)
+			while (pos > 0 && ranges[pos - 1] < f->m_groundRange)
 				--pos;
 			if (pos >= MAX_BREACHERS)
 				continue;
@@ -469,7 +472,7 @@ void AIStrategy::startBreach( const Coord3D &from, const Coord3D &objective, con
 				ranges[k] = ranges[k - 1];
 			}
 			m_breachers[pos] = obj->getID();
-			ranges[pos] = f->m_range;
+			ranges[pos] = f->m_groundRange;
 			if (m_numBreachers < MAX_BREACHERS)
 				++m_numBreachers;
 		}
@@ -544,6 +547,7 @@ void AIStrategy::startBreach( const Coord3D &from, const Coord3D &objective, con
 	m_breachHold = TRUE;
 	m_breachFallback = FALSE;
 	m_breachStart = TheGameLogic->getFrame();
+	m_breachInRange = 0;
 	m_breachStage = stage;
 	++m_breachesStarted;
 	AI_TRACE("BREACH: %d unit(s) out-range %d defence(s) that cover (%.0f,%.0f); the wave waits at (%.0f,%.0f)", m_numBreachers, m_numBreachTargets, objective.x, objective.y, stage.x, stage.y);
@@ -554,15 +558,15 @@ void AIStrategy::startBreach( const Coord3D &from, const Coord3D &objective, con
 }
 
 /**
- * Sends one breacher to its firing spot (the edge of its range from the nearest standing target, on the side where it is not
- * within reach of any other known defence) and, once there, onto the target.
+ * Sends one breacher against the nearest defence that is still standing: the attack order of the engine takes it the shortest way into
+ * range (it out-ranges the defence, so it fires from outside its reach).  A defence out of sight is shelled where it was seen, as a
+ * player does with artillery.
  */
 void AIStrategy::orderBreacher( ObjectID id )
 {
 	Object *unit = TheGameLogic->findObjectByID(id);
 	if (unit == nullptr || unit->getAI() == nullptr)
 		return;
-	// The nearest defence that is still standing.
 	const AIContact *best = nullptr;
 	Real bestD = 0.0f;
 	for (Int t = 0; t < m_numBreachTargets; ++t)
@@ -582,58 +586,14 @@ void AIStrategy::orderBreacher( ObjectID id )
 	}
 	if (best == nullptr)
 		return;
-	const AICombatFigures *f = AICombatModel::figures(unit->getTemplate());
-	const Real stand = (f ? f->m_range : 150.0f) - 15.0f;
-
-	// Firing spots around the target; the one nearest to the unit that no other defence covers.
-	AIRouteCircle circles[AIROUTE_MAX_CIRCLES];
-	const Int numCircles = collectDefenceCircles(circles, AIROUTE_MAX_CIRCLES, nullptr);
-	static const Real cosines[16] = { 1.0f, 0.92388f, 0.70711f, 0.38268f, 0.0f, -0.38268f, -0.70711f, -0.92388f, -1.0f, -0.92388f, -0.70711f, -0.38268f, 0.0f, 0.38268f, 0.70711f, 0.92388f };
-	static const Real sines[16] = { 0.0f, 0.38268f, 0.70711f, 0.92388f, 1.0f, 0.92388f, 0.70711f, 0.38268f, 0.0f, -0.38268f, -0.70711f, -0.92388f, -1.0f, -0.92388f, -0.70711f, -0.38268f };
-	Region3D extent;
-	TheTerrainLogic->getExtent(&extent);
-	Coord3D spot;
-	Bool haveSpot = FALSE;
-	Real spotD = 0.0f;
-	for (Int k = 0; k < 16; ++k)
-	{
-		Coord3D p;
-		p.x = best->m_pos.x + cosines[k] * stand;
-		p.y = best->m_pos.y + sines[k] * stand;
-		p.z = 0.0f;
-		if (p.x < extent.lo.x + 30.0f || p.x > extent.hi.x - 30.0f || p.y < extent.lo.y + 30.0f || p.y > extent.hi.y - 30.0f)
-			continue;
-		Bool covered = FALSE;
-		for (Int c = 0; c < numCircles && !covered; ++c)
-		{
-			// Our own margin is a safety distance for a wave; a single unit only needs to stay out of the weapon range.
-			if (dist2D(circles[c].m_center, best->m_pos) < 1.0f)
-				continue;
-			covered = dist2D(circles[c].m_center, p) < circles[c].m_radius - skill().m_routeMargin + 10.0f;
-		}
-		if (covered)
-			continue;
-		const Real d = dist2D(*unit->getPosition(), p);
-		if (!haveSpot || d < spotD)
-		{
-			spot = p;
-			spotD = d;
-			haveSpot = TRUE;
-		}
-	}
-	if (!haveSpot)
-		return;		// every side is covered by another defence: nothing to do from outside
-	spot.z = TheTerrainLogic->getGroundHeight(spot.x, spot.y);
-
-	AIUpdateInterface *ai = unit->getAI();
-	if (dist2D(*unit->getPosition(), spot) > 40.0f)
-	{
-		ai->aiMoveToPosition(&spot, CMD_FROM_AI);
-		return;
-	}
 	Object *target = TheGameLogic->findObjectByID(best->m_id);
-	if (target && enemyCanSee(target))
-		ai->aiAttackObject(target, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
+	if (target && !target->isEffectivelyDead() && enemyCanSee(target))
+		unit->getAI()->aiAttackObject(target, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
+	else
+	{
+		Coord3D at = best->m_pos;
+		unit->getAI()->aiAttackPosition(&at, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
+	}
 }
 
 /// The breachers at work: keep them on a standing defence, finish when the defences are down, the breachers are lost, or time is up.
@@ -670,6 +630,24 @@ void AIStrategy::updateBreach()
 		}
 	}
 
+	// The hold time counts from the moment the first breacher is within range of a target (slow artillery takes long to get there).
+	if (m_breachInRange == 0)
+	{
+		for (Int i = 0; i < m_numBreachers && m_breachInRange == 0; ++i)
+		{
+			Object *o = TheGameLogic->findObjectByID(m_breachers[i]);
+			const AICombatFigures *f = o ? AICombatModel::figures(o->getTemplate()) : nullptr;
+			for (Int t = 0; f && t < m_numBreachTargets && m_breachInRange == 0; ++t)
+				for (Int k = 0; k < m_enemy.numContacts(); ++k)
+					if (m_enemy.contacts()[k].m_id == m_breachTargets[t] && dist2D(*o->getPosition(), m_enemy.contacts()[k].m_pos) < f->m_groundRange + 60.0f)
+					{
+						m_breachInRange = now;
+						AI_TRACE("BREACH: the first breacher is within range after %u s", (now - m_breachStart) / LOGICFRAMES_PER_SECOND);
+						break;
+					}
+		}
+	}
+
 	const char *why = nullptr;
 	if (m_armyState != ARMY_ATTACK)
 		why = "the wave is over";
@@ -677,7 +655,9 @@ void AIStrategy::updateBreach()
 		why = "the breachers are lost";
 	else if (standing == 0)
 		why = "the defences are down";
-	else if (now - m_breachStart > secondsToFrames(skill().m_breachHoldSeconds))
+	else if (m_breachInRange != 0 && now - m_breachInRange > secondsToFrames(skill().m_breachHoldSeconds))
+		why = "time is up";
+	else if (now - m_breachStart > 3 * secondsToFrames(skill().m_breachHoldSeconds))
 		why = "time is up";
 	if (why == nullptr)
 	{

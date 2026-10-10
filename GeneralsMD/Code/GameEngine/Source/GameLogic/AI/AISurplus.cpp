@@ -117,6 +117,12 @@ void AIStrategy::updateSurplus()
 	}
 	const Real reserve = skill().m_surplusReserve + m_expandCost + pending;
 	const Real infantryShare = skill().m_surplusInfantryShare;
+
+	// Siege: units that out-range the enemy defences seen and can hurt them come first while the army has too few.
+	const AICombatFigures *defence = nullptr;
+	Real siegeRange = 0.0f;
+	const Int siegeCount = siegeUnits(&defence, &siegeRange);
+	const Bool wantSiege = defence != nullptr && siegeCount < skill().m_surplusSiegeUnits;
 	Real money = (Real)m_player->getMoney()->countMoney();
 	if (money < reserve)
 		return;
@@ -164,7 +170,9 @@ void AIStrategy::updateSurplus()
 						continue;
 					if (TheBuildAssistant->canMakeUnit(factory, tmpl) != CANMAKE_OK)
 						continue;
-					const Real score = unitCounterScore(f);
+					Real score = unitCounterScore(f);
+					if (wantSiege && f->m_groundRange >= siegeRange && AICombatModel::damagePerSecond(f, defence) > 0.0f)
+						score += 2.0f;	// above every counter score (-1..1)
 					if (best == nullptr || score > bestScore + 0.01f || (score > bestScore - 0.01f && cost > bestCost))
 					{
 						best = tmpl;

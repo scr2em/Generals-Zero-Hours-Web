@@ -357,6 +357,9 @@ static const FieldParse s_skillFieldParse[] =
 		{ "HuntAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_huntAdvantage ) },
 		{ "ContestSupply",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useContest ) },
 		{ "ContestRadius",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_contestRadius ) },
+		{ "SurplusSiegeUnits",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_surplusSiegeUnits ) },
+		{ "WaveSiegeUnits",			INI::parseInt,		nullptr, offsetof( AISkillSettings, m_waveSiegeUnits ) },
+		{ "WaveSiegeWaitSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveSiegeWaitSeconds ) },
 		{ nullptr,								nullptr,					nullptr, 0 }
 	};
 
@@ -1344,6 +1347,9 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_huntAdvantage = 2.0f;
 	ex.m_useContest = true;
 	ex.m_contestRadius = 600.0f;
+	ex.m_surplusSiegeUnits = 6;
+	ex.m_waveSiegeUnits = 3;
+	ex.m_waveSiegeWaitSeconds = 120.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1486,6 +1492,9 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_huntAdvantage );
 		xfer->xferBool( &sk.m_useContest );
 		xfer->xferReal( &sk.m_contestRadius );
+		xfer->xferInt( &sk.m_surplusSiegeUnits );
+		xfer->xferInt( &sk.m_waveSiegeUnits );
+		xfer->xferReal( &sk.m_waveSiegeWaitSeconds );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 
