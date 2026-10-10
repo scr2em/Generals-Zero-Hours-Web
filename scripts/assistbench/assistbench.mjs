@@ -1,17 +1,21 @@
 #!/usr/bin/env node
 // Player assist test bench runner: plays scripted assist scenarios (-assistMatch) of the WebAssembly game in headless
-// Chromium, in parallel, at full logic speed without rendering, and reports which passed. See README.md.
+// Chromium (or of the native headless build, --native), in parallel, at full logic speed without rendering, and reports
+// which passed. See README.md.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startServer } from '../aibench/lib/server.mjs';
 import { Browser } from '../aibench/lib/browser.mjs';
+import { NativeRunner, findNativeExecutable } from '../aibench/lib/native.mjs';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname);
 
-const USAGE = `Usage: node assistbench.mjs --site DIR [options] [scenario.json | DIR ...]
+const USAGE = `Usage: node assistbench.mjs --site DIR | --native PATH [options] [scenario.json | DIR ...]
 
   --site DIR              the web build to test (the directory with z_generals.html, e.g. build/web/GeneralsMD)
+  --native PATH           or the native headless build (zh_headless, or its build directory, e.g. build/native-headless):
+                          no browser, the game data is read in place (the starter content from starterpack/ next to it)
 Game data (as aibench.mjs):
   --data starter|DIR      "starter" (default): the free starter content; DIR: a Zero Hour install or a folder with ZeroHour/
   --zh DIR                the Zero Hour install (default: $ZH_PATH); implies own game data
@@ -39,6 +43,7 @@ function parseArgs(argv) {
 		const next = () => { if (i + 1 >= argv.length) throw new Error(`${a} needs a value`); return argv[++i]; };
 		switch (a) {
 			case '--site': o.site = next(); break;
+			case '--native': o.native = next(); break;
 			case '--data': o.data = next(); o.dataGiven = true; break;
 			case '--zh': o.zh = next(); break;
 			case '--generals': o.generals = next(); break;
@@ -58,9 +63,13 @@ function parseArgs(argv) {
 				o.scenarios.push(a);
 		}
 	}
-	if (!o.site) throw new Error(`--site is required\n\n${USAGE}`);
-	o.site = path.resolve(o.site);
-	if (!fs.existsSync(path.join(o.site, 'z_generals.html'))) throw new Error(`${o.site} has no z_generals.html`);
+	if (!o.site && !o.native) throw new Error(`--site or --native is required\n\n${USAGE}`);
+	if (o.site && o.native) throw new Error('give --site or --native, not both');
+	if (o.native) o.native = findNativeExecutable(o.native);
+	else {
+		o.site = path.resolve(o.site);
+		if (!fs.existsSync(path.join(o.site, 'z_generals.html'))) throw new Error(`${o.site} has no z_generals.html`);
+	}
 	// Own game data as { zeroHour, generals }, the same way aibench.mjs takes it.
 	const zh = o.zh || (o.dataGiven ? null : process.env.ZH_PATH);
 	const generals = o.generals || process.env.GENERALS_PATH;
@@ -133,10 +142,16 @@ async function main() {
 	const log = (m) => console.log(m);
 	if (o.data === 'starter') log('Starter content: these runs only show that the bench works; gameplay is judged on the real game data (CLAUDE.md).');
 
-	const { server, port } = await startServer({ site: o.site }, o.port).catch((e) => { throw new Error(`cannot listen on port ${o.port}: ${e.message}`); });
-	const browser = new Browser({ port, profileDir: o.profile, chromium: o.chromium, headful: o.headful });
+	let browser, server = null;
+	if (o.native) {
+		browser = new NativeRunner({ exe: o.native, data: o.data, starterDir: path.join(path.dirname(o.native), 'starterpack') });
+	} else {
+		const started = await startServer({ site: o.site }, o.port).catch((e) => { throw new Error(`cannot listen on port ${o.port}: ${e.message}`); });
+		server = started.server;
+		browser = new Browser({ port: started.port, profileDir: o.profile, chromium: o.chromium, headful: o.headful });
+	}
 	await browser.open();
-	const cleanup = async () => { await browser.close(); server.close(); };
+	const cleanup = async () => { await browser.close(); if (server) server.close(); };
 	process.on('SIGINT', async () => { await cleanup(); process.exit(130); });
 
 	const records = [];

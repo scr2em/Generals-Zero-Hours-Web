@@ -457,6 +457,10 @@ public:
 		MSG_META_ASSIST_STANCE_SPLIT,								///< stance: split fire on / off
 		MSG_META_ASSIST_ODDS,												///< odds meter on / off
 		MSG_META_ASSIST_BASE_DEFEND,								///< base under attack: send the defenders, or send them back
+		MSG_META_ASSIST_IDLE_ARMY_NEXT,							///< idle hotkeys: select the next idle army unit and centre the camera on it
+		MSG_META_ASSIST_IDLE_ARMY_ALL,							///< idle hotkeys: select all idle army units
+		MSG_META_ASSIST_IDLE_WORKER_NEXT,						///< idle hotkeys: select the next idle worker (builders and supply gatherers)
+		MSG_META_ASSIST_REPEAT_PRODUCTION,					///< repeat production on / off for the selected production buildings
 
 		MSG_END_META_MESSAGES,											///< Marker to delineate "meta" messages
 
@@ -632,6 +636,7 @@ public:
 		MSG_ASSIST_STANCE,													///< (mask, value, retreat percent) set stance bits of the selected units
 		MSG_ASSIST_BASE_DEFEND,											///< (location) idle army units near the place attack-move there (remembering where they were)
 		MSG_ASSIST_BASE_RETURN,											///< the units that were sent to defend go back to where they were
+		MSG_ASSIST_REPEAT_PRODUCTION,								///< (Int on: 0 off, 1 on, 2 only the reserve; Int money reserve; factory objectIDs ...) repeat production of these buildings
 
 		MSG_BEGIN_DEBUG_NETWORK_MESSAGES = 1900,		///< network messages that exist only in debug/internal builds. all grouped separately.
 

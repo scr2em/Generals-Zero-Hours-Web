@@ -1,0 +1,29 @@
+{
+ "name": "starter-stance-retreat-fight",
+ "description": "Smoke check only (starter content, says nothing about gameplay): two rocketeers with kite and retreat at 50% fight two enemy riflemen; hurt to 40% in the middle of the fight they pull out to the infirmary, are healed and go back.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn hut 0:IronwoodInfirmary:1 at=cc:0^0,-300",
+  "spawn rockets 0:IronwoodRocketeer:2 at=cc:0^500,0",
+  "wait 5",
+  "select rockets",
+  "send ASSIST_STANCE int:3 int:3 int:50",
+  "wait 2",
+  "spawn enemies 1:IronwoodRifleman:2 at=cc:0^720,0",
+  "attack enemies",
+  "until damaged enemies any=1 max=600",
+  "wait 20",
+  "damage rockets 60%",
+  "until not near rockets cc:0^500,0 tol=200 max=300",
+  "kill enemies",
+  "until health rockets above 98 max=1800",
+  "until near rockets cc:0^500,0 tol=150 max=1500"
+ ],
+ "log": [
+  "^ASSIST stance set mask=3 value=3 percent=50 for 2 units",
+  { "match": "^ASSIST stance retreat: unit \\d+ at 40% goes to heal facility \\d+", "min": 2, "max": 2 },
+  { "match": "^ASSIST stance retreat: unit \\d+ goes back to -?\\d+,-?\\d+ at 100%", "min": 2, "max": 2 }
+ ]
+}

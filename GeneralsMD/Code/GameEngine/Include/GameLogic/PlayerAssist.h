@@ -45,6 +45,7 @@ class GameMessage;
 class Xfer;
 class Object;
 class Player;
+class ThingTemplate;
 
 //-------------------------------------------------------------------------------------------------
 /// The formations that the player can pick.  The values are part of the network messages.
@@ -134,6 +135,38 @@ public:
 	/// A unit a stance makes sense for: armed, mobile, on the ground.
 	static Bool stanceEligible( const Object *obj );
 
+	// ---- idle units (AssistIdle.cpp): questions for the idle hotkeys and the idle counter, no orders ------------------
+	enum IdleKind { IDLE_ARMY = 0, IDLE_WORKER = 1 };
+	/// A unit that can shoot, is not a worker, harvester or support unit nor a structure, and can be ordered about (the
+	/// definition of the "base under attack" response as well).
+	static Bool isArmyUnit( const Object *obj );
+	/// A builder (dozer, worker) or a supply gatherer.
+	static Bool isWorker( const Object *obj );
+	/// An army unit (IDLE_ARMY) or a worker (IDLE_WORKER) that stands idle: its AI is idle and, for a worker, it has no
+	/// building job pending and is not on a supply round.
+	static Bool isIdleUnit( Object *obj, Int kind );
+	/// The player's idle units of that kind, ordered by object id.
+	static void idleUnits( const Player *player, Int kind, std::vector<Object *> &out );
+	enum IdlePick { IDLE_PICK_ARMY_NEXT = 0, IDLE_PICK_ARMY_ALL, IDLE_PICK_WORKER_NEXT };
+	/// What an idle hotkey selects: the ids go to 'out' (empty when nothing is idle).  "Next" is the idle unit with the
+	/// smallest id above 'after' (the unit the hotkey picked last time), or the first one again.  Prints the ASSIST line of the pick (-assistDebug).  Used by the hotkeys and the test bench.
+	static void pickIdle( const Player *player, Int pick, ObjectID after, std::vector<ObjectID> &out );
+
+	// ---- repeat production (AssistRepeat.cpp) ----------------------------------------------------
+	/// A production building that repeat production can be switched on for (a structure with a production queue).
+	static Bool isRepeatFactory( const Object *obj );
+	Bool repeatOn( ObjectID factory ) const;
+	/// The unit it builds again (null: none yet, it waits for the player to queue one).
+	const ThingTemplate *repeatUnit( ObjectID factory ) const;
+	/// It wants to build again but may not yet (money below cost plus reserve, or the unit cannot be built now).
+	Bool repeatWaiting( ObjectID factory ) const;
+	/// The money the player keeps: repeat production never takes the money below it.
+	Int repeatReserve( Int playerIndex ) const;
+	/// The buildings of a player that repeat, ordered by id.
+	void repeatList( Int playerIndex, std::vector<ObjectID> &out ) const;
+	/// A unit came out of a building (Player::onUnitCreated).
+	void onUnitProduced( Object *factory, Object *unit );
+
 	// ---- formations (AssistFormation.cpp) ------------------------------------------------------
 	/// The formation set for this unit (AFORM_NONE if it has none).
 	Int formationOf( ObjectID id ) const;
@@ -191,8 +224,11 @@ private:
 		ObjectID			m_splitTarget;			///< the target this unit has put on the split fire ledger
 		Real					m_splitDamage;
 		UnsignedInt		m_splitUntil;
+		UnsignedInt		m_orderFrame;				///< retreat: the frame the trip was last ordered
+		UnsignedByte	m_tries;						///< retreat: orders given for this trip to the facility
 		StanceState() : m_flags( 0 ), m_retreatPercent( 0 ), m_phase( 0 ), m_victim( INVALID_ID ), m_facility( INVALID_ID ), m_until( 0 ),
-			m_spacing( 0.0f ), m_spacingUntil( 0 ), m_noRetreatUntil( 0 ), m_splitTarget( INVALID_ID ), m_splitDamage( 0.0f ), m_splitUntil( 0 )
+			m_spacing( 0.0f ), m_spacingUntil( 0 ), m_noRetreatUntil( 0 ), m_splitTarget( INVALID_ID ), m_splitDamage( 0.0f ), m_splitUntil( 0 ),
+			m_orderFrame( 0 ), m_tries( 0 )
 		{
 			m_from.x = m_from.y = m_from.z = 0.0f;
 			m_to = m_from;
@@ -205,9 +241,27 @@ private:
 	void updateStances( UnsignedInt now );
 	void stanceUnit( Object *unit, StanceState &st, UnsignedInt now );
 	void startRetreat( Object *unit, StanceState &st, UnsignedInt now );
-	void endRetreat( Object *unit, StanceState &st );
+	void goToRally( Object *unit, StanceState &st, UnsignedInt now );
+	void updateRetreat( Object *unit, StanceState &st, UnsignedInt now, Real health );
+	void endRetreat( Object *unit, StanceState &st, Real health );
 	Object *pickOtherTarget( Object *unit, Object *current, Real range, AITactics::SplitLedger &ledger, UnsignedInt now, const AITactics::Params &params );
-	void xferStances( Xfer *xfer );
+	void xferStances( Xfer *xfer, UnsignedByte version );		///< version: of PlayerAssist::xfer
+
+	/// Repeat production of one building.
+	struct RepeatState
+	{
+		const ThingTemplate	*m_unit;						///< the unit it builds again (null: none yet)
+		UnsignedInt					m_producedFrame;		///< the frame its last unit came out
+		UnsignedInt					m_queueCount;				///< entries in its queue at the end of the last update
+		Bool								m_waiting;					///< its queue ran empty by a unit coming out: build m_unit again when allowed
+		Int									m_owner;						///< the player index it was switched on for
+		UnsignedByte				m_logged;						///< why it waits, as last printed (0: not waiting)
+		RepeatState() : m_unit( nullptr ), m_producedFrame( 0 ), m_queueCount( 0 ), m_waiting( FALSE ), m_owner( -1 ), m_logged( 0 ) {}
+	};
+	typedef std::map<ObjectID, RepeatState> RepeatMap;
+	void setRepeat( Player *player, const GameMessage *msg );
+	void updateRepeat( UnsignedInt now );
+	void xferRepeat( Xfer *xfer );
 
 	void setFormation( AIGroup *group, Int type );
 	void formationMove( AIGroup *group, Int type, const Coord3D &a, const Coord3D &b, Bool attackMove );
@@ -220,6 +274,8 @@ private:
 	DefendState			m_defend[MAX_DEFEND];
 	StanceMap			m_stances;
 	AITactics::SplitLedger	m_ledgers[MAX_LEDGERS];			///< split fire: per player, damage assigned to targets
+	RepeatMap			m_repeat;													///< repeat production, per building
+	Int						m_repeatReserve[MAX_DEFEND];			///< repeat production: the money each player keeps
 
 	// the drag a formation move was given (valid only while the command is being carried out)
 	Bool				m_aimValid;

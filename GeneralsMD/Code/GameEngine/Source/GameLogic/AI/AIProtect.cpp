@@ -22,6 +22,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/Player.h"
+#include "Common/PlayerList.h"
 #include "Common/ThingTemplate.h"
 #include "Common/Xfer.h"
 #include "GameLogic/AI.h"
@@ -532,4 +533,17 @@ void AIProtectNotifyDamage( Object *victim, ObjectID attacker, Real amount )
 	if (source == nullptr || victim->getRelationship(source) != ENEMIES)
 		return;
 	owner->aiObjectDamaged(victim, attacker, amount);
+
+	// The Expert allies of the owner hear about it too (the game's "our ally is under attack"): allied base support
+	// (AIStrategy::onObjectDamaged tells their own objects from an ally's).  The players in the order of the list.
+	const Int count = ThePlayerList->getPlayerCount();
+	for (Int i = 0; i < count; ++i)
+	{
+		Player *p = ThePlayerList->getNthPlayer(i);
+		if (p == nullptr || p == owner || !p->isExpertAIPlayer())
+			continue;
+		if (p->getRelationship(victim->getTeam()) != ALLIES || p->getRelationship(source->getTeam()) != ENEMIES)
+			continue;
+		p->aiObjectDamaged(victim, attacker, amount);
+	}
 }

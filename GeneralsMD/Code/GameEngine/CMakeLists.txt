@@ -847,6 +847,7 @@ set(GAMEENGINE_SRC
     Source/GameLogic/AI/AISkirmishPlayer.cpp
     Source/GameLogic/AI/AIStrategy.cpp
     Source/GameLogic/AI/AITactics.cpp
+    Source/GameLogic/AI/AIAllyHelp.cpp
     Source/GameLogic/AI/AIBaseDefence.cpp
     Source/GameLogic/AI/AIGeo.cpp
     Source/GameLogic/AI/AIAbility.cpp
@@ -869,9 +870,14 @@ set(GAMEENGINE_SRC
     Source/GameClient/AssistUIAlert.cpp
     Source/GameClient/AssistUIOdds.cpp
     Source/GameClient/AssistUICoverage.cpp
+    Source/GameClient/AssistUIIdle.cpp
+    Source/GameClient/AssistUIRepeat.cpp
+    Source/GameClient/AssistUIInfo.cpp
     Source/Common/AssistOptions.cpp
     Source/GameLogic/AssistFormation.cpp
     Source/GameLogic/AssistStance.cpp
+    Source/GameLogic/AssistIdle.cpp
+    Source/GameLogic/AssistRepeat.cpp
     Source/GameLogic/AI/AIEnemyModel.cpp
     Source/GameLogic/AI/AIStates.cpp
     Source/GameLogic/AI/AITNGuard.cpp

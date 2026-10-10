@@ -21,9 +21,15 @@ node scripts/assistbench/assistbench.mjs --site build/web/GeneralsMD --zh "$ZH_P
 
 # smoke check of the bench on the starter content (a development aid)
 node scripts/assistbench/assistbench.mjs --site build/web/GeneralsMD
+
+# the same with the native headless build (no browser; cmake --preset native-headless, targets zh_headless starter_pack)
+node scripts/assistbench/assistbench.mjs --native build/native-headless
 ```
 
-The build is the usual web build (`scripts/web/run.sh --build-only`, or `ninja -C build/web z_generals starter_pack`).
+The build is the usual web build (`scripts/web/run.sh --build-only`, or `ninja -C build/web z_generals starter_pack`), or
+with `--native` the native headless build (`zh_headless`, its game data read in place; see `scripts/aibench/README.md`).
+The two builds can differ in the last bit of some floating point results, so a scenario that passes in one may land a
+unit a little differently in the other.
 The game data options are those of `aibench.mjs`: `--zh`/`$ZH_PATH`, `--generals`/`$GENERALS_PATH`, `--data starter|DIR`,
 `--profile` (the browser profile that keeps the imported data; the default is the one aibench uses). `--workers N` runs N
 scenarios at a time (default 2), `--keep-logs` keeps every engine log, `--out DIR` sets the report folder.
@@ -64,7 +70,7 @@ dispatcher and the assists exactly as clicks and hotkeys do (and as a replay wou
 
 | step | what it does |
 |---|---|
-| `spawn <name> <entry>[+<entry>] [at=<pos>]` | creates units with `-assistTest` entries (`player:template:count[:ref:dx:dy]`); `at=` puts the first one there |
+| `spawn <name> <entry>[+<entry>] [at=<pos>]` | creates units with `-assistTest` entries (`player:template:count[:ref:dx:dy]`); `at=` puts the first one there. The template may be `@KINDOF` (`@REPAIR_PAD`, `@HEAL_PAD`): the first structure template with that KindOf, of the player's side if the data has one, else of any side; the trace line `ASSISTTEST created N x <template>` names it |
 | `name <name> <objects>` | names a set of objects |
 | `select <objects>` | MSG_CREATE_SELECTED_GROUP |
 | `group <n>` / `selectgroup <n>` | MSG_CREATE_TEAMn from the selection / MSG_SELECT_TEAMn |
@@ -73,15 +79,20 @@ dispatcher and the assists exactly as clicks and hotkeys do (and as a replay wou
 | `move` / `attackmove` / `guard <pos>`, `attack <objects>`, `stop` | the ordinary orders (a right click) |
 | `protect <protectors> <protected>` or `protect <protectors> group=<n>` | MSG_ASSIST_PROTECT |
 | `unprotect` | MSG_ASSIST_UNPROTECT for the selection |
+| `idle army\|all\|workers` | what the idle hotkeys do: the same pick (`PlayerAssist::pickIdle`), then MSG_CREATE_SELECTED_GROUP |
+| `produce <building> <template>` | selects the building and queues the unit, as the command bar does (MSG_QUEUE_UNIT_CREATE) |
+| `repeat <buildings> on\|off [reserve=<money>]`, `repeat - reserve reserve=<money>` | MSG_ASSIST_REPEAT_PRODUCTION (the reserve is kept for the next ones; default 0) |
+| `money <slot> <amount>` | sets a player's money (a test setup) |
 | `send <command> [int:\|bool:\|real:\|pos:\|obj:]...` | any command of the player by name, e.g. `send ASSIST_STANCE int:2 int:2 int:70` |
 | `ai <objects> attack <objects>` / `move\|attackmove\|guard <pos>` / `stop` | direct orders for any player's units (attackers) |
 | `damage <objects> <amount>[%] [by=<objects>]` | damage as if `by` had hit them (raises a protect alarm) |
-| `kill <objects>`, `snapshot <objects> [as=]`, `dump <objects>` | remove, remember where units stand, print their state |
+| `kill <objects>`, `snapshot <objects> [as=]`, `dump <objects>` | remove, remember where units stand, print their state (two `ASSISTMATCH_DUMP` lines per unit: place, health, formation, protect link; then `ai=` the AI state (`AIStateType`, 43 is the game's retaliation `AI_GUARD_RETALIATE`), `victim=` its target, `src=` the source of its last order, `stance=` its stance bits, `lastshot=` the frame of its last shot) |
 | `wait <frames>` | 30 frames are a second |
 | `until [not] <condition> [max=<frames>]` | waits for the condition; a check that fails after `max` (default 900) |
 | `expect [not] <condition>` | a check now |
 
-Objects: a name, `name[i]`, `cc:<slot>` (that player's command center), `sel` (the selection), joined with `+`.
+Objects: a name, `name[i]`, `cc:<slot>` (that player's command center), `sel` (the selection), `all:<slot>:<template>`
+(every live object of that template the player owns, by id; may be none), joined with `+`.
 Positions: `x,y`, a set of objects (its centre) or `map` (the map's centre), with an optional offset: `+dx,dy` / `-dx,dy`
 in world units, or `^f,l`: f towards the centre of the map and l to the left of that. `cc:0^600,0` is 600 in front of the
 human player's base on any map and start position.
@@ -99,6 +110,11 @@ Every unit must meet the condition (`any=1`: one is enough).
 | `nearline <objects> <posA> <posB> [tol=30]`, `near <objects> <pos> [tol=50] [centre=1]`, `atsnapshot <objects> [tol=30]`, `apart <objects> min=<d>` | places |
 | `linked`, `unlinked`, `protects <objects> <protected>`, `state <objects> home\|responding\|returning`, `athome <objects> [tol=45]`, `homeat <objects> <pos> [tol=60]` | protect links |
 | `alive`, `dead`, `damaged`, `idle`, `health <objects> above\|below <percent>` | units |
+| `selection <objects> [exact=1]` | the units are in the selection the script made last (`select`, `idle`); `exact=1`: nothing else is |
+| `repeating <objects>` | repeat production is on for the buildings |
+| `queued <building> <op><n>` | entries in the production queue of the building |
+| `cash <slot> <op><n>` | the player's money |
+| `count <objects> <op><n>` | the number of live objects (with `all:` the units of a template) compared with n: `=2`, `>=4`, `<=0` |
 
 ### What the real-data scenarios check
 
@@ -111,8 +127,13 @@ Every unit must meet the condition (`any=1`: one is enough).
 | `protect-building`, `protect-unit`, `protect-group` | the link; an attacker hits the protected command center / tank / hotkey group (a member added later too); the protectors answer, go home after the fight; a move by hand moves the home; unprotect removes the link |
 | `assists-not-allowed` | formation and protect orders change nothing in a match that does not allow them |
 | `base-defend` | base under attack: idle army units go to the attacked command center and back to where they stood |
-| `stance-retreat-rally`, `-repair`, `-heal` | retreat when damaged: to the rally point, to a repair building, to a heal building, and back (repair and heal buildings are assumptions to confirm) |
+| `stance-retreat-heal` | four Rangers hurt to 40% (retreat at 70%) go into the heal building (`@HEAL_PAD`), come out at 100% and go back to where they stood |
+| `stance-retreat-repair` | three Crusaders hurt to 35% (retreat at 50%) dock at the repair building (`@REPAIR_PAD`), are repaired to 100% and go back |
+| `stance-retreat-rally` | without a repair building: three Crusaders hurt to 35% pull back to the rally point and park there; a move order of the player wins, and they pull back again only after the 15 s |
 | `stance-kite`, `stance-spread`, `stance-split` | the stance's decision lines while a fight goes on |
+| `stance-split-retaliate` | split fire on units that answer an attack by themselves (the game's retaliation, no order): eight Rangers, a Red Guard shoots, a second comes 20 frames later; one to eight switches to the second (no back and forth), both dead within 10 s, no Ranger lost |
+| `repeat-production` | a Ranger is built again and again; it waits while money minus cost is below the reserve; it stops when switched off |
+| `idle-select` | idle hotkeys: the next idle army unit by id (round again), never a busy one; all idle army units; the next idle worker |
 
 `base-defend` and the `stance-*` scenarios need the commits that add MSG_ASSIST_BASE_DEFEND and MSG_ASSIST_STANCE; on a
 build without them they fail with "this build has no command".
@@ -121,12 +142,15 @@ build without them they fail with "this build has no command".
 
 ```
 <game> -assistMatch map=<map> players=human:<side>,idle:<side> seed=<n> steps=<step;step;...>
-       [maxframes=<n>] [label=<text>] [assists=0] [cash=<n>] [debug=0]
+       [maxframes=<n>] [label=<text>] [assists=0] [cash=<n>] [debug=0] [retaliation=0]
 ```
 
 It implies `-headless`, plays the logic as fast as it can, prints `ASSISTMATCH_STEP` / `ASSISTMATCH_CHECK` lines and one
 `ASSISTMATCH_RESULT {json}` line (`ASSISTMATCH_ERROR` first when it cannot go on), and exits (0 when every check passed).
-The `ASSIST` decision lines of `-assistDebug` are on unless `debug=0`. The skirmish setup, the match loop and the result
+The `ASSIST` decision lines of `-assistDebug` are on unless `debug=0`. The human player plays with the game's
+retaliation option on (as the options of the game have it by default; `retaliation=0` turns it off): when one of its
+units is hit, the idle units around it answer the attacker by themselves. The game client sends that option as a game
+message, which the bench sends at the start of the match. The skirmish setup, the match loop and the result
 JSON are those of `-aiMatch` (`AIMatchShared.h`).
 
 Files: `GeneralsMD/Code/GameEngine/Source/Common/AssistMatch.cpp` (the mode, the script language and the conditions),

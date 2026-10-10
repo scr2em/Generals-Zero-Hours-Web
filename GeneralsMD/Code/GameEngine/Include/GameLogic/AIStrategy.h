@@ -359,7 +359,8 @@ public:
 	/// Is the unit on a task of its own (a raid ...) that the team logic must leave alone?
 	Bool isDetached( ObjectID id ) const;
 	/// One of the player's objects took damage (called by the body module; feeds the protect relation).
-	void onObjectDamaged( Object *victim, ObjectID attacker, Real amount ) { m_protect.onDamaged(victim, attacker, amount); noteBaseDamage(victim, attacker, amount); }
+	/// The objects of an ally are reported too (allied base support, AIAllyHelp.cpp).
+	void onObjectDamaged( Object *victim, ObjectID attacker, Real amount );
 	void geoReset();
 	/// Is the unit in (or on its way into) a structure of ours as a garrison, or sent to bring down a garrisoned enemy structure?
 	Bool isGarrisoned( ObjectID id ) const;
@@ -524,6 +525,21 @@ private:
 	Bool findBaseThreat( Coord3D *where, Real *value ) const;
 	void sendTeamToBase( Team *team, AITeamRecord &rec, const Coord3D &where );
 	void updateBaseDefence();
+
+	// allied base support (AIAllyHelp.cpp)
+	enum { MAX_HELP_TEAMS = 8 };
+	Bool allyHelpOn() const;
+	Bool isAllyHelper( TeamID id ) const;
+	void refreshAllyBases();
+	void onAllyObjectDamaged( Object *victim, ObjectID attacker, Real amount );
+	Bool findAllyThreat( Int idx, Coord3D *where, Real *value, Bool *hit ) const;
+	Real allyDefenceNear( Int idx, const Coord3D &where, Real *ours ) const;
+	Real ownKnownThreat( const Coord3D &allyCenter, Real allyZone ) const;
+	void pruneAllyHelpers();
+	UnsignedInt allyHelpFrames( UnsignedInt now ) const;
+	Int releaseAllyHelpers();
+	void endAllyHelp( const char *why );
+	void updateAllyHelp();
 
 	// defend the workers (AITactics.cpp, AIProtect.cpp)
 	Bool protectOn() const;
@@ -722,6 +738,33 @@ private:
 	Int						m_bdAlarms;											///< statistics for the trace
 	Int						m_bdOrders;
 	Int						m_bdIdleAtAlarm;
+	Coord3D				m_allyBase[MAX_PLAYER_COUNT];		///< allied base support: the base of each ally (by player index), from its structures
+	Real					m_allyRadius[MAX_PLAYER_COUNT];	///< ... its radius (0: not an ally, or no base)
+	UnsignedInt		m_nextAllyBases;
+	UnsignedInt		m_allyDamageFrame[MAX_PLAYER_COUNT];	///< latest damage to an object of the ally inside its base zone by an enemy
+	Coord3D				m_allyDamagePos[MAX_PLAYER_COUNT];
+	Bool					m_ahActive;											///< an allied base is under attack (the alarm, whether help was sent or not)
+	Int						m_ahPlayer;											///< the ally whose base it is (player index, -1: none)
+	Coord3D				m_ahPos;
+	Real					m_ahValue;
+	Real					m_ahPeak;												///< the largest threat seen in the ally's base in the last 20 s: what the help is sized against
+	UnsignedInt		m_ahPeakFrame;
+	UnsignedInt		m_ahSince;
+	UnsignedInt		m_ahLastThreat;
+	UnsignedInt		m_ahHelpSince;									///< since when teams of this alarm are out (0: none now)
+	UnsignedInt		m_ahAlarmHelped;								///< frames of this alarm with teams out, before m_ahHelpSince
+	UnsignedInt		m_ahLastSend;
+	UnsignedInt		m_nextAllyHelp;
+	UnsignedInt		m_ahMuteUntil;									///< a stale alarm is not raised again by the same force until this frame
+	Int						m_ahMutePlayer;
+	Real					m_ahMuteValue;
+	TeamID				m_ahTeams[MAX_HELP_TEAMS];			///< the teams that were sent to the ally
+	Int						m_ahNumTeams;
+	UnsignedInt		m_ahNoteFrame;									///< last trace line about help that was not needed or not possible
+	Int						m_ahAlarms;											///< statistics for the trace
+	Int						m_ahOrders;
+	Int						m_ahTeamsSent;
+	UnsignedInt		m_ahHelpFrames;
 	AIProtect			m_protect;							///< protect relation: armed units that answer an attack on the gatherers and workers
 	UnsignedInt		m_nextProtect;
 	Bool					m_protectActive;

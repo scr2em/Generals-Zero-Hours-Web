@@ -1,0 +1,24 @@
+{
+ "name": "starter-stance-split",
+ "description": "Smoke check only (starter content, says nothing about gameplay): eight riflemen with split fire are shot at by an enemy rifleman and answer it all together (the game's retaliation, not an order); a second one comes a moment later and some of them take it, without switching back and forth, and both die within 10 s.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn ours 0:IronwoodRifleman:8:0:-150:-130",
+  "wait 5",
+  "select ours",
+  "send ASSIST_STANCE int:8 int:8 int:0",
+  "wait 30",
+  "spawn first 1:IronwoodRifleman:1:0:-80:-170",
+  "damage ours[3] 6 by=first",
+  "wait 20",
+  "spawn second 1:IronwoodRifleman:1:0:-50:-170",
+  "until dead first+second max=300",
+  "expect alive ours"
+ ],
+ "log": [
+  "^ASSIST stance set mask=8 value=8 percent=0 for 8 units",
+  { "match": "^ASSIST stance split: unit \\d+ leaves \\d+ \\(enough on its way\\) for \\d+", "min": 1, "max": 8 }
+ ]
+}

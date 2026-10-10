@@ -338,6 +338,16 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 			{ "AllyWaveWeight",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveWeight ) },
 			{ "AllyWaveFloor",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveFloor ) },
 			{ "BaseDefenceMaxBlockSeconds",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceMaxBlockSeconds ) },
+			{ "AllyHelp",							INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAllyHelp ) },
+			{ "AllyHelpMargin",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMargin ) },
+			{ "AllyHelpMinValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMinValue ) },
+			{ "AllyHelpForce",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpForce ) },
+			{ "AllyHelpMinAdvantage",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMinAdvantage ) },
+			{ "AllyHelpMaxDistance",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMaxDistance ) },
+			{ "AllyHelpWaveReach",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpWaveReach ) },
+			{ "AllyHelpHomeGuard",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpHomeGuard ) },
+			{ "AllyHelpClearSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpClearSeconds ) },
+			{ "AllyHelpMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMaxSeconds ) },
 			{ nullptr,								nullptr,					nullptr, 0 }
 		};
 
@@ -1277,6 +1287,16 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_allyWaveWeight = 0.6f;
 	ex.m_allyWaveFloor = 0.4f;
 	ex.m_baseDefenceMaxBlockSeconds = 60.0f;
+	ex.m_useAllyHelp = true;
+	ex.m_allyHelpMargin = 150.0f;
+	ex.m_allyHelpMinValue = 300.0f;
+	ex.m_allyHelpForce = 1.5f;
+	ex.m_allyHelpMinAdvantage = 0.6f;
+	ex.m_allyHelpMaxDistance = 2500.0f;
+	ex.m_allyHelpWaveReach = 900.0f;
+	ex.m_allyHelpHomeGuard = 1.0f;
+	ex.m_allyHelpClearSeconds = 10.0f;
+	ex.m_allyHelpMaxSeconds = 90.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1399,6 +1419,16 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_allyWaveWeight );
 		xfer->xferReal( &sk.m_allyWaveFloor );
 		xfer->xferReal( &sk.m_baseDefenceMaxBlockSeconds );
+		xfer->xferBool( &sk.m_useAllyHelp );
+		xfer->xferReal( &sk.m_allyHelpMargin );
+		xfer->xferReal( &sk.m_allyHelpMinValue );
+		xfer->xferReal( &sk.m_allyHelpForce );
+		xfer->xferReal( &sk.m_allyHelpMinAdvantage );
+		xfer->xferReal( &sk.m_allyHelpMaxDistance );
+		xfer->xferReal( &sk.m_allyHelpWaveReach );
+		xfer->xferReal( &sk.m_allyHelpHomeGuard );
+		xfer->xferReal( &sk.m_allyHelpClearSeconds );
+		xfer->xferReal( &sk.m_allyHelpMaxSeconds );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

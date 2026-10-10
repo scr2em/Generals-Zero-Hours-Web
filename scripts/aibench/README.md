@@ -101,7 +101,9 @@ Each build is deterministic on its own, and Linux and macOS may differ from each
 ### Players: `difficulty:side[:variant][@team]`
 
 * difficulty: `easy`, `normal`, `hard`, `expert`. Different difficulties can play in one match
-  (`expert:Ironwood,hard:Ironwood`). `hard` is the original Hard AI.
+  (`expert:Ironwood,hard:Ironwood`). `hard` is the original Hard AI. `idle` is a computer player whose AI is removed when the
+  match starts: it keeps its starting units and builds and orders nothing, a stand-in for a human player in team games
+  (`idle:China@1,expert:China@1,...`: does the Expert ally defend the human's base?).
 * side: the name of a player template (`FactionAmerica`, or `America`), a side shared by several templates (the first
   one is taken), or `random` (decided by the seed). Use `--probe` to list them.
 * variant: a free tag the AI code can read to run an experimental variant next to the standard AI in one match:
@@ -110,7 +112,7 @@ Each build is deterministic on its own, and Linux and macOS may differ from each
   `off-split+kite` switches single Expert features off for an A/B run (`expert:Ironwood:off-merge` against `expert:Ironwood`),
   `on-kite` switches on a feature whose default is off. The words are `focus wave retreat scout counter save starve siege defend`
   and the tactics `split threat kite fight merge spread`. Batch 2: `raid protect repair route basedef geo layout garrison clear ability
-  airborne bunker team bdcap` (`geo` has two parts that can be switched off on their own: `georally` and `geosites`).
+  airborne bunker team bdcap`, and `allyhelp` (help for an allied base under attack) (`geo` has two parts that can be switched off on their own: `georally` and `geosites`).
 * team: `@N` after the player (`expert:China:trace@1`) puts it on team N; players of a team are allies. Without it every
   player is on his own team.
 * More than two players: list them all, the map must have room. Team games: use `--no-rotate --starts a,b,c,d` so each

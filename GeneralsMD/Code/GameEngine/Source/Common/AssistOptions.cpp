@@ -34,6 +34,7 @@ AssistOptions::AssistOptions()
 	m_stances = FALSE;
 	m_idleKeys = FALSE;
 	m_repeatProduction = FALSE;
+	m_repeatReserve = 0;
 	m_infoStrip = FALSE;
 	m_maxZoomPercent = 100;
 	m_uiScalePercent = 100;
@@ -52,6 +53,11 @@ void AssistOptions::load()
 	m_stances = prefs.getBool( "AssistStances", FALSE );
 	m_idleKeys = prefs.getBool( "AssistIdleKeys", FALSE );
 	m_repeatProduction = prefs.getBool( "AssistRepeatProduction", FALSE );
+	m_repeatReserve = prefs.getInt( "AssistRepeatReserve", 0 );
+	if (m_repeatReserve < 0)
+		m_repeatReserve = 0;
+	if (m_repeatReserve > 100000)
+		m_repeatReserve = 100000;
 	m_infoStrip = prefs.getBool( "AssistInfoStrip", FALSE );
 	m_maxZoomPercent = prefs.getInt( "AssistMaxZoomPercent", 100 );
 	m_uiScalePercent = prefs.getInt( "AssistUIScalePercent", 100 );
@@ -91,6 +97,7 @@ void AssistOptions::copyTo( UserPreferences &prefs ) const
 	prefs.setBool( "AssistStances", m_stances );
 	prefs.setBool( "AssistIdleKeys", m_idleKeys );
 	prefs.setBool( "AssistRepeatProduction", m_repeatProduction );
+	prefs.setInt( "AssistRepeatReserve", m_repeatReserve );
 	prefs.setBool( "AssistInfoStrip", m_infoStrip );
 	prefs.setInt( "AssistMaxZoomPercent", m_maxZoomPercent );
 	prefs.setInt( "AssistUIScalePercent", m_uiScalePercent );

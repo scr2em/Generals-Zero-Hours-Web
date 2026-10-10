@@ -136,6 +136,8 @@ public:
 	void clear();
 	Real assigned( ObjectID target, UnsignedInt now ) const;
 	void assign( ObjectID target, Real damage, UnsignedInt now, UnsignedInt windowFrames );
+	/// Takes back damage that a unit assigned and will not deal after all (it took another target, or renews its share).
+	void release( ObjectID target, Real damage, UnsignedInt now );
 	const Entry &entry( Int i ) const { return m_entries[i]; }
 	Entry &entry( Int i ) { return m_entries[i]; }
 private:

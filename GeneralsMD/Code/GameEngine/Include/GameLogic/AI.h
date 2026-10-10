@@ -243,6 +243,18 @@ struct AISkillSettings
 	Real m_allyWaveWeight;			///< ... by this share of their value,
 	Real m_allyWaveFloor;				///< ... but not below this share of the army the wave would need alone.
 	Real m_baseDefenceMaxBlockSeconds;///< An alarm holds back the waves at most this long once nothing of ours has been hit for a while.
+
+	// ---- allied base support ----
+	Bool m_useAllyHelp;					///< Teams go to help an ally (a human or another computer player) whose base is under attack.
+	Real m_allyHelpMargin;			///< The base zone of an ally is the bounds of its structures plus this margin.
+	Real m_allyHelpMinValue;		///< Least value of the armed enemy force seen in the ally's base zone that raises an alarm (damage to the ally's objects there always does).
+	Real m_allyHelpForce;				///< The help that is sent makes up this many times the threat, less the ally's own defenders and our units there.
+	Real m_allyHelpMinAdvantage;///< Help that, with the defenders, would be less than this share of the threat is not sent (it would be lost).
+	Real m_allyHelpMaxDistance;	///< Teams farther than this from the threat are not sent.
+	Real m_allyHelpWaveReach;		///< Teams of a wave that are this near the threat may be sent (teams at home always).
+	Real m_allyHelpHomeGuard;		///< At home stays at least this many times the value of the enemies seen near our own base (and then one team).
+	Real m_allyHelpClearSeconds;///< The teams go back when the ally's base has been clear this long.
+	Real m_allyHelpMaxSeconds;	///< An alarm without hits on the ally's objects for 15 s ends after this long (stale).
 };
 
 class AISideBuildList : public MemoryPoolObject

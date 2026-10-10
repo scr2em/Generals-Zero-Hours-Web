@@ -1563,6 +1563,10 @@ void Player::onUnitCreated( Object *factory, Object *unit )
 	// ai notification callback
 	if( m_ai )
 		m_ai->onUnitProduced( factory, unit );
+
+	// player assists: repeat production follows what its buildings make
+	if( ThePlayerAssist )
+		ThePlayerAssist->onUnitProduced( factory, unit );
 }
 
 

@@ -218,6 +218,27 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bdAlarms(0),
 	m_bdOrders(0),
 	m_bdIdleAtAlarm(0),
+	m_nextAllyBases(0),
+	m_ahActive(FALSE),
+	m_ahPlayer(-1),
+	m_ahValue(0.0f),
+	m_ahPeak(0.0f),
+	m_ahPeakFrame(0),
+	m_ahSince(0),
+	m_ahLastThreat(0),
+	m_ahHelpSince(0),
+	m_ahAlarmHelped(0),
+	m_ahLastSend(0),
+	m_nextAllyHelp(0),
+	m_ahMuteUntil(0),
+	m_ahMutePlayer(-1),
+	m_ahMuteValue(0.0f),
+	m_ahNumTeams(0),
+	m_ahNoteFrame(0),
+	m_ahAlarms(0),
+	m_ahOrders(0),
+	m_ahTeamsSent(0),
+	m_ahHelpFrames(0),
 	m_routeLen(0),
 	m_routeIdx(0),
 	m_routeLegStart(0),
@@ -271,6 +292,12 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_cleaners, 0, sizeof(m_cleaners));
 	memset(m_geoSites, 0, sizeof(m_geoSites));
 	m_bdDamagePos.zero();
+	memset(m_allyBase, 0, sizeof(m_allyBase));
+	memset(m_allyRadius, 0, sizeof(m_allyRadius));
+	memset(m_allyDamageFrame, 0, sizeof(m_allyDamageFrame));
+	memset(m_allyDamagePos, 0, sizeof(m_allyDamagePos));
+	memset(m_ahTeams, 0, sizeof(m_ahTeams));
+	m_ahPos.zero();
 	memset(m_breachers, 0, sizeof(m_breachers));
 	memset(m_breachTargets, 0, sizeof(m_breachTargets));
 	m_breachStage.zero();
@@ -309,7 +336,8 @@ void AIStrategy::applyVariant()
 		{ "ability", AIPlayer::AIF_ABILITY },
 		{ "airborne", AIPlayer::AIF_AIRBORNE },
 		{ "bunker", AIPlayer::AIF_BUNKER },
-		{ "team", AIPlayer::AIF_TEAM }, { "bdcap", AIPlayer::AIF_BDCAP } };
+		{ "team", AIPlayer::AIF_TEAM }, { "bdcap", AIPlayer::AIF_BDCAP },
+		{ "allyhelp", AIPlayer::AIF_ALLYHELP } };
 	Int mode = 0;	// 1: off list, 2: on list
 	const char *p = variant.str();
 	while (*p)
@@ -347,6 +375,12 @@ void AIStrategy::newMap()
 	applyVariant();
 	m_bdActive = FALSE;
 	m_bdDamageFrame = 0;
+	m_ahActive = FALSE;
+	m_ahPlayer = -1;
+	m_ahNumTeams = 0;
+	m_nextAllyBases = 0;
+	memset(m_allyRadius, 0, sizeof(m_allyRadius));
+	memset(m_allyDamageFrame, 0, sizeof(m_allyDamageFrame));
 	m_protect.reset();
 	m_protect.setTrace(m_trace, m_player->getPlayerIndex());
 	m_nextProtect = 0;
@@ -431,6 +465,8 @@ void AIStrategy::update()
 				AI_TRACE("protect: %d alarms, %d protectors sent, %d returned, %d away now", m_protect.numAlarms(), m_protect.numResponses(), m_protect.numReturns(), m_protect.numAway());
 				AI_TRACE("repair and heal: %d trips to pads, %d units mended, %d structure repairs by dozers, %d on their way, %d pads known", m_repairTrips, m_repairsDone, m_dozerRepairs, m_numPatients, m_numSites);
 				AI_TRACE("base defence: %d alarms (%d idle units near the rally point at the moments they began), %d team orders, %s now", m_bdAlarms, m_bdIdleAtAlarm, m_bdOrders, m_bdActive ? "ALARM" : "quiet");
+				AI_TRACE("ally help: %d alarm(s) about an allied base, %d help order(s) with %d team(s), %u s helping, %s now", m_ahAlarms, m_ahOrders, m_ahTeamsSent,
+					(m_ahHelpFrames + (m_ahActive ? allyHelpFrames(now) : 0)) / LOGICFRAMES_PER_SECOND, m_ahNumTeams > 0 ? "HELPING" : (m_ahActive ? "alarm" : "quiet"));
 				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
 				AI_TRACE("garrisons: %d infantry entered (%d unit-seconds inside, %d of them firing), %d structures of the enemy attacked (%d brought down), %d holding now", m_garrisonEntered, m_garrisonSeconds, m_garrisonFiring, m_garrisonClearJobs, m_garrisonClears, m_numGarrisoned);
 				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
@@ -451,6 +487,7 @@ void AIStrategy::update()
 	}
 
 	updateBaseDefence();
+	updateAllyHelp();
 	updateGeo();
 	updateGarrison();
 	updateAbilities();
@@ -1101,7 +1138,7 @@ void AIStrategy::checkWaveOnTheWay( const Coord3D *waveCenter )
 	{
 		AITeamRecord &rec = m_teams[i];
 		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
-		if (team == nullptr || !isManageableTeam(team))
+		if (team == nullptr || !isManageableTeam(team) || isAllyHelper(rec.m_team))
 			continue;
 		rec.m_mode = AITEAM_RETREATING;
 		rec.m_modeFrame = now;
@@ -1541,6 +1578,8 @@ void AIStrategy::updateArmy()
 			return;
 		if (baseAlarmBlocksWaves(now))
 			return;		// the base first
+		if (m_ahNumTeams > 0)
+			return;		// help is out at an ally's base: the army is split
 		Real stallNeed = 0.0f;
 		const Real target = waveTarget(&stallNeed);
 		// An army that has stopped growing (all teams alive, money spent elsewhere) does not wait for ever.
@@ -1575,7 +1614,7 @@ void AIStrategy::updateArmy()
 			{
 				AITeamRecord &rec = m_teams[i];
 				Team *team = TheTeamFactory->findTeamByID(rec.m_team);
-				if (team == nullptr || rec.m_mode == AITEAM_RETREATING)
+				if (team == nullptr || rec.m_mode == AITEAM_RETREATING || isAllyHelper(rec.m_team))
 					continue;
 				rec.m_mode = AITEAM_ATTACKING;
 				rec.m_modeFrame = now;
@@ -1751,6 +1790,13 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 		}
 		if (!m_bdActive)
 			rec->m_baseDefence = FALSE;
+	}
+
+	// A team that was sent to an ally's base stays there until the alarm is over (updateAllyHelp).
+	if (rec->m_mode == AITEAM_DEFENDING && !rec->m_baseDefence && isAllyHelper(rec->m_team))
+	{
+		rec->m_idleSince = 0;
+		return;
 	}
 
 	// A team of the wave that stands at a waypoint waits for the others there.
@@ -1930,6 +1976,8 @@ void AIStrategy::sendReinforcementsToThreat()
 	}
 
 	AI_TRACE("base threatened (%.0f at (%.0f,%.0f)): recalling the army", threat, where.x, where.y);
+	if (m_ahActive)
+		endAllyHelp("our own base is under attack");
 	m_armyState = ARMY_GATHER;
 	m_armyStateFrame = now;
 	m_armyPeak = m_armyValue;
@@ -2245,7 +2293,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 13;
+	XferVersion currentVersion = 14;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2418,6 +2466,32 @@ void AIStrategy::xfer( Xfer *xfer )
 	{
 		xfer->xferUnsignedInt(&m_bdMuteUntil);
 		xfer->xferReal(&m_bdMuteValue);
+	}
+	if (version >= 14)
+	{
+		xfer->xferUser(m_allyBase, sizeof(m_allyBase));
+		xfer->xferUser(m_allyRadius, sizeof(m_allyRadius));
+		xfer->xferUnsignedInt(&m_nextAllyBases);
+		xfer->xferUser(m_allyDamageFrame, sizeof(m_allyDamageFrame));
+		xfer->xferUser(m_allyDamagePos, sizeof(m_allyDamagePos));
+		xfer->xferBool(&m_ahActive);
+		xfer->xferInt(&m_ahPlayer);
+		xfer->xferCoord3D(&m_ahPos);
+		xfer->xferReal(&m_ahValue);
+		xfer->xferReal(&m_ahPeak);
+		xfer->xferUnsignedInt(&m_ahPeakFrame);
+		xfer->xferUnsignedInt(&m_ahSince);
+		xfer->xferUnsignedInt(&m_ahLastThreat);
+		xfer->xferUnsignedInt(&m_ahHelpSince);
+		xfer->xferUnsignedInt(&m_ahAlarmHelped);
+		xfer->xferUnsignedInt(&m_ahLastSend);
+		xfer->xferUnsignedInt(&m_nextAllyHelp);
+		xfer->xferUnsignedInt(&m_ahMuteUntil);
+		xfer->xferInt(&m_ahMutePlayer);
+		xfer->xferReal(&m_ahMuteValue);
+		xfer->xferInt(&m_ahNumTeams);
+		xfer->xferUser(m_ahTeams, sizeof(m_ahTeams));
+		xfer->xferUnsignedInt(&m_ahNoteFrame);
 	}
 }
 

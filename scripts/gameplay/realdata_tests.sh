@@ -9,14 +9,33 @@
 #   1v1      Expert against Hard, same faction, for America, China and GLA (map $MAP_1V1)
 #   team     2v2 on $MAP_TEAM: two Experts against two Hard AIs from both sides of the map, and an Expert next to a weak
 #            ally (an Easy AI in place of a human) against two Experts: do the Expert allies attack?
+#   allyhelp the user's team game on $MAP_TEAM (starts $ALLY_STARTS, 50,000 cash): a human stand-in (an idle player: a computer
+#            player without its AI, who builds and orders nothing; or an Easy AI) and two Expert allies against two Experts. Do the
+#            Expert allies come to help when the stand-in's base is attacked, and go back afterwards? Once with the help switched off
+#            (off-allyhelp) for comparison
 #   bunker   China Expert against Hard: does it put infantry in its bunkers?
-#   assists  the player assists, scripted (scripts/assistbench/scenarios/realdata: formations, protect links), seconds each
+#   assists  the player assists, scripted (scripts/assistbench/scenarios/realdata: formations, protect links, stances, idle hotkeys, repeat production), seconds each
 #
 # What a pass looks like in the team suite: every Expert launches its first wave ("WAVE launches") within about 11 game minutes
 # (the table says "min 11" or less) and not every Expert sits under alarm for more than a quarter of the game (seconds under alarm
 # below about 400 in 30 minutes; an alarm that lasts longer than 90 s ends "(stale"); in the trace the line "waves: army A of N
 # needed (...; allies X)" shows allies above 0 once the allies have an army. Compare with the old behaviour by adding the words
 # "off-team+bdcap" to the variant of an Expert (expert:China:trace+off-team+bdcap@1).
+#
+# What a pass looks like in the allyhelp suite (the "ally help" column: per Expert, alarms about an allied base / teams sent /
+# seconds helping, and when the stand-in fell): when the stand-in's base is attacked, the trace of an Expert ally says
+# "ALLYHELP alarm N: player P base ... response on" and, unless its own base has an alarm at the time or the stand-in's defenders
+# are enough, "ALLYHELP: N team(s) to player P base at (x,y) against V (own home H) ..." within a few seconds; every help ends with
+# "ALLYHELP clear after N s: K team(s) go back" (no help that lasts the whole game; seconds helping below about a quarter of the
+# game), the Experts still launch waves ("WAVE launches", first by minute 11), and the stand-in holds out longer than in the
+# off-allyhelp match of the same seed (it fell later, or not at all). In the off-allyhelp match the alarm lines say "response OFF"
+# and no team is sent.
+#
+# What a pass looks like in the assists suite: every scenario passes (assists/report.md). For split fire on units that answer
+# an attack by themselves, stance-split-retaliate (tournamenta, human:America against idle:China; eight Rangers with split
+# fire, a Red Guard shoots at them, a second one 20 frames later): assists/stance-split-retaliate.trace.txt has between one and
+# eight "ASSIST stance split: unit N leaves A (enough on its way) for B" (A the first Red Guard, never back to it), both Red
+# Guards dead within 300 frames and every Ranger alive. See docs/PLAYER_ASSISTS.md for the other scenarios.
 #
 # Options:
 #   --quick           fewer games (about a third of the time)
@@ -29,13 +48,14 @@
 #   -h, --help        this text
 #
 # Environment: ZH_PATH (required), GENERALS_PATH (optional), MAP_1V1 (default "tournamenta"), MAP_TEAM (default
-# "hostile dawn"), TEAM_STARTS (default 1,2,4,6: the first two are one team's side of the map, the last two the other's).
+# "hostile dawn"), TEAM_STARTS (default 1,2,4,6: the first two are one team's side of the map, the last two the other's), ALLY_STARTS (default 1,2,3,4,6:
+# the stand-in and its two Expert allies on one side, two Experts on the other, as in the user's game).
 #
 # The report goes to test-reports/<date>-<commit>/ (summary.md first). Commit and push that folder so it can be read:
 #   git add test-reports && git commit -m "Gameplay test report" && git push
 set -euo pipefail
 
-usage() { sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,49p' "$0" | sed 's/^# \{0,1\}//'; }
 
 QUICK=0
 WORKERS=2
@@ -53,11 +73,11 @@ while [ $# -gt 0 ]; do
 		--web) USE_WEB=1; shift ;;
 		--no-build) BUILD=0; shift ;;
 		-h|--help) usage; exit 0 ;;
-		boot|1v1|team|bunker|assists) SUITES+=("$1"); shift ;;
+		boot|1v1|team|allyhelp|bunker|assists) SUITES+=("$1"); shift ;;
 		*) echo "Unknown option or suite: $1" >&2; usage >&2; exit 2 ;;
 	esac
 done
-[ ${#SUITES[@]} -gt 0 ] || SUITES=(boot 1v1 team bunker assists)
+[ ${#SUITES[@]} -gt 0 ] || SUITES=(boot 1v1 team allyhelp bunker assists)
 
 if [ -z "${ZH_PATH:-}" ] || [ ! -d "$ZH_PATH" ]; then
 	echo "Set ZH_PATH to your Zero Hour folder (the one with INIZH.big), e.g." >&2
@@ -72,6 +92,7 @@ fi
 MAP_1V1="${MAP_1V1:-tournamenta}"
 MAP_TEAM="${MAP_TEAM:-hostile dawn}"
 TEAM_STARTS="${TEAM_STARTS:-1,2,4,6}"
+ALLY_STARTS="${ALLY_STARTS:-1,2,3,4,6}"
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -161,6 +182,14 @@ for suite in "${SUITES[@]}"; do
 				--matchup "expert:China:trace@1,expert:America:trace@1,hard:GLA@2,hard:China@2" \
 				--matchup "hard:GLA@1,hard:China@1,expert:China:trace@2,expert:America:trace@2" \
 				--matchup "easy:China@1,expert:America:trace@1,expert:GLA@2,expert:China@2" ;;
+		allyhelp)
+			# the user's game: the human (China) and two Expert allies against two Experts, 50,000 cash; the human is an idle player
+			# (m1, and m2 with the help off), or an Easy AI that builds a base (m3)
+			run_suite allyhelp --map "$MAP_TEAM" --timeout 27 --match-timeout 3000 --seeds "$SEEDST" --determinism 0 --keep-logs \
+				--no-rotate --starts "$ALLY_STARTS" --engine-arg cash=50000 \
+				--matchup "idle:China@1,expert:China:trace@1,expert:America:trace@1,expert:GLA:trace@2,expert:China:trace@2" \
+				--matchup "idle:China@1,expert:China:trace+off-allyhelp@1,expert:America:trace+off-allyhelp@1,expert:GLA:trace@2,expert:China:trace@2" \
+				--matchup "easy:China@1,expert:China:trace@1,expert:America:trace@1,expert:GLA:trace@2,expert:China:trace@2" ;;
 		bunker)
 			run_suite bunker --map "$MAP_1V1" --timeout 20 --match-timeout 2000 --seeds 2 --determinism 0 --keep-logs \
 				--matchup "expert:China:trace,hard:America" ;;
@@ -178,7 +207,7 @@ python3 - "$OUT" <<'PY' >> "$OUT/summary.md"
 import glob, json, os, re, sys
 out = sys.argv[1]
 def section(title): print(f"\n## {title}\n")
-for suite in ("boot", "1v1", "team", "bunker", "assists"):
+for suite in ("boot", "1v1", "team", "allyhelp", "bunker", "assists"):
     d = os.path.join(out, suite)
     if not os.path.isdir(d): continue
     section(suite)
@@ -206,7 +235,7 @@ for suite in ("boot", "1v1", "team", "bunker", "assists"):
     if os.path.exists(rep):
         body = open(rep, errors="replace").read().split("\n", 1)[-1]   # without its title
         print(re.sub(r"(?m)^(#+) ", lambda m: "#" + m.group(1) + " ", body).strip()[:8000])
-    print("\n| match | result | per Expert (player): waves launched (first at minute), base alarms, seconds under alarm (stale ones), bunker entries | errors |\n|---|---|---|---|")
+    print("\n| match | result | per Expert (player): waves launched (first at minute), base alarms, seconds under alarm (stale ones), bunker entries | ally help per Expert (player): alarms about an allied base, teams sent, seconds helping; players that fell (minute) | errors |\n|---|---|---|---|---|")
     for f in sorted(glob.glob(os.path.join(d, "matches", "*.json"))):
         if f.endswith("-replay.json"): continue
         j = json.load(open(f))
@@ -223,7 +252,7 @@ for suite in ("boot", "1v1", "team", "bunker", "assists"):
             for line in open(log, errors="replace"):
                 m = re.match(r"AISTRAT\[p(\d+) f(\d+)\] (.*)", line)
                 if m:
-                    p = per.setdefault(m.group(1), [0, 0, 0, 0, 0, 0])
+                    p = per.setdefault(m.group(1), [0, 0, 0, 0, 0, 0, 0, 0, 0])
                     t = m.group(3)
                     if t.startswith("WAVE launches"):
                         p[0] += 1
@@ -233,6 +262,11 @@ for suite in ("boot", "1v1", "team", "bunker", "assists"):
                         p[2] += int(re.match(r"BASEDEF clear after (\d+)", t).group(1))
                         if "(stale:" in t: p[5] += 1
                     elif t.startswith("BUNKER:") and " goes into " in t: p[3] += 1
+                    elif t.startswith("ALLYHELP alarm"): p[6] += 1
+                    elif t.startswith("ALLYHELP: ") and " team(s) to player " in t: p[7] += int(re.match(r"ALLYHELP: (\d+) team", t).group(1))
+                    elif t.startswith("ALLYHELP clear after"):
+                        h = re.search(r"helped (\d+) s", t)
+                        if h: p[8] += int(h.group(1))
                 elif re.search(r"RuntimeError|Engine thread stopped|Assertion failed|Fatal error", line):
                     errors.append(line.strip()[:120])
             # keep the decisions of the Expert AIs and drop the rest of the engine output (size)
@@ -240,7 +274,10 @@ for suite in ("boot", "1v1", "team", "bunker", "assists"):
                 t.writelines(l for l in open(log, errors="replace") if l.startswith("AISTRAT[") or "AIMATCH" in l)
             if j.get("ok"): os.remove(log)
         stats = "; ".join(f"p{k}: {v[0]} (min {v[4] // 1800 if v[0] else '-'}), {v[1]}, {v[2]} ({v[5]}), {v[3]}" for k, v in sorted(per.items())) or "-"
-        print(f"| {mid} | {outcome} | {stats} | {(j.get('error') or '') + ' ' + ' / '.join(errors[:2])} |")
+        helped = "; ".join(f"p{k}: {v[6]}, {v[7]}, {v[8]}" for k, v in sorted(per.items()) if v[6] or v[7]) or "-"
+        fell = ", ".join(f"{p.get('difficulty')}:{p.get('side')} p{p.get('playerIndex', '?')} ({p['defeatedFrame'] // 1800})"
+                         for p in (res.get("players") or []) if p.get("defeatedFrame"))
+        print(f"| {mid} | {outcome} | {stats} | {helped}; fell: {fell or 'none'} | {(j.get('error') or '') + ' ' + ' / '.join(errors[:2])} |")
 PY
 
 echo

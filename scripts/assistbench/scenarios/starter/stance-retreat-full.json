@@ -1,0 +1,23 @@
+{
+ "name": "starter-stance-retreat-full",
+ "description": "Smoke check only (starter content, says nothing about gameplay): ten riflemen with retreat at 70% are hurt to 40%; the infirmary holds eight at a time. The ones that do not get in at first try again (or wait) and every one of them is healed and goes back.",
+ "map": "Ironwood Crossing",
+ "players": "human:Ironwood,idle:Ironwood",
+ "seed": 1,
+ "steps": [
+  "spawn hut 0:IronwoodInfirmary:1 at=cc:0^0,-300",
+  "spawn rifles 0:IronwoodRifleman:10 at=cc:0^500,0",
+  "wait 5",
+  "select rifles",
+  "send ASSIST_STANCE int:2 int:2 int:70",
+  "wait 2",
+  "snapshot rifles",
+  "damage rifles 60%",
+  "until health rifles above 98 max=2700",
+  "until atsnapshot rifles tol=80 max=1500"
+ ],
+ "log": [
+  { "match": "^ASSIST stance retreat: unit \\d+ at 40% goes to heal facility \\d+", "min": 10, "max": 10 },
+  { "match": "^ASSIST stance retreat: unit \\d+ goes back to -?\\d+,-?\\d+ at 100%", "min": 10, "max": 10 }
+ ]
+}

@@ -33,7 +33,7 @@ Game data:
 What to play:
   --map NAME              map (repeatable): folder/file name, display name or map path
   --matchup SPEC          players of one match (repeatable): "difficulty:side[:variant][@team],difficulty:side[:variant][@team],..."
-                          difficulty: easy, normal, hard, expert.  side: a faction ("Ironwood", "America", ...) or random.
+                          difficulty: easy, normal, hard, expert, or idle (a stand-in for a human who does nothing).  side: a faction ("Ironwood", "America", ...) or random.
                           Default with the starter content: hard:Ironwood,hard:Ironwood
   --seeds N               seeds per matchup and map (default 4)        --seed-start N   first seed (default 1)
   --starts 1,2,...        start positions to rotate the players through (default 1..number of players); every seed

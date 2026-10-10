@@ -37,6 +37,7 @@ struct AssistOptions
 	Bool	m_stances;					///< unit stances: kite, retreat, spread, split fire
 	Bool	m_idleKeys;					///< idle army / worker hotkeys
 	Bool	m_repeatProduction;	///< repeat production toggle on factories
+	Int		m_repeatReserve;		///< repeat production never takes the money below this (sent with the repeat commands)
 	Bool	m_infoStrip;				///< income, army value, time, actions per minute
 	Int		m_maxZoomPercent;		///< how far out the camera may zoom, in percent of the game's setting (100: as usual)
 	Int		m_uiScalePercent;		///< scale of the assist panels and the info strip (100: automatic from the resolution)

@@ -96,6 +96,7 @@
 #include "WW3D2/ww3d.h"
 
 #include "W3DDevice/GameClient/CameraShakeSystem.h"
+#include "GameClient/AssistHooks.h"
 
 // 30 fps
 Real TheW3DFrameLengthInMsec = MSEC_PER_LOGICFRAME_REAL; // default is 33msec/frame == 30fps. but we may change it depending on sys config.
@@ -172,6 +173,8 @@ W3DView::W3DView()
 	m_shakeOffset.y = 0.0f;
 	m_shakeIntensity = 0.0f;
 	m_FXPitch = 1.0f;
+	m_defaultMaxHeightScale = 1.0f;
+	m_assistHeightScale = 1.0f;
 	m_freezeTimeForCameraMovement = false;
 	m_lastScreenToTerrainValid = false;
 
@@ -697,14 +700,16 @@ Real W3DView::getDesiredHeight(Real x, Real y) const
 //-------------------------------------------------------------------------------------------------
 Real W3DView::getMaxHeight(Real x, Real y) const
 {
+	// the game's highest height: the player's zoom-out allowance is not for the scripted cameras and the default view
+	const Real maxHeightAboveGround = m_maxHeightAboveGround / m_assistHeightScale;
 #if PRESERVE_RETAIL_SCRIPTED_CAMERA
 	if (!m_isUserControlled)
 	{
-		return getHeightAroundPos(x, y) + m_maxHeightAboveGround;
+		return getHeightAroundPos(x, y) + maxHeightAboveGround;
 	}
 #endif
 
-	return m_pos.z + m_maxHeightAboveGround;
+	return m_pos.z + maxHeightAboveGround;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1383,6 +1388,14 @@ void W3DView::update()
 	if (TheTerrainRenderObject && TheTerrainRenderObject->doesNeedFullUpdate())
 	{
 		updateTerrain();
+	}
+
+	// the player changed the zoom-out allowance: a new highest height (a camera above it comes down to it)
+	if (m_assistHeightScale != (TheAssistCameraHeightScale >= 1.0f ? TheAssistCameraHeightScale : 1.0f))
+	{
+		applyMaxHeight();
+		if (m_heightAboveGround > m_maxHeightAboveGround)
+			setHeightAboveGround(m_maxHeightAboveGround);
 	}
 
 	static Real followFactor = -1;
@@ -2238,7 +2251,18 @@ void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight)
 	// MDC - we no longer want to rotate maps (design made all of them right to begin with)
 	//	m_defaultAngle = angle * M_PI/180.0f;
 	setDefaultPitch(pitch);
-	m_maxHeightAboveGround = TheGlobalData->m_maxCameraHeight*maxHeight;
+	m_defaultMaxHeightScale = maxHeight;
+	applyMaxHeight();
+}
+
+//-------------------------------------------------------------------------------------------------
+// TheSuperHackers @feature Player assists: the highest camera height is the game's (with the map's scale) times the
+// zoom-out allowance the player chose (1 unless changed).
+//-------------------------------------------------------------------------------------------------
+void W3DView::applyMaxHeight()
+{
+	m_assistHeightScale = TheAssistCameraHeightScale >= 1.0f ? TheAssistCameraHeightScale : 1.0f;
+	m_maxHeightAboveGround = TheGlobalData->m_maxCameraHeight*m_defaultMaxHeightScale*m_assistHeightScale;
 	if (m_minHeightAboveGround > m_maxHeightAboveGround)
 		m_maxHeightAboveGround = m_minHeightAboveGround;
 }
@@ -2277,8 +2301,9 @@ void W3DView::setZoom(Real z)
 void W3DView::setZoomToDefault()
 {
 	// default zoom has to be max, otherwise players will just zoom to max always
-	m_heightAboveGround = m_maxHeightAboveGround;
-	m_zoom = getMaxZoom(m_pos.x, m_pos.y);
+	// (the game's max: a larger zoom-out allowance of the player is only for zooming out by hand)
+	m_heightAboveGround = m_maxHeightAboveGround / m_assistHeightScale;
+	m_zoom = getDesiredZoom(m_pos.x, m_pos.y);
 
 	stopDoingScriptedCamera();
 	m_CameraArrivedAtWaypointOnPathFlag = false;
@@ -3705,6 +3730,24 @@ void W3DView::Add_Camera_Shake (const Coord3D & position,float radius,float dura
 	CameraShakerSystem.Add_Camera_Shake(vpos,radius,duration,power);
 }
 
+//-------------------------------------------------------------------------------------------------
+// TheSuperHackers @feature Player assists: a camera above the game's highest height (the player's zoom-out allowance)
+// sees more of the terrain, so more of it is drawn, in whole vertex buffer tiles.
+//-------------------------------------------------------------------------------------------------
+void W3DView::scaleDrawSizeForHeight(ICoord2D &dimensions) const
+{
+	const Real normalMax = TheGlobalData->m_maxCameraHeight * m_defaultMaxHeightScale;
+	if (m_assistHeightScale <= 1.0f || normalMax <= 0.0f || m_currentHeightAboveGround <= normalMax)
+		return;
+	Real ratio = m_currentHeightAboveGround / normalMax;
+	if (ratio > m_assistHeightScale)
+		ratio = m_assistHeightScale;
+	const Int tilesX = (Int)ceilf((dimensions.x - 1) * ratio / VERTEX_BUFFER_TILE_LENGTH);
+	const Int tilesY = (Int)ceilf((dimensions.y - 1) * ratio / VERTEX_BUFFER_TILE_LENGTH);
+	dimensions.x = 1 + tilesX * VERTEX_BUFFER_TILE_LENGTH;
+	dimensions.y = 1 + tilesY * VERTEX_BUFFER_TILE_LENGTH;
+}
+
 bool W3DView::getDesiredTerrainDrawSize(ICoord2D &dimensions) const
 {
 	if (TheGlobalData && TheGlobalData->m_drawEntireTerrain)
@@ -3729,6 +3772,8 @@ bool W3DView::getDesiredTerrainDrawSize(ICoord2D &dimensions) const
 		// and uses terrain oversize if it needs to enlarge.
 		dimensions.x = WorldHeightMap::NORMAL_DRAW_WIDTH;
 		dimensions.y = WorldHeightMap::NORMAL_DRAW_HEIGHT;
+		if (m_isUserControlled)
+			scaleDrawSizeForHeight(dimensions);
 		return true;
 	}
 
@@ -3736,6 +3781,7 @@ bool W3DView::getDesiredTerrainDrawSize(ICoord2D &dimensions) const
 	// Note: The default camera pitch in Generals was 37.5, which we prefer to keep the normal draw size for.
 	dimensions.x = WorldHeightMap::LOW_ANGLE_DRAW_WIDTH;
 	dimensions.y = WorldHeightMap::LOW_ANGLE_DRAW_HEIGHT;
+	scaleDrawSizeForHeight(dimensions);
 	return true;
 }
 

@@ -192,6 +192,10 @@ static const LookupListRec GameMessageMetaTypeNames[] =
 	{ "ASSIST_COVERAGE",									GameMessage::MSG_META_ASSIST_COVERAGE },
 	{ "ASSIST_UNPROTECT",									GameMessage::MSG_META_ASSIST_UNPROTECT },
 	{ "ASSIST_FORMATION_CYCLE",										GameMessage::MSG_META_ASSIST_FORM_CYCLE },
+	{ "ASSIST_IDLE_ARMY_NEXT",								GameMessage::MSG_META_ASSIST_IDLE_ARMY_NEXT },
+	{ "ASSIST_IDLE_ARMY_ALL",								GameMessage::MSG_META_ASSIST_IDLE_ARMY_ALL },
+	{ "ASSIST_IDLE_WORKER_NEXT",							GameMessage::MSG_META_ASSIST_IDLE_WORKER_NEXT },
+	{ "ASSIST_REPEAT_PRODUCTION",							GameMessage::MSG_META_ASSIST_REPEAT_PRODUCTION },
 
 	{ "BEGIN_CAMERA_ROTATE_LEFT",									GameMessage::MSG_META_BEGIN_CAMERA_ROTATE_LEFT },
 	{ "END_CAMERA_ROTATE_LEFT",										GameMessage::MSG_META_END_CAMERA_ROTATE_LEFT },
@@ -1009,6 +1013,10 @@ void MetaMap::generateMetaMap()
 			{ GameMessage::MSG_META_ASSIST_ODDS,        MK_O, ALT, L"Odds meter", L"Point at an enemy group with units selected to see who wins" },
 			{ GameMessage::MSG_META_ASSIST_BASE_DEFEND, MK_A, ALT, L"Base under attack response", L"Send idle army units to the attacked place; again to send them back" },
 			{ GameMessage::MSG_META_ASSIST_COVERAGE,    MK_D, ALT, L"Defence coverage view", L"Show the range of own defences and the gaps in the base edge" },
+			{ GameMessage::MSG_META_ASSIST_IDLE_ARMY_NEXT,   MK_I, ALT,      L"Next idle army unit",  L"Select the next idle army unit and centre the view on it" },
+			{ GameMessage::MSG_META_ASSIST_IDLE_ARMY_ALL,    MK_I, CTRL_ALT, L"All idle army units",  L"Select all idle army units" },
+			{ GameMessage::MSG_META_ASSIST_IDLE_WORKER_NEXT, MK_W, ALT,      L"Next idle worker",     L"Select the next idle builder or supply gatherer and centre the view on it" },
+			{ GameMessage::MSG_META_ASSIST_REPEAT_PRODUCTION, MK_Q, ALT,    L"Repeat production",    L"The selected production buildings build their last unit again whenever their queue runs empty" },
 		};
 		for (size_t i = 0; i < ARRAY_SIZE(assistKeys); ++i)
 		{

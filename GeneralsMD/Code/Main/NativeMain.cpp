@@ -21,7 +21,8 @@
 // Entry point of the native headless build (cmake/native-headless.cmake), the counterpart of
 // WebMain.cpp for a command line program on Linux and macOS. It always runs headless: no window,
 // renderer, audio or video. It is meant for the automated test modes (-aiMatch, see
-// scripts/aibench/README.md; -simulateReplay), which run at full speed and print their results.
+// scripts/aibench/README.md; -assistMatch, see scripts/assistbench/README.md; -simulateReplay), which run at
+// full speed and print their results.
 //
 //   zh_headless [--zh DIR] [--generals DIR] [--userdata DIR] <engine arguments>
 //
@@ -64,6 +65,7 @@
 #include "Common/MessageStream.h"
 #include "Common/ReplaySimulation.h"
 #include "Common/AIMatch.h"
+#include "Common/AssistMatch.h"
 #include "Common/WorkingDirectory.h"
 #include "GameLogic/GameLogic.h"
 #include "Win32Device/GameClient/Win32Mouse.h"
@@ -169,7 +171,7 @@ void printUsage()
 		"  --generals DIR  the original Generals install (optional, default $GENERALS_PATH)\n"
 		"  --userdata DIR  the user data folder (default: a temporary folder, removed at the end)\n"
 		"Example: zh_headless --zh starterpack -aiMatch map=ironwood players=hard:Ironwood,hard:Ironwood seed=1\n"
-		"See scripts/aibench/README.md for -aiMatch.\n" );
+		"See scripts/aibench/README.md for -aiMatch, scripts/assistbench/README.md for -assistMatch.\n" );
 }
 
 // An existing directory as an absolute path, or empty.
@@ -244,6 +246,10 @@ Int runGame()
 	if (AIMatch::isRequested())
 	{
 		exitcode = AIMatch::run();
+	}
+	else if (AssistMatch::isRequested())
+	{
+		exitcode = AssistMatch::run();
 	}
 	else if (!TheGlobalData->m_simulateReplays.empty())
 	{

@@ -1,0 +1,43 @@
+{
+ "name": "repeat-production",
+ "description": "repeat production on a barracks: one Ranger queued by hand is built again and again through the barracks' own queue; when money minus the cost would fall below the reserve it waits (the money stays); with money again it goes on; switched off, the Ranger in the queue is finished and no more come. The barracks (AmericaBarracks) is made by the script; without a power plant it builds slowly, which only makes the waits longer.",
+ "map": "tournamenta",
+ "players": "human:America:-1:1,idle:China:-1:2",
+ "seed": 1,
+ "steps": [
+  "spawn shop 0:AmericaBarracks:1 at=cc:0^0,-350",
+  "wait 5",
+  "money 0 2000",
+  "repeat shop on",
+  "wait 2",
+  "expect repeating shop",
+  "expect count all:0:AmericaInfantryRanger =0",
+  "produce shop AmericaInfantryRanger",
+  "until count all:0:AmericaInfantryRanger >=3 max=2700",
+  "expect queued shop =1",
+  "money 0 450",
+  "repeat - reserve reserve=1000",
+  "until count all:0:AmericaInfantryRanger >=4 max=1200",
+  "wait 450",
+  "expect count all:0:AmericaInfantryRanger =4",
+  "expect queued shop =0",
+  "expect cash 0 <1000",
+  "money 0 5000",
+  "until count all:0:AmericaInfantryRanger >=5 max=1200",
+  "repeat shop off",
+  "wait 2",
+  "expect not repeating shop",
+  "until queued shop =0 max=1200",
+  "wait 600",
+  "expect count all:0:AmericaInfantryRanger =6",
+  "expect queued shop =0"
+ ],
+ "log": [
+  "^ASSIST repeat production: factory \\d+ on \\(nothing yet\\), reserve 0",
+  { "match": "^ASSIST repeat production: factory \\d+ queues AmericaInfantryRanger again \\(money \\d+, cost \\d+, reserve 0\\)", "min": 3 },
+  "^ASSIST repeat production: reserve 1000 for player",
+  "^ASSIST repeat production: factory \\d+ waits: money \\d+, cost \\d+, reserve 1000",
+  "^ASSIST repeat production: factory \\d+ queues AmericaInfantryRanger again \\(money 5000, cost \\d+, reserve 1000\\)",
+  "^ASSIST repeat production: factory \\d+ off"
+ ]
+}

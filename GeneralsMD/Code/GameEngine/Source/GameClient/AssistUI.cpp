@@ -24,6 +24,7 @@
 #include <algorithm>
 
 #include "Common/AssistOptions.h"
+#include "Common/GlobalData.h"
 #include "Common/NameKeyGenerator.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
@@ -75,6 +76,8 @@ namespace
 	AssistTextPool s_overlayPool;
 	AssistTextPool *s_pool = &s_overlayPool;
 	AssistUI::Selection s_selection;
+	Bool s_useUserScale = TRUE;
+	Real s_zoomLogged = 0.0f;					// the camera height (share of the game's limit) last printed
 
 	// the drag that aims a formation
 	Bool			s_aimEligible = FALSE;		// the right button went down where a drag would aim a formation
@@ -103,7 +106,13 @@ Real AssistUI::scale()
 		if (base < 1.0f)
 			base = 1.0f;
 	}
-	return base * (Real)TheAssistOptions.m_uiScalePercent / 100.0f;
+	return s_useUserScale ? base * (Real)TheAssistOptions.m_uiScalePercent / 100.0f : base;
+}
+
+//-------------------------------------------------------------------------------------------------
+void AssistUI::useUserScale( Bool use )
+{
+	s_useUserScale = use;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -150,6 +159,44 @@ Int AssistUI::stackY( const AssistPanel *panel, Int height )
 }
 
 //-------------------------------------------------------------------------------------------------
+UnicodeString AssistUI::hotkeyText( GameMessage::Type msg )
+{
+	UnicodeString out;
+	if (TheMetaMap == nullptr)
+		return out;
+	const MetaMapRec *rec = nullptr;
+	for (const MetaMapRec *r = TheMetaMap->getFirstMetaMapRec(); r; r = r->m_next)
+	{
+		if (r->m_meta == msg)
+		{
+			rec = r;
+			break;
+		}
+	}
+	if (rec == nullptr || rec->m_key == MK_NONE)
+		return out;
+	const Int mods = (Int)rec->m_modState;
+	if (mods & CTRL)
+		out.concat( L"Ctrl+" );
+	if (mods & ALT)
+		out.concat( L"Alt+" );
+	if (mods & SHIFT)
+		out.concat( L"Shift+" );
+	WideChar c = 0;
+	if (rec->m_key >= MK_A && rec->m_key <= MK_Z)
+		c = (WideChar)(L'A' + (rec->m_key - MK_A));
+	else if (rec->m_key >= MK_1 && rec->m_key <= MK_9)
+		c = (WideChar)(L'1' + (rec->m_key - MK_1));
+	else if (rec->m_key == MK_0)
+		c = L'0';
+	if (c)
+		out.concat( c );
+	else
+		out.concat( L"key" );
+	return out;
+}
+
+//-------------------------------------------------------------------------------------------------
 void AssistUI::usePool( AssistTextPool *pool )
 {
 	s_pool = pool ? pool : &s_overlayPool;
@@ -173,6 +220,13 @@ static PooledText &nextText( Int pointSize )
 		s_pool->m_items.push_back( p );
 	}
 	PooledText &p = s_pool->m_items[s_pool->m_next++];
+	// the text grows with the player's UI scale (the resolution is in adjustFontSize already)
+	if (s_useUserScale && TheAssistOptions.m_uiScalePercent != 100)
+	{
+		pointSize = (pointSize * TheAssistOptions.m_uiScalePercent + 50) / 100;
+		if (pointSize < 6)
+			pointSize = 6;
+	}
 	if (p.m_pointSize != pointSize)
 	{
 		p.m_pointSize = pointSize;
@@ -280,6 +334,7 @@ AssistPanel::AssistPanel( const char *name ) : m_name( name )
 	m_fillAlpha = 190;
 	m_manual = FALSE;
 	m_stackLeft = FALSE;
+	m_fixedScale = FALSE;
 	s_panels.push_back( this );
 }
 
@@ -336,7 +391,9 @@ void AssistPanel::show( Bool visible )
 	if (visible)
 	{
 		Int x, y, w, h;
+		AssistUI::useUserScale( !m_fixedScale );
 		place( &x, &y, &w, &h );
+		AssistUI::useUserScale( TRUE );
 		m_window->winSetPosition( x, y );
 		m_window->winSetSize( w, h );
 	}
@@ -498,6 +555,8 @@ void AssistPanel::drawFunc( GameWindow *window, WinInstanceData *data )
 		}
 	}
 
+	AssistUI::useUserScale( !panel->m_fixedScale );
+
 	// this window's own strings
 	if (panel->m_texts == nullptr)
 		panel->m_texts = new AssistTextPool;
@@ -541,6 +600,7 @@ void AssistPanel::drawFunc( GameWindow *window, WinInstanceData *data )
 	}
 
 	AssistUI::usePool( nullptr );
+	AssistUI::useUserScale( TRUE );
 }
 
 //=================================================================================================
@@ -564,43 +624,6 @@ namespace
 		GameMessage::MSG_META_ASSIST_FORM_KEEP
 	};
 
-	/// "Alt+3" for the key a meta message is mapped to.
-	UnicodeString hotkeyText( GameMessage::Type msg )
-	{
-		UnicodeString out;
-		if (TheMetaMap == nullptr)
-			return out;
-		const MetaMapRec *rec = nullptr;
-		for (const MetaMapRec *r = TheMetaMap->getFirstMetaMapRec(); r; r = r->m_next)
-		{
-			if (r->m_meta == msg)
-			{
-				rec = r;
-				break;
-			}
-		}
-		if (rec == nullptr || rec->m_key == MK_NONE)
-			return out;
-		const Int mods = (Int)rec->m_modState;
-		if (mods & CTRL)
-			out.concat( L"Ctrl+" );
-		if (mods & ALT)
-			out.concat( L"Alt+" );
-		if (mods & SHIFT)
-			out.concat( L"Shift+" );
-		WideChar c = 0;
-		if (rec->m_key >= MK_A && rec->m_key <= MK_Z)
-			c = (WideChar)(L'A' + (rec->m_key - MK_A));
-		else if (rec->m_key >= MK_1 && rec->m_key <= MK_9)
-			c = (WideChar)(L'1' + (rec->m_key - MK_1));
-		else if (rec->m_key == MK_0)
-			c = L'0';
-		if (c)
-			out.concat( c );
-		else
-			out.concat( L"key" );
-		return out;
-	}
 }
 
 class FormationPanel : public AssistPanel
@@ -625,7 +648,7 @@ public:
 			b.m_on = sel.m_formation == b.m_id;
 			UnicodeString tip;
 			tip.format( L"%ls", formationNames[b.m_id] );
-			const UnicodeString key = hotkeyText( formationKeys[b.m_id] );
+			const UnicodeString key = AssistUI::hotkeyText( formationKeys[b.m_id] );
 			if (!key.isEmpty())
 				tip.format( L"%ls  (%ls)", formationNames[b.m_id], key.str() );
 			b.m_tip = tip;
@@ -786,6 +809,19 @@ public:
 
 static ToolbarPanel *s_toolbar = nullptr;
 
+//-------------------------------------------------------------------------------------------------
+Int AssistUI::belowToolbar()
+{
+	if (s_toolbar && s_toolbar->isVisible())
+	{
+		Int x, y, w, h;
+		s_toolbar->window()->winGetScreenPosition( &x, &y );
+		s_toolbar->window()->winGetSize( &w, &h );
+		return y + h + px( 4 );
+	}
+	return px( 26 );
+}
+
 //=================================================================================================
 // the panels and overlays, once per frame
 //=================================================================================================
@@ -807,6 +843,9 @@ void AssistUI::reset()
 	AssistCoverageUI::reset();
 	AssistAlertUI::reset();
 	AssistOddsUI::reset();
+	AssistIdleUI::reset();
+	AssistRepeatUI::reset();
+	AssistInfoUI::reset();
 	for (size_t i = 0; i < s_panels.size(); ++i)
 		s_panels[i]->destroy();
 	s_selection.m_valid = FALSE;
@@ -820,6 +859,22 @@ void AssistUI::update()
 {
 	init();
 	invalidateSelection();
+
+	// the camera may zoom out as far as the player allows (the tactical view reads it, W3DView::applyMaxHeight)
+	TheAssistCameraHeightScale = (Real)TheAssistOptions.m_maxZoomPercent / 100.0f;
+	if (TheTacticalView && TheGlobalData && TheGlobalData->m_maxCameraHeight > 0.0f && AssistUI::playing())
+	{
+		// for the checks: how far out the camera is, in steps of a tenth of the game's limit beyond it
+		const Real share = TheTacticalView->getHeightAboveGround() / TheGlobalData->m_maxCameraHeight;
+		const Real step = floorf( share * 10.0f ) / 10.0f;
+		if (share > 1.01f && step != s_zoomLogged)
+		{
+			s_zoomLogged = step;
+			ASSIST_DEBUG(( "ASSIST camera zoomed out to %d%% of the game's limit (allowed %d%%)", (int)(share * 100.0f + 0.5f), TheAssistOptions.m_maxZoomPercent ));
+		}
+		else if (share <= 1.01f)
+			s_zoomLogged = 0.0f;
+	}
 
 	if (!AssistUI::playing())
 	{
@@ -838,8 +893,11 @@ void AssistUI::update()
 	AssistCoverageUI::init();
 	AssistAlertUI::init();
 	AssistOddsUI::init();
+	AssistRepeatUI::init();
+	AssistInfoUI::init();
 	if (s_toolbar == nullptr)
 		s_toolbar = new ToolbarPanel;
+	AssistIdleUI::init();		// after the toolbar: it is placed below it
 
 	for (size_t i = 0; i < s_panels.size(); ++i)
 	{
@@ -867,6 +925,8 @@ void AssistUI::drawOverlays( View *view )
 	AssistCoverageUI::drawOverlays( view );
 	AssistAlertUI::drawOverlays( view );
 	AssistOddsUI::drawOverlays( view );
+	AssistRepeatUI::drawOverlays( view );
+	AssistInfoUI::drawOverlays( view );
 }
 
 //=================================================================================================
@@ -968,9 +1028,44 @@ void AssistUI::drawAim()
 
 namespace
 {
-	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_STANCES = 6, OPT_CLOSE = 100 };
+	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_STANCES = 6, OPT_IDLE = 7,
+		OPT_REPEAT = 8, OPT_INFO = 9, OPT_CLOSE = 100 };
 
-	struct ToggleRow { Int id; const wchar_t *label; Bool *value; };
+	// rows with a number and "-" / "+" buttons (ids VALUE_DOWN + row, VALUE_UP + row)
+	enum { OPT_RESERVE = 50, OPT_ZOOM = 51, OPT_UISCALE = 52, VALUE_DOWN = 1000, VALUE_UP = 2000 };
+
+	void zoomChanged()
+	{
+		ASSIST_DEBUG(( "ASSIST camera zoom-out allowance %d%% of the game's limit", TheAssistOptions.m_maxZoomPercent ));
+	}
+
+	void uiScaleChanged()
+	{
+		ASSIST_DEBUG(( "ASSIST panels scale %d%% (%.2f with the resolution)", TheAssistOptions.m_uiScalePercent, AssistUI::scale() ));
+	}
+	struct ValueRow
+	{
+		Int						m_id;
+		const wchar_t	*m_format;			///< the label, with %d for the value
+		Int						*m_value;
+		Int						m_step, m_min, m_max;
+		void					(*m_changed)();
+	};
+	const ValueRow valueRows[] =
+	{
+		{ OPT_RESERVE, L"Repeat production keeps this much money: %d", &TheAssistOptions.m_repeatReserve, 250, 0, 100000, &AssistRepeatUI::reserveChanged },
+		{ OPT_ZOOM, L"Camera zoom-out: %d%% of the game's limit", &TheAssistOptions.m_maxZoomPercent, 25, 100, 300, &zoomChanged },
+		{ OPT_UISCALE, L"Size of the assist panels and the info strip: %d%%", &TheAssistOptions.m_uiScalePercent, 10, 50, 300, &uiScaleChanged },
+	};
+	const ValueRow *valueRow( Int id )
+	{
+		for (size_t i = 0; i < ARRAY_SIZE( valueRows ); ++i)
+		{
+			if (valueRows[i].m_id == id)
+				return &valueRows[i];
+		}
+		return nullptr;
+	}
 }
 
 class AssistOptionsDialog : public AssistPanel
@@ -979,6 +1074,7 @@ public:
 	AssistOptionsDialog() : AssistPanel( "AssistOptions" )
 	{
 		setManual( TRUE );
+		setFixedScale( TRUE );
 		m_fillAlpha = 252;
 		m_title = L"Player assists";
 		addButton( OPT_FORMATIONS, 0, L"Formations: picker, hotkeys, drag to aim", nullptr );
@@ -987,6 +1083,16 @@ public:
 		addButton( OPT_STANCES, 0, L"Unit stances: kite, retreat when damaged, spread out, split fire", nullptr );
 		addButton( OPT_ODDS, 0, L"Odds meter: point at an enemy group to see who would win", nullptr );
 		addButton( OPT_ALERT, 0, L"Base under attack: one click sends idle army units to defend", nullptr );
+		addButton( OPT_IDLE, 0, L"Idle hotkeys: select idle army units and workers, idle counter", nullptr );
+		addButton( OPT_REPEAT, 0, L"Repeat production: buildings build their last unit again", nullptr );
+		addButton( OPT_INFO, 0, L"Info strip: income, army value, game time, actions per minute", nullptr );
+		for (size_t i = 0; i < ARRAY_SIZE( valueRows ); ++i)
+		{
+			addButton( valueRows[i].m_id, 0, L"", nullptr );
+			find( valueRows[i].m_id )->m_enabled = FALSE;
+			addButton( VALUE_DOWN + valueRows[i].m_id, 0, L"-", nullptr );
+			addButton( VALUE_UP + valueRows[i].m_id, 0, L"+", nullptr );
+		}
 		addButton( 200, 0, L"All assists are off until switched on here.", nullptr );
 		addButton( 201, 0, L"Those that give orders also need \"Player assists allowed\" in the match setup.", nullptr );
 		addButton( OPT_CLOSE, 0, L"Close", nullptr );
@@ -1024,6 +1130,16 @@ public:
 		find( OPT_ALERT )->m_on = TheAssistOptions.m_baseAlert;
 		find( OPT_ODDS )->m_on = TheAssistOptions.m_odds;
 		find( OPT_STANCES )->m_on = TheAssistOptions.m_stances;
+		find( OPT_IDLE )->m_on = TheAssistOptions.m_idleKeys;
+		find( OPT_REPEAT )->m_on = TheAssistOptions.m_repeatProduction;
+		find( OPT_INFO )->m_on = TheAssistOptions.m_infoStrip;
+		for (size_t i = 0; i < ARRAY_SIZE( valueRows ); ++i)
+		{
+			const ValueRow &r = valueRows[i];
+			find( r.m_id )->m_label.format( r.m_format, *r.m_value );
+			find( VALUE_DOWN + r.m_id )->m_enabled = *r.m_value > r.m_min;
+			find( VALUE_UP + r.m_id )->m_enabled = *r.m_value < r.m_max;
+		}
 	}
 
 	virtual Bool refresh() override { return TRUE; }
@@ -1038,6 +1154,8 @@ public:
 		for (size_t i = 0; i < m_buttons.size(); ++i)
 		{
 			AssistButton &b = m_buttons[i];
+			if (b.m_id >= VALUE_DOWN)
+				continue;		// placed with their row, below
 			if (b.m_id == OPT_CLOSE)
 			{
 				yy += AssistUI::px( 10 );
@@ -1053,6 +1171,19 @@ public:
 			b.m_h = b.m_flat ? AssistUI::px( 14 ) : rowH;
 			b.m_y = yy;
 			yy += b.m_h + gap;
+			if (valueRow( b.m_id ))
+			{
+				// the "-" and "+" buttons at the right end of the row
+				const Int bw = AssistUI::px( 30 );
+				b.m_w -= 2 * (bw + gap);
+				AssistButton *down = find( VALUE_DOWN + b.m_id );
+				AssistButton *up = find( VALUE_UP + b.m_id );
+				down->m_x = b.m_x + b.m_w + gap;
+				up->m_x = down->m_x + bw + gap;
+				down->m_y = up->m_y = b.m_y;
+				down->m_w = up->m_w = bw;
+				down->m_h = up->m_h = b.m_h;
+			}
 		}
 		*h = yy + AssistUI::px( 4 );
 		*x = ((Int)TheDisplay->getWidth() - *w) / 2;
@@ -1069,8 +1200,26 @@ public:
 			case OPT_ALERT: TheAssistOptions.m_baseAlert = !TheAssistOptions.m_baseAlert; break;
 			case OPT_ODDS: TheAssistOptions.m_odds = !TheAssistOptions.m_odds; break;
 			case OPT_STANCES: TheAssistOptions.m_stances = !TheAssistOptions.m_stances; break;
+			case OPT_IDLE: TheAssistOptions.m_idleKeys = !TheAssistOptions.m_idleKeys; break;
+			case OPT_REPEAT: TheAssistOptions.m_repeatProduction = !TheAssistOptions.m_repeatProduction; break;
+			case OPT_INFO: TheAssistOptions.m_infoStrip = !TheAssistOptions.m_infoStrip; break;
 			case OPT_CLOSE: closeDialog(); return;
-			default: return;
+			default:
+			{
+				const Int row = id >= VALUE_UP ? id - VALUE_UP : id - VALUE_DOWN;
+				const ValueRow *r = id >= VALUE_DOWN ? valueRow( row ) : nullptr;
+				if (r == nullptr)
+					return;
+				Int v = *r->m_value + (id >= VALUE_UP ? r->m_step : -r->m_step);
+				v = v < r->m_min ? r->m_min : (v > r->m_max ? r->m_max : v);
+				if (v == *r->m_value)
+					return;
+				*r->m_value = v;
+				ASSIST_DEBUG(( "ASSIST option %d = %d", row, v ));
+				if (r->m_changed)
+					r->m_changed();
+				break;
+			}
 		}
 		TheAssistOptions.save();
 		refreshValues();
@@ -1079,6 +1228,16 @@ public:
 	virtual void drawGlyph( const AssistButton &b, Int x, Int y, Color color ) override
 	{
 		const Int h = b.m_h;
+		if (valueRow( b.m_id ))
+		{
+			AssistUI::text( b.m_label, x + b.m_x + AssistUI::px( 8 ), y + b.m_y + (h - AssistUI::px( 12 )) / 2, GameMakeColor( 230, 235, 245, 255 ), 10 );
+			return;
+		}
+		if (b.m_id >= VALUE_DOWN)
+		{
+			AssistUI::text( b.m_label, x + b.m_x, y + b.m_y + (h - AssistUI::px( 14 )) / 2, color, 12, TRUE, b.m_w );
+			return;
+		}
 		if (b.m_id == OPT_CLOSE || b.m_flat)
 		{
 			AssistUI::text( b.m_label, x + b.m_x, y + b.m_y + (b.m_flat ? 0 : (h - AssistUI::px( 12 )) / 2), b.m_flat ? GameMakeColor( 170, 185, 205, 255 ) : color, b.m_flat ? 8 : 11, !b.m_flat, b.m_w );
@@ -1250,7 +1409,8 @@ GameMessageDisposition AssistUI::translate( const GameMessage *msg )
 	if (t != GameMessage::MSG_RAW_MOUSE_POSITION)
 		invalidateSelection();	// the selection may have changed since the last frame
 
-	if (AssistProtectUI::translate( msg ) || AssistStanceUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ) || AssistOddsUI::translate( msg ))
+	if (AssistProtectUI::translate( msg ) || AssistStanceUI::translate( msg ) || AssistCoverageUI::translate( msg ) || AssistAlertUI::translate( msg ) || AssistOddsUI::translate( msg ) ||
+			AssistIdleUI::translate( msg ) || AssistRepeatUI::translate( msg ))
 		return DESTROY_MESSAGE;
 
 	// ---- hotkeys -----------------------------------------------------------------------------
