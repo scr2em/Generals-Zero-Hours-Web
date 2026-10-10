@@ -68,3 +68,4 @@ build.ninja
 __pycache__/
 *.pyc
 /aibench-out/
+/aitune-out/
