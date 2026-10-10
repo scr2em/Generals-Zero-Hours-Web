@@ -100,7 +100,7 @@
 // Use RETAIL_COMPATIBLE_CRC, RETAIL_COMPATIBLE_DATA and RETAIL_COMPATIBLE_XFER_SAVE to guard breaking changes.
 
 #ifndef RETAIL_COMPATIBLE_CRC
-#define RETAIL_COMPATIBLE_CRC (1) // Game is expected to be CRC compatible with retail Generals 1.08, Zero Hour 1.04
+#define RETAIL_COMPATIBLE_CRC (0) // Off: the TheSuperHackers fixes that change the logic CRC are on (this port needs no retail replays or multiplayer, docs/AI_PLAN.md)
 #endif
 
 #ifndef RETAIL_COMPATIBLE_DATA
