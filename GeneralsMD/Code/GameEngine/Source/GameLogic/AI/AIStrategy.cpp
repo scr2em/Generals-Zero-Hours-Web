@@ -167,6 +167,13 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_bunkerPosts(0),
 	m_bunkerEntered(0),
 	m_bunkerTrained(0),
+	m_nextSurplus(0),
+	m_numSurplusOrders(0),
+	m_numSurplusUnits(0),
+	m_surplusOrdered(0),
+	m_surplusInfantry(0),
+	m_surplusSpent(0.0f),
+	m_surplusAdopted(0),
 	m_airPhase(0),
 	m_airTransport(INVALID_ID),
 	m_numSquad(0),
@@ -298,6 +305,10 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_allyDamagePos, 0, sizeof(m_allyDamagePos));
 	memset(m_ahTeams, 0, sizeof(m_ahTeams));
 	m_ahPos.zero();
+	memset(m_surplusFactory, 0, sizeof(m_surplusFactory));
+	memset(m_surplusThing, 0, sizeof(m_surplusThing));
+	memset(m_surplusOrderFrame, 0, sizeof(m_surplusOrderFrame));
+	memset(m_surplusUnits, 0, sizeof(m_surplusUnits));
 	memset(m_breachers, 0, sizeof(m_breachers));
 	memset(m_breachTargets, 0, sizeof(m_breachTargets));
 	m_breachStage.zero();
@@ -470,6 +481,7 @@ void AIStrategy::update()
 				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
 				AI_TRACE("garrisons: %d infantry entered (%d unit-seconds inside, %d of them firing), %d structures of the enemy attacked (%d brought down), %d holding now", m_garrisonEntered, m_garrisonSeconds, m_garrisonFiring, m_garrisonClearJobs, m_garrisonClears, m_numGarrisoned);
 				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
+				AI_TRACE("surplus production: %d units ordered (%.0f spent), %d given to teams, %d waiting for a team, %d on order", m_surplusOrdered, m_surplusSpent, m_surplusAdopted, m_numSurplusUnits, m_numSurplusOrders);
 				AI_TRACE("bunkers: %d posts, %d men inside or on the way, %d entered so far, %d infantry trained for them", m_bunkerPosts, m_numBunkerMen, m_bunkerEntered, m_bunkerTrained);
 				AI_TRACE("airborne: %d missions, %d drops, %d targets destroyed, %d aircraft lost, %d times no safe way", m_airMissions, m_airDrops, m_airKills, m_airLost, m_airNoPath);
 				Real stallShown = 0.0f;
@@ -493,6 +505,7 @@ void AIStrategy::update()
 	updateAbilities();
 	updateAirborne();
 	updateBunkers();
+	updateSurplus();
 
 	if (now >= m_nextTeamEval)
 	{
@@ -543,11 +556,9 @@ Real AIStrategy::teamValue( Team *team )
 //-------------------------------------------------------------------------------------------------
 // counter building
 //-------------------------------------------------------------------------------------------------
-Real AIStrategy::teamCounterScore( const TeamPrototype *proto ) const
+/// The weight of every kind of enemy in the composition the enemy model has seen (for counter picks); returns their sum.
+Real AIStrategy::counterWeights( Real *weight, const AICombatFigures **enemyFig ) const
 {
-	if (skill().m_counterStrength <= 0.0f || m_enemy.numComposition() == 0 || m_ai->isFeatureOff(AIPlayer::AIF_COUNTER))
-		return 0.0f;
-
 	// Weight of the enemy kinds: their value; buildings count less (the army comes first) and together
 	// never more than two thirds of the army, but they must come down in the end, so they do count.
 	Real armyWeight = 0.0f, structureWeight = 0.0f;
@@ -569,8 +580,6 @@ Real AIStrategy::teamCounterScore( const TeamPrototype *proto ) const
 		structureScale = armyWeight * structureShare / structureWeight;
 
 	Real totalWeight = 0.0f;
-	Real weight[AIEnemyModel::MAX_COMPOSITION];
-	const AICombatFigures *enemyFig[AIEnemyModel::MAX_COMPOSITION];
 	for (Int e = 0; e < m_enemy.numComposition(); ++e)
 	{
 		const AIComposition &c = m_enemy.composition()[e];
@@ -581,6 +590,17 @@ Real AIStrategy::teamCounterScore( const TeamPrototype *proto ) const
 		weight[e] = c.m_value * (enemyFig[e]->m_structure ? structureScale : 1.0f);
 		totalWeight += weight[e];
 	}
+	return totalWeight;
+}
+
+Real AIStrategy::teamCounterScore( const TeamPrototype *proto ) const
+{
+	if (skill().m_counterStrength <= 0.0f || m_enemy.numComposition() == 0 || m_ai->isFeatureOff(AIPlayer::AIF_COUNTER))
+		return 0.0f;
+
+	Real weight[AIEnemyModel::MAX_COMPOSITION];
+	const AICombatFigures *enemyFig[AIEnemyModel::MAX_COMPOSITION];
+	const Real totalWeight = counterWeights(weight, enemyFig);
 	if (totalWeight <= 0.0f)
 		return 0.0f;
 
@@ -2293,7 +2313,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 14;
+	XferVersion currentVersion = 15;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -2492,6 +2512,18 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferInt(&m_ahNumTeams);
 		xfer->xferUser(m_ahTeams, sizeof(m_ahTeams));
 		xfer->xferUnsignedInt(&m_ahNoteFrame);
+	}
+	if (version >= 15)
+	{
+		xfer->xferUnsignedInt(&m_nextSurplus);
+		xfer->xferUser(m_surplusFactory, sizeof(m_surplusFactory));
+		xfer->xferUser(m_surplusThing, sizeof(m_surplusThing));
+		xfer->xferUser(m_surplusOrderFrame, sizeof(m_surplusOrderFrame));
+		xfer->xferInt(&m_numSurplusOrders);
+		xfer->xferUser(m_surplusUnits, sizeof(m_surplusUnits));
+		xfer->xferInt(&m_numSurplusUnits);
+		xfer->xferInt(&m_surplusOrdered);
+		xfer->xferInt(&m_surplusInfantry);
 	}
 }
 

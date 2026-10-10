@@ -41,6 +41,13 @@
 # its slot by a late one sent back ("ASSIST formation return id=N ... (trip 1)" or "(trip 2)", never "(trip 3)").
 # See docs/PLAYER_ASSISTS.md for the other scenarios.
 #
+# What a pass looks like in the 1v1 suite: on the symmetrical 2-player map every Expert wins at least as often as the Hard AI
+# of its faction and ends the timeouts with more value (final.value in the match JSON). The trace of the Expert
+# (1v1/matches/*.trace.txt) shows its features at work:
+#   * surplus production: "SURPLUS: <unit> ordered at <factory>" lines from about 150 s on, the status line
+#     "surplus production: N units ordered (S spent), A given to teams" grows, and the Expert ends the game with little
+#     money left (money.final in the match JSON a few thousand at most, where Hard keeps tens of thousands).
+#
 # Options:
 #   --quick           fewer games (about a third of the time)
 #   --workers N       games at the same time (default 2; each needs about 1 GB of memory and a core)

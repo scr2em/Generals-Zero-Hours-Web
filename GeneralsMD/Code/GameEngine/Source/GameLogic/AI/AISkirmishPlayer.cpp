@@ -337,6 +337,8 @@ void AISkirmishPlayer::processBaseBuilding()
 void AISkirmishPlayer::onUnitProduced( Object *factory, Object *unit )
 {
 	AIPlayer::onUnitProduced(factory, unit);
+	if (m_strategy && factory && unit)
+		m_strategy->onUnitProduced(factory, unit);
 }
 
 /**

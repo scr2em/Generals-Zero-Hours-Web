@@ -347,6 +347,11 @@ static const FieldParse s_skillFieldParse[] =
 		{ "AllyHelpHomeGuard",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpHomeGuard ) },
 		{ "AllyHelpClearSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpClearSeconds ) },
 		{ "AllyHelpMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMaxSeconds ) },
+		{ "SurplusProduction",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSurplus ) },
+		{ "SurplusReserve",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusReserve ) },
+		{ "SurplusStartSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusStartSeconds ) },
+		{ "SurplusInfantryShare",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusInfantryShare ) },
+		{ "SurplusAircraft",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_surplusAircraft ) },
 		{ nullptr,								nullptr,					nullptr, 0 }
 	};
 
@@ -1324,6 +1329,11 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_allyHelpHomeGuard = 1.0f;
 	ex.m_allyHelpClearSeconds = 10.0f;
 	ex.m_allyHelpMaxSeconds = 90.0f;
+	ex.m_useSurplus = true;
+	ex.m_surplusReserve = 1500.0f;
+	ex.m_surplusStartSeconds = 150.0f;
+	ex.m_surplusInfantryShare = 1.0f;
+	ex.m_surplusAircraft = false;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1456,6 +1466,11 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_allyHelpHomeGuard );
 		xfer->xferReal( &sk.m_allyHelpClearSeconds );
 		xfer->xferReal( &sk.m_allyHelpMaxSeconds );
+		xfer->xferBool( &sk.m_useSurplus );
+		xfer->xferReal( &sk.m_surplusReserve );
+		xfer->xferReal( &sk.m_surplusStartSeconds );
+		xfer->xferReal( &sk.m_surplusInfantryShare );
+		xfer->xferBool( &sk.m_surplusAircraft );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

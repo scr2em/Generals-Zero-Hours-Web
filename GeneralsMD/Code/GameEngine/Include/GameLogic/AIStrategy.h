@@ -319,6 +319,7 @@ public:
 
 	// ---- production --------------------------------------------------------------------------
 	/// Log2 weight of a team against the observed enemy army: positive if it counters it.  0 when nothing is known.
+	Real counterWeights( Real *weight, const AICombatFigures **enemyFig ) const;
 	Real teamCounterScore( const TeamPrototype *proto ) const;
 	/// Selection weight of a team: its production priority step below the best (hiPri) and how well it counters the enemy.
 	Real teamWeight( const TeamPrototype *proto, Int hiPri ) const;
@@ -327,6 +328,7 @@ public:
 	void noteTeamPicked() { m_savingSince = 0; }
 	/// True when production buildings idle while money piles up (shorten the team timer then).
 	Bool productionIsStarved() const { return m_productionStarved; }
+	void onUnitProduced( Object *factory, Object *unit );	///< a unit came out of a factory (surplus production takes its own)
 	/// Extra resource gatherers the economy can use in the current phase of the game.
 	Int extraGatherers() const;
 
@@ -476,6 +478,13 @@ private:
 	Real postThreatScore( Object *post );
 	void trainForBunker( Int wantedClass );
 	void updateBunkers();
+
+	// surplus production (AISurplus.cpp)
+	enum { MAX_SURPLUS_ORDERS = 8, MAX_SURPLUS_UNITS = 32 };
+	Bool surplusOn() const;
+	Real unitCounterScore( const AICombatFigures *f ) const;
+	void updateSurplus();
+	void adoptSurplusUnits();
 
 	// airborne insertion (AIAirborne.cpp)
 	enum { MAX_SQUAD = 8 };
@@ -675,6 +684,17 @@ private:
 	Int						m_bunkerPosts;									///< statistics for the trace
 	Int						m_bunkerEntered;
 	Int						m_bunkerTrained;
+	UnsignedInt		m_nextSurplus;
+	ObjectID			m_surplusFactory[MAX_SURPLUS_ORDERS];	///< surplus units ordered and not out yet: the factory,
+	Int						m_surplusThing[MAX_SURPLUS_ORDERS];		///< ... the template id of the unit,
+	UnsignedInt		m_surplusOrderFrame[MAX_SURPLUS_ORDERS];///< ... and when it was ordered
+	Int						m_numSurplusOrders;
+	ObjectID			m_surplusUnits[MAX_SURPLUS_UNITS];		///< surplus units out of the factory that wait for a team
+	Int						m_numSurplusUnits;
+	Int						m_surplusOrdered;										///< statistics for the trace
+	Int						m_surplusInfantry;
+	Real					m_surplusSpent;
+	Int						m_surplusAdopted;
 	Int						m_airPhase;											///< airborne insertion: 0 = no mission
 	ObjectID			m_airTransport;
 	ObjectID			m_squad[MAX_SQUAD];

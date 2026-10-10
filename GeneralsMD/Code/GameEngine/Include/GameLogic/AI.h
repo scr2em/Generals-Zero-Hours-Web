@@ -255,6 +255,13 @@ struct AISkillSettings
 	Real m_allyHelpHomeGuard;		///< At home stays at least this many times the value of the enemies seen near our own base (and then one team).
 	Real m_allyHelpClearSeconds;///< The teams go back when the ally's base has been clear this long.
 	Real m_allyHelpMaxSeconds;	///< An alarm without hits on the ally's objects for 15 s ends after this long (stale).
+
+	// ---- surplus production ----
+	Bool m_useSurplus;	///< Idle factories build army units (the best counter to what has been seen) while money piles up beyond the teams of the scripts.
+	Real m_surplusReserve;	///< ... when the money left after the unit is at least this.
+	Real m_surplusStartSeconds;	///< ... not before this time in the match (the build order of the scripts comes first).
+	Real m_surplusInfantryShare;	///< At most this share of the surplus units ordered so far is infantry (tanks crush infantry, which the combat model does not know).
+	Bool m_surplusAircraft;	///< Surplus production may build aircraft too.
 };
 
 class AISideBuildList : public MemoryPoolObject
