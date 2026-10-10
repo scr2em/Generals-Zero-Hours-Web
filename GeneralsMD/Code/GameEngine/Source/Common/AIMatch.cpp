@@ -222,15 +222,16 @@ std::string s_variantBySlot[MAX_SLOTS];
 // ------------------------------------------------------------------------------------------------
 struct PlayerSpec
 {
-	PlayerSpec() : state(SLOT_MED_AI), team(-1), startPos(-1), templateIndex(PLAYERTEMPLATE_RANDOM) {}
+	PlayerSpec() : state(SLOT_MED_AI), team(-1), startPos(-1), templateIndex(PLAYERTEMPLATE_RANDOM), idle(FALSE) {}
 
 	SlotState state;
-	std::string difficulty;		// as given, normalized: easy, normal or hard
+	std::string difficulty;		// as given, normalized: easy, normal, hard, expert or idle
 	std::string side;				// as given
 	Int team;							// -1: on its own
 	Int startPos;					// 0 based, -1: random
 	std::string variant;
 	Int templateIndex;			// into ThePlayerTemplateStore, PLAYERTEMPLATE_RANDOM for "random"
+	Bool idle;						// a computer player whose AI is removed when the match starts (a stand-in for a human who does nothing)
 };
 
 struct Config
@@ -280,9 +281,11 @@ Bool parsePlayers(const std::string &text, std::vector<PlayerSpec> &out, std::st
 			spec.state = SLOT_BRUTAL_AI, spec.difficulty = "hard";
 		else if (d == "expert")
 			spec.state = SLOT_EXPERT_AI, spec.difficulty = "expert";	// the level above Hard, see GameInfo.h
+		else if (d == "idle")
+			spec.state = SLOT_EASY_AI, spec.difficulty = "idle", spec.idle = TRUE;	// its AI is removed at the start (as AssistMatch's idle kind)
 		else
 		{
-			error = "unknown difficulty '" + f[0] + "' (easy, normal, hard or expert)";
+			error = "unknown difficulty '" + f[0] + "' (easy, normal, hard, expert or idle)";
 			return FALSE;
 		}
 		spec.side = trimmed(f[1]);
@@ -1036,6 +1039,15 @@ Bool Match::play(std::string &error)
 		stepGame();
 	}
 
+	// Idle players: computer players without their AI, a stand-in for a human player who gives no orders (team games: does an
+	// Expert ally come to help when the human's base is attacked?).
+	for (size_t i = 0; i < m_cfg.players.size(); ++i)
+	{
+		Player *p = m_cfg.players[i].idle ? ThePlayerList->getPlayerFromSlotIndex((Int)i) : nullptr;
+		if (p != nullptr)
+			p->deletePlayerAI();
+	}
+
 	captureBaseline();
 	m_loadMs = GetTickCount() - loadStart;
 	UnsignedInt lastProgressFrame = 0;
@@ -1182,6 +1194,7 @@ void Match::writePlayer(JsonWriter &w, const PlayerStats &ps, Int rank, const ch
 
 	w.beginObject();
 	w.field("slot", ps.slot);
+	w.field("playerIndex", ps.playerIndex);		// the p<N> of the AI trace lines
 	w.field("name", ps.name);
 	w.field("difficulty", spec.difficulty);
 	w.field("side", ps.side);

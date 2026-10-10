@@ -101,7 +101,9 @@ Each build is deterministic on its own, and Linux and macOS may differ from each
 ### Players: `difficulty:side[:variant][@team]`
 
 * difficulty: `easy`, `normal`, `hard`, `expert`. Different difficulties can play in one match
-  (`expert:Ironwood,hard:Ironwood`). `hard` is the original Hard AI.
+  (`expert:Ironwood,hard:Ironwood`). `hard` is the original Hard AI. `idle` is a computer player whose AI is removed when the
+  match starts: it keeps its starting units and builds and orders nothing, a stand-in for a human player in team games
+  (`idle:China@1,expert:China@1,...`: does the Expert ally defend the human's base?).
 * side: the name of a player template (`FactionAmerica`, or `America`), a side shared by several templates (the first
   one is taken), or `random` (decided by the seed). Use `--probe` to list them.
 * variant: a free tag the AI code can read to run an experimental variant next to the standard AI in one match:

@@ -27,6 +27,9 @@
 //          [crcinterval=<frames>] [sample=<frames>] [idleinterval=<frames>] [progress=<frames>]
 //          [cash=<starting money>] [label=<text>] [record=1] [loop=logic|engine] [eliminate=<slot>@<frame>]
 //
+// <difficulty> is easy, normal, hard, expert, or idle (a computer player whose AI is removed when the match starts: a stand-in
+// for a human player who gives no orders).
+//
 // The mode implies -headless. The result is printed on one line, "AIMATCH_RESULT {json}", and
 // also written to stats=<file> when given. The command line, the statistics and the way a match is
 // driven are described in scripts/aibench/README.md.
