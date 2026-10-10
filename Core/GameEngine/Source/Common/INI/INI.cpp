@@ -60,6 +60,12 @@
 #include "GameLogic/Weapon.h"
 
 #if __cplusplus >= 201611L
+#include <version>
+#endif
+
+// libc++ outside Emscripten (the native headless build on macOS) parses with sscanf, like the original game:
+// std::from_chars for floating point types is missing before LLVM 20, and Apple's libc++ ties it to new macOS versions.
+#if __cplusplus >= 201611L && !(defined(_LIBCPP_VERSION) && !defined(__EMSCRIPTEN__))
 #define USE_STD_FROM_CHARS_PARSING 1
 #else
 #define USE_STD_FROM_CHARS_PARSING 0
