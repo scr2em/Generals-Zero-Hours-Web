@@ -109,6 +109,13 @@ DWORD AttributesFromStat(const struct stat &st)
 	return attributes;
 }
 
+#ifdef __APPLE__
+// macOS names the timestamps of struct stat st_*timespec (Linux and Emscripten: st_*tim).
+#define st_mtim st_mtimespec
+#define st_atim st_atimespec
+#define st_ctim st_ctimespec
+#endif
+
 void FileTimeFromTimespec(const struct timespec &ts, FILETIME *out)
 {
 	UnixTimeToFileTime(ts.tv_sec, (int32_t)ts.tv_nsec, out);

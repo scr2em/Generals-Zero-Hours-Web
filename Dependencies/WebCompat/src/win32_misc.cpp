@@ -23,7 +23,9 @@
 #include <strings.h>
 
 #include <errno.h>
-#ifndef __APPLE__
+#ifdef __APPLE__
+#include <malloc/malloc.h>
+#else
 #include <malloc.h>
 #endif
 #include <objbase.h>
@@ -61,7 +63,11 @@ HeapObject s_processHeap = { 0x50414548 };
 
 size_t UsableSize(const void *pointer)
 {
+#ifdef __APPLE__
+	return pointer ? malloc_size(pointer) : 0;
+#else
 	return pointer ? malloc_usable_size(const_cast<void *>(pointer)) : 0;
+#endif
 }
 
 const char *Win32ErrorText(DWORD id)
