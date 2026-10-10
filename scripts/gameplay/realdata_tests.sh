@@ -51,7 +51,8 @@
 #   --no-build        test the build as it is
 #   -h, --help        this text
 #
-# Environment: ZH_PATH (required), GENERALS_PATH (optional), MAP_1V1 (default "tournamenta"), MAP_TEAM (default
+# Environment: ZH_PATH (required), GENERALS_PATH (optional), MAP_1V1 (default "tournament desert": two players,
+# the same income at both starts), MAP_TEAM (default
 # "hostile dawn"), TEAM_STARTS (default 1,2,4,6: the first two are one team's side of the map, the last two the other's), ALLY_STARTS (default 1,2,3,4,6:
 # the stand-in and its two Expert allies on one side, two Experts on the other, as in the user's game).
 #
@@ -59,7 +60,7 @@
 #   git add test-reports && git commit -m "Gameplay test report" && git push
 set -euo pipefail
 
-usage() { sed -n '2,49p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
 
 QUICK=0
 WORKERS=2
@@ -93,7 +94,7 @@ if [ -n "${GENERALS_PATH:-}" ] && [ ! -d "$GENERALS_PATH" ]; then
 	exit 2
 fi
 
-MAP_1V1="${MAP_1V1:-tournamenta}"
+MAP_1V1="${MAP_1V1:-tournament desert}"
 MAP_TEAM="${MAP_TEAM:-hostile dawn}"
 TEAM_STARTS="${TEAM_STARTS:-1,2,4,6}"
 ALLY_STARTS="${ALLY_STARTS:-1,2,3,4,6}"
