@@ -425,6 +425,7 @@ public:
 
 	static void parseAiDataDefinition( INI* ini );
 	const TAiData *getAiData() {return m_aiData;}
+	Bool setExpertSkillValue( const char *name, const char *value );	///< test bench: one field of the "ExpertSkill" block by its name
 
 	// Note: Does not work for things that do not have AI. (This is in AI.h, after all)
 	static Real getAdjustedVisionRangeForObject(const Object *object, Int factorsToConsider);
