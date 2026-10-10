@@ -7,7 +7,7 @@ and are the same on every machine.
 
 | Assist | Kind | How to use it |
 |---|---|---|
-| Formations | orders | Select 2+ units: Formation panel on the left; Ctrl+Alt+0..6 (none, line, column, wedge, box, loose, keep shape), Alt+F next; right-drag on the ground aims the front line |
+| Formations | orders | Select 2+ units: Formation panel on the left; Ctrl+Alt+0..6 (none, line, column, wedge, box, loose, keep shape), Alt+F next; right-drag on the ground aims the front line. A unit pushed off its slot after it arrived (a late member driving through) goes back to it |
 | Protect | orders | Select protectors, Alt+P, then click the unit or building (or press the hotkey group) to protect; Alt+U stops |
 | Defence coverage view | display | Alt+D or the toolbar "Coverage" button: range rings of your defences, uncovered stretches of the base edge (ground and air) |
 | Base under attack | orders | When the radar alert fires, a button appears (or Alt+A): idle army units nearby attack-move there; Alt+A again sends them back |
