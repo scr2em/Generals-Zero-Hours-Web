@@ -6,6 +6,15 @@ FetchContent_Populate(zlib DOWNLOAD_EXTRACT_TIMESTAMP
     SOURCE_DIR     ${ZLIB_DIR}
 )
 
+# Apple clang 21 predefines TARGET_OS_MAC, which this zconf.h takes for classic Mac OS: it then leaves out its Byte
+# type. Only MACOS selects classic Mac OS from now on.
+file(READ "${ZLIB_DIR}/zconf.h" ZCONF_H)
+string(REPLACE "#if !defined(MACOS) && !defined(TARGET_OS_MAC)\ntypedef unsigned char  Byte;"
+    "#if !defined(MACOS)\ntypedef unsigned char  Byte;" ZCONF_H_PATCHED "${ZCONF_H}")
+if(NOT ZCONF_H_PATCHED STREQUAL ZCONF_H)
+    file(WRITE "${ZLIB_DIR}/zconf.h" "${ZCONF_H_PATCHED}")
+endif()
+
 add_library(libzlib STATIC)
 
 target_sources(libzlib PRIVATE
