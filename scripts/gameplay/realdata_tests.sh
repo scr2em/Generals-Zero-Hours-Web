@@ -4,7 +4,7 @@
 #
 #   ZH_PATH="/path/to/Zero Hour" [GENERALS_PATH="/path/to/Generals"] scripts/gameplay/realdata_tests.sh [options] [suite...]
 #
-# Suites (default: all, in this order):
+# Suites (default: all but mirror and tune, in this order):
 #   boot     start the game like a player (intro videos clicked away, main menu and its shell map) and watch for a crash
 #   1v1      Expert against Hard, same faction, for America, China and GLA (map $MAP_1V1)
 #   team     2v2 on $MAP_TEAM: two Experts against two Hard AIs from both sides of the map, and an Expert next to a weak
@@ -15,6 +15,16 @@
 #            (off-allyhelp) for comparison
 #   bunker   China Expert against Hard: does it put infantry in its bunkers?
 #   assists  the player assists, scripted (scripts/assistbench/scenarios/realdata: formations, protect links, stances, idle hotkeys, repeat production), seconds each
+#   mirror   the Expert's strength: Expert against Hard, same faction, America, China and GLA on $MAP_1V1, 20 seeds each (60 matches)
+#   tune     the automatic search of the Expert's settings (scripts/aibench/tune.mjs, native build only; a night with --workers 8):
+#            into test-reports/<UTC date>-tune; running it again continues an unfinished search
+#
+# What a pass looks like in the mirror suite: the Expert wins at least 80% of the matches over the three mirrors and at least 80%
+# against each faction (the line "mirror: PASS" in summary.md, with the wins, the 95% intervals and the timeouts, which are no win).
+#
+# What a pass looks like in the tune suite: its summary.md (copied into this one) shows the best settings winning at least 80%
+# on the fresh seeds overall and for each side ("Target 80% ... point estimate ... (met)"; the lower bound of the interval met
+# as well is the strong form). Its best.ini is then made the code default and checked with the mirror suite.
 #
 # What a pass looks like in the team suite: every Expert launches its first wave ("WAVE launches") within about 11 game minutes
 # (the table says "min 11" or less) and not every Expert sits under alarm for more than a quarter of the game (seconds under alarm
@@ -59,7 +69,7 @@
 #   git add test-reports && git commit -m "Gameplay test report" && git push
 set -euo pipefail
 
-usage() { sed -n '2,49p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,68p' "$0" | sed 's/^# \{0,1\}//'; }
 
 QUICK=0
 WORKERS=2
@@ -77,7 +87,7 @@ while [ $# -gt 0 ]; do
 		--web) USE_WEB=1; shift ;;
 		--no-build) BUILD=0; shift ;;
 		-h|--help) usage; exit 0 ;;
-		boot|1v1|team|allyhelp|bunker|assists) SUITES+=("$1"); shift ;;
+		boot|1v1|team|allyhelp|bunker|assists|mirror|tune) SUITES+=("$1"); shift ;;
 		*) echo "Unknown option or suite: $1" >&2; usage >&2; exit 2 ;;
 	esac
 done
@@ -151,7 +161,7 @@ if [ "$NATIVE" = 1 ]; then
 else
 	BENCH=("${BENCH_WEB[@]}")
 fi
-if [ "$QUICK" = 1 ]; then SEEDS1=2; SEEDST=1; else SEEDS1=4; SEEDST=2; fi
+if [ "$QUICK" = 1 ]; then SEEDS1=2; SEEDST=1; SEEDSM=8; else SEEDS1=4; SEEDST=2; SEEDSM=20; fi
 
 {
 	echo "# Gameplay tests on the real game data"
@@ -194,6 +204,22 @@ for suite in "${SUITES[@]}"; do
 				--matchup "idle:China@1,expert:China:trace@1,expert:America:trace@1,expert:GLA:trace@2,expert:China:trace@2" \
 				--matchup "idle:China@1,expert:China:trace+off-allyhelp@1,expert:America:trace+off-allyhelp@1,expert:GLA:trace@2,expert:China:trace@2" \
 				--matchup "easy:China@1,expert:China:trace@1,expert:America:trace@1,expert:GLA:trace@2,expert:China:trace@2" ;;
+		mirror)
+			# the Expert's strength as it is: every match a real victory, a timeout counts as not won
+			run_suite mirror --map "$MAP_1V1" --timeout 30 --match-timeout 2400 --seeds "$SEEDSM" --determinism 1 \
+				--matchup "expert:America,hard:America" --matchup "expert:China,hard:China" --matchup "expert:GLA,hard:GLA" \
+				--target "expert:America>hard:America=0.8" --target "expert:China>hard:China=0.8" --target "expert:GLA>hard:GLA=0.8" ;;
+		tune)
+			# the overnight search; it keeps its own folder (test-reports/<date>-tune), which a second run continues
+			echo
+			echo "==> tune"
+			if [ "$NATIVE" != 1 ]; then
+				echo "tune needs the native headless build: cmake --preset native-headless (then run this again)" | tee "$OUT/tune.txt"
+				status=1
+			else
+				node scripts/aibench/tune.mjs --native "$NATIVE_DIR/GeneralsMD/zh_headless" "${DATA[@]}" --map "$MAP_1V1" --workers "$WORKERS" \
+					2>&1 | tee "$OUT/tune.txt" || status=1
+			fi ;;
 		bunker)
 			run_suite bunker --map "$MAP_1V1" --timeout 20 --match-timeout 2000 --seeds 2 --determinism 0 --keep-logs \
 				--matchup "expert:China:trace,hard:America" ;;
@@ -211,11 +237,59 @@ python3 - "$OUT" <<'PY' >> "$OUT/summary.md"
 import glob, json, os, re, sys
 out = sys.argv[1]
 def section(title): print(f"\n## {title}\n")
-for suite in ("boot", "1v1", "team", "allyhelp", "bunker", "assists"):
+for suite in ("boot", "1v1", "team", "allyhelp", "bunker", "assists", "mirror", "tune"):
     d = os.path.join(out, suite)
+    txt = os.path.join(out, suite + ".txt")
+    if suite == "tune":
+        # the tuner writes its own folder; its path is in its output
+        if not os.path.exists(txt): continue
+        section(suite)
+        folder = next((l.split("Tuning into ", 1)[1].split(" (")[0].strip() for l in open(txt, errors="replace") if l.startswith("Tuning into ")), None)
+        summ = os.path.join(folder, "summary.md") if folder else None
+        if summ and os.path.exists(summ):
+            print(f"Folder: {os.path.relpath(folder)} (commit it too)\n")
+            body = open(summ, errors="replace").read().split("\n", 1)[-1]
+            print(re.sub(r"(?m)^(#+) ", lambda m: "#" + m.group(1) + " ", body).strip()[:12000])
+        else:
+            lines = open(txt, errors="replace").read().splitlines()
+            print("(no report yet)\n\n```\n" + "\n".join(lines[-25:]) + "\n```")
+        continue
     if not os.path.isdir(d): continue
     section(suite)
-    txt = os.path.join(out, suite + ".txt")
+    if suite == "mirror":
+        # Expert's wins over the three mirrors and per side; the pass line of the suite
+        import math
+        def wilson(w, n, z=1.96):
+            if n == 0: return (0.0, 0.0, 1.0)
+            p = w / n; den = 1 + z * z / n; c = (p + z * z / (2 * n)) / den
+            h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
+            return (p, max(0.0, c - h), min(1.0, c + h))
+        tally = {}
+        for f in sorted(glob.glob(os.path.join(d, "matches", "*.json"))):
+            if f.endswith("-replay.json"): continue
+            j = json.load(open(f))
+            players = (j.get("job") or {}).get("players") or []
+            if len(players) != 2: continue
+            ei = 0 if players[0].get("difficulty") == "expert" else 1
+            side = players[ei].get("side")
+            t = tally.setdefault(side, [0, 0, 0, 0])   # wins, played, timeouts, errors
+            r = ((j.get("result") or {}).get("result") or {})
+            if not j.get("ok"): t[3] += 1; continue
+            t[1] += 1
+            if r.get("outcome") == "victory" and ei in r.get("winners", []): t[0] += 1
+            elif r.get("outcome") == "timeout": t[2] += 1
+        allw = sum(t[0] for t in tally.values()); alln = sum(t[1] for t in tally.values())
+        ok = alln > 0 and allw / alln >= 0.8 and all(t[1] and t[0] / t[1] >= 0.8 for t in tally.values())
+        fmt = lambda w, n: "%d/%d (%.0f%%, 95%% CI %.0f-%.0f%%)" % ((w, n) + tuple(100 * x for x in wilson(w, n)))
+        print(f"mirror: {'PASS' if ok else 'FAIL'} (the Expert must win at least 80% overall and against each faction)\n")
+        print("| Expert against Hard | Expert wins | timeouts (not won) | errors |\n|---|---|---|---|")
+        for side, t in sorted(tally.items()): print(f"| {side} | {fmt(t[0], t[1])} | {t[2]} | {t[3]} |")
+        print(f"| all | {fmt(allw, alln)} | {sum(t[2] for t in tally.values())} | {sum(t[3] for t in tally.values())} |\n")
+        rep = os.path.join(d, "report.md")
+        if os.path.exists(rep):
+            body = open(rep, errors="replace").read().split("\n", 1)[-1]
+            print(re.sub(r"(?m)^(#+) ", lambda m: "#" + m.group(1) + " ", body).strip()[:8000])
+        continue
     if suite == "assists":
         # scripted scenarios: the bench's own report (pass/fail per scenario, the first failing check); the steps, the checks
         # and the decisions of the assists are in assists/<scenario>.trace.txt

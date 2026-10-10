@@ -186,11 +186,11 @@ std::string absoluteDirectory( const char *path )
 	return std::filesystem::weakly_canonical( p, ec ).string();
 }
 
-// Engine arguments that name an output file (stats=...) are made absolute: the game runs in the
+// Engine arguments that name a file of the host (stats=..., aiini=...) are made absolute: the game runs in the
 // Zero Hour folder, not in the folder the program was started from.
 std::string absoluteOutputArgument( const char *arg, const std::filesystem::path &startDirectory )
 {
-	static const char *const s_fileOptions[] = { "stats=" };
+	static const char *const s_fileOptions[] = { "stats=", "aiini=" };
 	for( const char *option : s_fileOptions )
 	{
 		const size_t length = strlen( option );

@@ -461,3 +461,12 @@ often the human's base is attacked while the Expert's own base is quiet); help f
 in the bench games); the stale end of an ally alarm (never reached on the bench); several allies attacked at once; a saved and loaded game with help
 out (the state is in `xfer` version 14, but no save was made during help); aircraft as threats (counted like ground units, but teams that cannot hit
 them are sent anyway).
+
+## Tuning the Expert against Hard (the 80% target)
+
+Aim: the Expert wins at least 80% of 1v1 mirror matches against the original Hard AI (America, China and GLA, `tournamenta`).
+`-aiMatch aiini=<file>` loads `ExpertSkill` settings over the game's without a rebuild, and `scripts/aibench/tune.mjs` searches them
+overnight on the real data (coordinate search: screening seeds, confirmation seeds, then fresh seeds for the final check; resumable),
+writing `test-reports/<date>-tune/` with `summary.md` and `best.ini` (see "Tuning the Expert" in `scripts/aibench/README.md`).
+The current strength is checked with `scripts/gameplay/realdata_tests.sh mirror` (20 seeds per faction; a pass is 80% overall and
+per faction). No real-data result yet; the best settings become the code defaults in `AI.cpp` once a tuning report shows them.
