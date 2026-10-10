@@ -858,6 +858,8 @@ if (starter) {
 		await page.waitForFunction(() => /Armies: 3 loaded/.test(document.getElementById('army-btn').textContent), null, { timeout: 15000 }).catch(() => {});
 		check('armies: the toolbar says 3 armies loaded', /Armies: 3 loaded/.test(await page.textContent('#army-btn')), await page.textContent('#army-btn'));
 		await page.click('#army-btn');
+		// "3 loaded" comes from the engine's log lines at once; the factions come with /userdata/ArmyReport.json a little later
+		await page.waitForFunction(() => window.__zh.armyRun().seen === true, null, { timeout: 30000 }).catch(() => {});
 		const panel = await page.textContent('#army-panel');
 		check('armies: the panel lists each army as loaded with its factions', /Ironwood Army\s*loaded/.test(panel) && /Works Anywhere\s*loaded/.test(panel) && /Faction of ironwood/.test(panel), panel.replace(/\s+/g, ' ').slice(0, 300));
 		await page.screenshot({ path: path.join(out, '14-armies-running.png') });
