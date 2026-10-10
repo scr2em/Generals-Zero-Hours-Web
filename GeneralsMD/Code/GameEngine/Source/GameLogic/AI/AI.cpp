@@ -360,6 +360,9 @@ static const FieldParse s_skillFieldParse[] =
 		{ "SurplusSiegeUnits",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_surplusSiegeUnits ) },
 		{ "WaveSiegeUnits",			INI::parseInt,		nullptr, offsetof( AISkillSettings, m_waveSiegeUnits ) },
 		{ "WaveSiegeWaitSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveSiegeWaitSeconds ) },
+		{ "FollowUpShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_followUpShare ) },
+		{ "FollowUpMinWave",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_followUpMinWave ) },
+		{ "AdaptivePlans",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_adaptivePlans ) },
 		{ nullptr,								nullptr,					nullptr, 0 }
 	};
 
@@ -1244,8 +1247,8 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_counterStrength = 1.0f;
 	ex.m_engageAdvantage = 1.3f;
 	ex.m_retreatAdvantage = 0.65f;
-	ex.m_waveHoldSeconds = 40.0f;
-	ex.m_minWaveValue = 2000.0f;
+	ex.m_waveHoldSeconds = 100000.0f;	// no early launch of an army that has stopped growing: it went out too small (measured with the real data)
+	ex.m_minWaveValue = 12000.0f;	// real units cost 300-2000: 2000 was a handful of units (tuned on the starter content)
 	ex.m_waveSizeScale = 1.0f;
 	ex.m_useRetreat = true;
 	ex.m_useFocusFire = true;
@@ -1350,6 +1353,9 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_surplusSiegeUnits = 6;
 	ex.m_waveSiegeUnits = 3;
 	ex.m_waveSiegeWaitSeconds = 120.0f;
+	ex.m_followUpShare = 0.3f;
+	ex.m_followUpMinWave = 0.0f;
+	ex.m_adaptivePlans = true;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1495,6 +1501,9 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferInt( &sk.m_surplusSiegeUnits );
 		xfer->xferInt( &sk.m_waveSiegeUnits );
 		xfer->xferReal( &sk.m_waveSiegeWaitSeconds );
+		xfer->xferReal( &sk.m_followUpShare );
+		xfer->xferReal( &sk.m_followUpMinWave );
+		xfer->xferBool( &sk.m_adaptivePlans );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 

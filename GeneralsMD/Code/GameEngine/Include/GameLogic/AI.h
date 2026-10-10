@@ -276,6 +276,11 @@ struct AISkillSettings
 	Int m_surplusSiegeUnits;	///< While the army has fewer units than this that out-range the enemy defences seen (BreachRangeFactor) and can hurt them, such units come first.
 	Int m_waveSiegeUnits;	///< When enemy ground defences are known, a wave waits until this many of our units out-range them (BreachRangeFactor),
 	Real m_waveSiegeWaitSeconds;	///< ... but not longer than this once it is ready otherwise.
+
+	// ---- waves ----
+	Real m_followUpShare;	///< Teams that wait at home follow the wave that is out once they are worth this share of it (of MinWaveValue at least).
+	Real m_followUpMinWave;	///< ... and only while the wave out there still holds this share of what was sent (0 = always): a beaten wave is not fed.
+	Bool m_adaptivePlans;	///< Every wave follows one of a few plans (early small waves, massed waves, siege first); the plan of the next wave is the one that has done best in this match (value destroyed against value lost), now and then another one.
 };
 
 class AISideBuildList : public MemoryPoolObject

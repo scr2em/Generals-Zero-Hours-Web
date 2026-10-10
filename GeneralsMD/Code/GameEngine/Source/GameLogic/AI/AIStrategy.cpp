@@ -40,6 +40,7 @@
 #include "Common/BuildAssistant.h"
 #include "Common/GlobalData.h"
 #include "Common/Player.h"
+#include "Common/ScoreKeeper.h"
 #include "Common/PlayerList.h"
 #include "Common/SpecialPower.h"
 #include "Common/Team.h"
@@ -180,6 +181,10 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_contestOrders(0),
 	m_nextContest(0),
 	m_nextSiegePlan(0),
+	m_plan(0),
+	m_planKills0(0),
+	m_planLost0(0),
+	m_planOut(FALSE),
 	m_siegeWaitSince(0),
 	m_expandCost(0.0f),
 	m_airPhase(0),
@@ -318,6 +323,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	memset(m_surplusThing, 0, sizeof(m_surplusThing));
 	memset(m_surplusOrderFrame, 0, sizeof(m_surplusOrderFrame));
 	memset(m_surplusUnits, 0, sizeof(m_surplusUnits));
+	memset(m_planScore, 0, sizeof(m_planScore));
+	memset(m_planTries, 0, sizeof(m_planTries));
 	memset(m_breachers, 0, sizeof(m_breachers));
 	memset(m_breachTargets, 0, sizeof(m_breachTargets));
 	m_breachStage.zero();
@@ -1100,17 +1107,23 @@ void AIStrategy::reinforceWave()
 {
 	const AISkillSettings &sk = skill();
 	const UnsignedInt now = TheGameLogic->getFrame();
-	Real reserve = 0.0f;
+	Real reserve = 0.0f, out = 0.0f;
 	for (Int i = 0; i < m_numTeams; ++i)
 	{
 		const AITeamRecord &rec = m_teams[i];
 		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
-		if (team == nullptr || rec.m_inWave || rec.m_mode != AITEAM_FREE)
+		if (team == nullptr)
 			continue;
-		reserve += teamValue(team);
+		if (rec.m_inWave)
+			out += teamValue(team);
+		else if (rec.m_mode == AITEAM_FREE)
+			reserve += teamValue(team);
 	}
-	const Real wanted = 0.3f * (m_launchValue > sk.m_minWaveValue ? m_launchValue : sk.m_minWaveValue);
+	const Real wanted = sk.m_followUpShare * (m_launchValue > sk.m_minWaveValue ? m_launchValue : sk.m_minWaveValue);
 	if (reserve < wanted)
+		return;
+	// A wave that has lost most of what was sent is not fed one group at a time: the reserves wait for the next wave.
+	if (out < sk.m_followUpMinWave * m_launchValue)
 		return;
 
 	AI_TRACE("FOLLOW-UP group of %.0f joins the wave at (%.0f,%.0f)", reserve, m_waveObjective.x, m_waveObjective.y);
@@ -1379,10 +1392,10 @@ Real AIStrategy::waveTarget( Real *stallNeed ) const
 		target = full - help > sk.m_allyWaveFloor * full ? full - help : sk.m_allyWaveFloor * full;
 		stall = 0.6f * full - help > sk.m_allyWaveFloor * 0.6f * full ? 0.6f * full - help : sk.m_allyWaveFloor * 0.6f * full;
 	}
-	if (target < sk.m_minWaveValue)
-		target = sk.m_minWaveValue;
-	if (stall < 0.6f * sk.m_minWaveValue)
-		stall = 0.6f * sk.m_minWaveValue;
+	if (target < planMinWave())
+		target = planMinWave();
+	if (stall < 0.6f * planMinWave())
+		stall = 0.6f * planMinWave();
 	if (stall > target)
 		stall = target;
 	if (stallNeed)
@@ -1582,6 +1595,8 @@ void AIStrategy::updateArmy()
 {
 	const UnsignedInt now = TheGameLogic->getFrame();
 	const AISkillSettings &sk = skill();
+	if (m_planOut && m_armyState == ARMY_GATHER)
+		notePlanEnd();	// the wave is over (spent, recalled, or nothing left to attack)
 
 	Real value = 0.0f;
 	Coord3D center;
@@ -1625,24 +1640,24 @@ void AIStrategy::updateArmy()
 		Real stallNeed = 0.0f;
 		const Real target = waveTarget(&stallNeed);
 		// An army that has stopped growing (all teams alive, money spent elsewhere) does not wait for ever.
-		const Bool stalled = now - m_armyGrowthFrame >= secondsToFrames(sk.m_waveHoldSeconds);
+		const Bool stalled = now - m_armyGrowthFrame >= secondsToFrames(planHoldSeconds());
 		// The army must be able to take buildings down, too (or have waited for it long enough).
 		const Bool equipped = m_siegeShortage <= 0.5f || now - m_armyGrowthFrame >= 2 * secondsToFrames(sk.m_waveHoldSeconds);
 		if ((value >= target && equipped) || (stalled && value >= stallNeed && equipped))
 		{
 			// Known defences on the ground: the wave takes its siege units along (they bring the defences down from outside
 			// their reach while the tanks guard them), or it waits for them a while.
-			if (sk.m_waveSiegeUnits > 0 && routeOn())
+			if (planSiegeUnits() > 0 && routeOn())
 			{
 				const AICombatFigures *defence = nullptr;
 				Real siegeRange = 0.0f;
 				const Int have = siegeUnits(&defence, &siegeRange);
-				if (defence != nullptr && have < sk.m_waveSiegeUnits)
+				if (defence != nullptr && have < planSiegeUnits())
 				{
 					if (m_siegeWaitSince == 0)
 					{
 						m_siegeWaitSince = now;
-						AI_TRACE("WAVE waits for its siege units: %d of %d out-range the defences seen (range %.0f)", have, sk.m_waveSiegeUnits, siegeRange);
+						AI_TRACE("WAVE waits for its siege units: %d of %d out-range the defences seen (range %.0f)", have, planSiegeUnits(), siegeRange);
 					}
 					if (now - m_siegeWaitSince < secondsToFrames(sk.m_waveSiegeWaitSeconds))
 						return;
@@ -1661,7 +1676,8 @@ void AIStrategy::updateArmy()
 				return;
 			if (!checkWaveLaunch(&objective))
 				return;
-			AI_TRACE("WAVE launches: value %.0f target %.0f siege shortage %.2f -> (%.0f,%.0f)", value, target, m_siegeShortage, objective.x, objective.y);
+			AI_TRACE("WAVE launches: value %.0f target %.0f siege shortage %.2f -> (%.0f,%.0f), plan %d", value, target, m_siegeShortage, objective.x, objective.y, m_plan);
+			notePlanLaunch();
 			m_armyState = ARMY_ATTACK;
 			m_armyStateFrame = now;
 			m_launchValue = value;
@@ -2153,6 +2169,93 @@ void AIStrategy::updateContest()
 		AI_TRACE("CONTEST: enemy %s at (%.0f,%.0f), %.0f from our supply center: %d team(s) (value %.0f) attack it (enemy army seen there %.0f)",
 			templateOf(target->m_templateID) ? templateOf(target->m_templateID)->getName().str() : "?", where.x, where.y, targetDist, sent, home, theirs);
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+// Adaptive wave plans.  Early: small waves that go as soon as the army stops growing (pressure, the enemy has no time to dig in).
+// Mass: one big army that does not go before it is big.  Siege: mass, and the wave takes units along that out-range the
+// defences.  The score of a wave is the value it destroyed against the value it lost (build costs); each plan
+// keeps the running result of its waves in this match (value destroyed against value lost), and the next wave takes the best one, or tries another now and then.
+//-------------------------------------------------------------------------------------------------
+Real AIStrategy::planMinWave() const
+{
+	if (!skill().m_adaptivePlans)
+		return skill().m_minWaveValue;
+	return m_plan == PLAN_EARLY ? 3000.0f : skill().m_minWaveValue;
+}
+
+Real AIStrategy::planHoldSeconds() const
+{
+	if (!skill().m_adaptivePlans)
+		return skill().m_waveHoldSeconds;
+	return m_plan == PLAN_EARLY ? 40.0f : skill().m_waveHoldSeconds;
+}
+
+Int AIStrategy::planSiegeUnits() const
+{
+	if (!skill().m_adaptivePlans)
+		return skill().m_waveSiegeUnits;
+	return m_plan == PLAN_SIEGE ? (skill().m_waveSiegeUnits > 0 ? skill().m_waveSiegeUnits : 3) : 0;
+}
+
+/// The value (build cost) of what we have destroyed of the other players and of what we have lost so far, from the score keeper.
+/// Integer sums: the maps are keyed by pointer, and an integer sum does not depend on their order.
+void AIStrategy::planValues( Int *destroyed, Int *lost ) const
+{
+	ScoreKeeper *sk = m_player->getScoreKeeper();
+	*destroyed = 0;
+	*lost = 0;
+	for (Int p = 0; p < MAX_PLAYER_COUNT; ++p)
+	{
+		if (p == m_player->getPlayerIndex())
+			continue;
+		const ScoreKeeper::ObjectCountMap &m = sk->getObjectsDestroyed(p);
+		for (ScoreKeeper::ObjectCountMap::const_iterator it = m.begin(); it != m.end(); ++it)
+			*destroyed += it->first->friend_getBuildCost() * it->second;
+	}
+	const ScoreKeeper::ObjectCountMap &l = sk->getObjectsLost();
+	for (ScoreKeeper::ObjectCountMap::const_iterator it = l.begin(); it != l.end(); ++it)
+		*lost += it->first->friend_getBuildCost() * it->second;
+}
+
+void AIStrategy::notePlanLaunch()
+{
+	if (!skill().m_adaptivePlans)
+		return;
+	planValues(&m_planKills0, &m_planLost0);
+	m_planOut = TRUE;
+}
+
+void AIStrategy::notePlanEnd()
+{
+	m_planOut = FALSE;
+	if (!skill().m_adaptivePlans)
+		return;
+	Int destroyedNow = 0, lostNow = 0;
+	planValues(&destroyedNow, &lostNow);
+	const Int kills = destroyedNow - m_planKills0;
+	const Int lost = lostNow - m_planLost0;
+	const Real result = (Real)(kills + 100) / (Real)(lost + 100);
+	m_planScore[m_plan] = m_planTries[m_plan] == 0 ? result : 0.5f * m_planScore[m_plan] + 0.5f * result;
+	++m_planTries[m_plan];
+
+	// The next plan: every plan once, then the best one, and with a small chance another one (the enemy changes too).
+	Int next = -1;
+	for (Int p = 0; p < NUM_PLANS && next < 0; ++p)
+		if (m_planTries[p] == 0)
+			next = p;
+	if (next < 0)
+	{
+		next = 0;
+		for (Int p = 1; p < NUM_PLANS; ++p)
+			if (m_planScore[p] > m_planScore[next])
+				next = p;
+		if (GameLogicRandomValue(0, 99) < 15)
+			next = (next + 1 + GameLogicRandomValue(0, NUM_PLANS - 2)) % NUM_PLANS;
+	}
+	AI_TRACE("PLAN %d wave over: %d destroyed against %d lost (result %.2f, plan score %.2f after %d waves); next wave: plan %d (scores %.2f %.2f %.2f)",
+		m_plan, kills, lost, result, m_planScore[m_plan], m_planTries[m_plan], next, m_planScore[0], m_planScore[1], m_planScore[2]);
+	m_plan = next;
 }
 
 /// The enemy ground defence with the longest reach that has been seen (*defence, nullptr when none), the range that out-ranges it
@@ -2883,6 +2986,12 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferReal(&m_expandCost);
 		xfer->xferUnsignedInt(&m_bdSeenFrame);
 		xfer->xferUnsignedInt(&m_nextSiegePlan);
+		xfer->xferInt(&m_plan);
+		xfer->xferUser(m_planScore, sizeof(m_planScore));
+		xfer->xferUser(m_planTries, sizeof(m_planTries));
+		xfer->xferInt(&m_planKills0);
+		xfer->xferInt(&m_planLost0);
+		xfer->xferBool(&m_planOut);
 		xfer->xferUnsignedInt(&m_siegeWaitSince);
 		xfer->xferUnsignedInt(&m_breachInRange);
 	}

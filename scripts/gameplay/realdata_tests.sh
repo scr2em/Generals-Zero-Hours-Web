@@ -61,6 +61,8 @@
 #   * siege: against known ground defences "WAVE waits for its siege units", "SIEGE: the wave meets the defences at
 #     (x,y)", "BREACH: the first breacher is within range after S s", and in most games at least one "BREACH over: the
 #     defences are down".
+#   * wave plans: after every wave "PLAN p wave over: D destroyed against L lost (result R, ...); next wave: plan q";
+#     the first wave goes by about minute 11.
 #
 # Options:
 #   --quick           fewer games (about a third of the time)
