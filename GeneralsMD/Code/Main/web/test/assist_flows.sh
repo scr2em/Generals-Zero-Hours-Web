@@ -162,10 +162,10 @@ run stance-spread "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~3~x~IronwoodRif
 	W:ASSISTTEST~created~1~x~IronwoodMortar~for~player~1 W:ASSIST~stance~spread:~(idle~)?unit~[0-9]+~(moves~apart|steps~aside) s:spread_step \
 	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$SPREAD_UNITS" --arg -assistDebug --options AssistStances=1
 
-SPLIT_UNITS="0:IronwoodRifleman:8:0:-150:-130+1:IronwoodRifleman:2:0:-80:-230:900"
+SPLIT_UNITS="0:IronwoodRifleman:8:0:-150:-130+1:IronwoodRifleman:2:0:-80:-170:900"
 run stance-split "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~8~x~IronwoodRifleman~for~player~0 $STANCE_ASSIST_ON k:Home w:4 r:60,340,560,410 w:3 \
 	kd:Alt w:1 k:KeyX w:1 ku:Alt w:2 W:ASSIST~stance~set~mask=8~value=8~percent=0~for~8~units s:split_set \
-	W:ASSISTTEST~created~2~x~IronwoodRifleman~for~player~1 W:ASSIST~stance~split:~unit~[0-9]+~leaves~[0-9]+ s:split_switch \
+	Wt:300:ASSISTTEST~created~2~x~IronwoodRifleman~for~player~1 Wt:600:ASSIST~stance~split:~unit~[0-9]+~leaves~[0-9]+ s:split_switch \
 	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$SPLIT_UNITS" --arg -assistDebug --options AssistStances=1
 
 # all four at once, recorded and played back: same positions and no CRC mismatch
