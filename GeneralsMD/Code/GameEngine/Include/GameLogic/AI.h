@@ -281,6 +281,10 @@ struct AISkillSettings
 	Real m_followUpShare;	///< Teams that wait at home follow the wave that is out once they are worth this share of it (of MinWaveValue at least).
 	Real m_followUpMinWave;	///< ... and only while the wave out there still holds this share of what was sent (0 = always): a beaten wave is not fed.
 	Bool m_adaptivePlans;	///< Every wave follows one of a few plans (early small waves, massed waves, siege first); the plan of the next wave is the one that has done best in this match (value destroyed against value lost), now and then another one.
+
+	// ---- assault ----
+	Real m_assaultAdvantage;	///< The army commits to the attack (no retreat, reinforcements at once, alarms only for a real threat) when it is this many times the enemy forces seen; 0 = never,
+	Real m_assaultMinutes;	///< ... and not before this minute of the match.
 };
 
 class AISideBuildList : public MemoryPoolObject

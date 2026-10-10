@@ -492,6 +492,7 @@ private:
 	void updateContest();
 	void planSiege( const Coord3D &center );
 	Int siegeUnits( const AICombatFigures **defence, Real *siegeRange ) const;
+	void updateAssault();
 	// adaptive wave plans (AIStrategy.cpp)
 	enum { PLAN_EARLY = 0, PLAN_MASS, PLAN_SIEGE, NUM_PLANS };
 	Real planMinWave() const;
@@ -500,6 +501,7 @@ private:
 	void notePlanLaunch();
 	void notePlanEnd();
 	void planValues( Int *destroyed, Int *lost ) const;
+	Bool assaultOn() const { return m_assault; }
 
 	// airborne insertion (AIAirborne.cpp)
 	enum { MAX_SQUAD = 8 };
@@ -723,6 +725,8 @@ private:
 	Int						m_planTries[NUM_PLANS];
 	Int						m_planKills0, m_planLost0;			///< value destroyed and lost when the wave went out
 	Bool					m_planOut;											///< a wave of m_plan is out
+	Bool					m_assault;											///< the army is far stronger than the enemy seen: it commits to the attack
+	Int						m_assaultStarts;
 	UnsignedInt		m_siegeWaitSince;								///< the army was ready but for its siege units since this frame (0 = not waiting)
 	Real					m_expandCost;										///< money an expansion waits for (kept back from the surplus production)
 	Int						m_airPhase;											///< airborne insertion: 0 = no mission

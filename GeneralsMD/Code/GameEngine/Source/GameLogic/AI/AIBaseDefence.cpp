@@ -84,6 +84,8 @@ Bool AIStrategy::baseAlarmBlocksWaves( UnsignedInt now ) const
 	if (baseAlarmStale(now) || baseThreatUnseen(now))
 		return FALSE;
 	const Bool hit = m_bdDamageFrame != 0 && now - m_bdDamageFrame <= 8 * LOGICFRAMES_PER_SECOND;
+	if (m_assault)
+		return m_bdValue >= 0.3f * m_armyValue;	// committed: only a real threat to the base holds the army back
 	return hit || m_bdValue * 3.0f >= m_armyValue;
 }
 

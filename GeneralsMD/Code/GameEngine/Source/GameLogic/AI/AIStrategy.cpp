@@ -185,6 +185,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_planKills0(0),
 	m_planLost0(0),
 	m_planOut(FALSE),
+	m_assault(FALSE),
+	m_assaultStarts(0),
 	m_siegeWaitSince(0),
 	m_expandCost(0.0f),
 	m_airPhase(0),
@@ -1120,10 +1122,10 @@ void AIStrategy::reinforceWave()
 			reserve += teamValue(team);
 	}
 	const Real wanted = sk.m_followUpShare * (m_launchValue > sk.m_minWaveValue ? m_launchValue : sk.m_minWaveValue);
-	if (reserve < wanted)
-		return;
+	if (reserve <= 0.0f || (!m_assault && reserve < wanted))
+		return;	// in the assault every team that is ready follows at once
 	// A wave that has lost most of what was sent is not fed one group at a time: the reserves wait for the next wave.
-	if (out < sk.m_followUpMinWave * m_launchValue)
+	if (!m_assault && out < sk.m_followUpMinWave * m_launchValue)
 		return;
 
 	AI_TRACE("FOLLOW-UP group of %.0f joins the wave at (%.0f,%.0f)", reserve, m_waveObjective.x, m_waveObjective.y);
@@ -1425,6 +1427,7 @@ void AIStrategy::updateTeams()
 		}
 	}
 
+	updateAssault();
 	if (!m_ai->isFeatureOff(AIPlayer::AIF_WAVE))
 		updateArmy();
 	updateScout();
@@ -1638,7 +1641,9 @@ void AIStrategy::updateArmy()
 		if (m_ahNumTeams > 0)
 			return;		// help is out at an ally's base: the army is split
 		Real stallNeed = 0.0f;
-		const Real target = waveTarget(&stallNeed);
+		Real target = waveTarget(&stallNeed);
+		if (m_assault)
+			target *= 0.5f;	// committed: every team goes, the army does not wait to grow again
 		// An army that has stopped growing (all teams alive, money spent elsewhere) does not wait for ever.
 		const Bool stalled = now - m_armyGrowthFrame >= secondsToFrames(planHoldSeconds());
 		// The army must be able to take buildings down, too (or have waited for it long enough).
@@ -1718,7 +1723,7 @@ void AIStrategy::updateArmy()
 			reinforceWave();
 		if (m_armyState != ARMY_ATTACK)
 			return;
-		if (value < 0.25f * m_launchValue || (m_numTeams == 0))
+		if (value < (m_assault ? 0.1f : 0.25f) * m_launchValue || (m_numTeams == 0))
 		{
 			AI_TRACE("wave spent: value %.0f of %.0f", value, m_launchValue);
 			m_armyState = ARMY_GATHER;
@@ -1848,7 +1853,7 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 	// the rally point the army stands its ground: there is nowhere better to be.)
 	if (rec->m_mode != AITEAM_RETREATING && rec->m_mode != AITEAM_REGROUPING)
 	{
-		if (sk.m_useRetreat && !m_ai->isFeatureOff(AIPlayer::AIF_RETREAT) && contact && rallyDist > 400.0f && advantage < sk.m_retreatAdvantage && theirPower >= 150.0f)
+		if (sk.m_useRetreat && !m_assault && !m_ai->isFeatureOff(AIPlayer::AIF_RETREAT) && contact && rallyDist > 400.0f && advantage < sk.m_retreatAdvantage && theirPower >= 150.0f)
 		{
 			if (rec->m_badSince == 0)
 				rec->m_badSince = now;
@@ -2258,6 +2263,28 @@ void AIStrategy::notePlanEnd()
 	m_plan = next;
 }
 
+/// The army is far stronger than the enemy forces seen (army and defences): it commits to the attack until it is not any more.
+void AIStrategy::updateAssault()
+{
+	const AISkillSettings &sk = skill();
+	const UnsignedInt now = TheGameLogic->getFrame();
+	if (sk.m_assaultAdvantage <= 0.0f || now < (UnsignedInt)(sk.m_assaultMinutes * 60.0f * LOGICFRAMES_PER_SECOND))
+	{
+		m_assault = FALSE;
+		return;
+	}
+	const Real enemy = m_enemy.armyValue() + m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE) + 1.0f;
+	// A margin between going in and stopping, so that it does not flicker.
+	const Bool on = m_assault ? m_armyValue >= 0.7f * sk.m_assaultAdvantage * enemy : m_armyValue >= sk.m_assaultAdvantage * enemy;
+	if (on != m_assault)
+	{
+		m_assault = on;
+		if (on)
+			++m_assaultStarts;
+		AI_TRACE("ASSAULT %s: army %.0f against %.0f of the enemy seen", on ? "begins" : "ends", m_armyValue, enemy);
+	}
+}
+
 /// The enemy ground defence with the longest reach that has been seen (*defence, nullptr when none), the range that out-ranges it
 /// (*siegeRange), and how many units of our teams have that range and can hurt it.
 Int AIStrategy::siegeUnits( const AICombatFigures **defence, Real *siegeRange ) const
@@ -2412,10 +2439,10 @@ void AIStrategy::sendReinforcementsToThreat()
 		}
 	}
 
-	if (threat < 400.0f)
+	if (threat < 400.0f || (m_assault && threat < 0.3f * m_armyValue))
 	{
 		m_threatSince = 0;
-		return;
+		return;		// (in the assault the army stays committed unless the threat is real)
 	}
 	if (m_threatSince == 0)
 		m_threatSince = now;
@@ -2986,6 +3013,7 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferReal(&m_expandCost);
 		xfer->xferUnsignedInt(&m_bdSeenFrame);
 		xfer->xferUnsignedInt(&m_nextSiegePlan);
+		xfer->xferBool(&m_assault);
 		xfer->xferInt(&m_plan);
 		xfer->xferUser(m_planScore, sizeof(m_planScore));
 		xfer->xferUser(m_planTries, sizeof(m_planTries));

@@ -63,6 +63,8 @@
 #     defences are down".
 #   * wave plans: after every wave "PLAN p wave over: D destroyed against L lost (result R, ...); next wave: plan q";
 #     the first wave goes by about minute 11.
+#   * assault: "ASSAULT begins: army A against E of the enemy seen" when the army is far stronger than the enemy seen,
+#     and "ASSAULT ends" when it is not any more.
 #
 # Options:
 #   --quick           fewer games (about a third of the time)

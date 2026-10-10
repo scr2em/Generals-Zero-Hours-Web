@@ -363,6 +363,8 @@ static const FieldParse s_skillFieldParse[] =
 		{ "FollowUpShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_followUpShare ) },
 		{ "FollowUpMinWave",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_followUpMinWave ) },
 		{ "AdaptivePlans",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_adaptivePlans ) },
+		{ "AssaultAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_assaultAdvantage ) },
+		{ "AssaultMinutes",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_assaultMinutes ) },
 		{ nullptr,								nullptr,					nullptr, 0 }
 	};
 
@@ -1356,6 +1358,8 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_followUpShare = 0.3f;
 	ex.m_followUpMinWave = 0.0f;
 	ex.m_adaptivePlans = true;
+	ex.m_assaultAdvantage = 1.8f;
+	ex.m_assaultMinutes = 10.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1504,6 +1508,8 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_followUpShare );
 		xfer->xferReal( &sk.m_followUpMinWave );
 		xfer->xferBool( &sk.m_adaptivePlans );
+		xfer->xferReal( &sk.m_assaultAdvantage );
+		xfer->xferReal( &sk.m_assaultMinutes );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 
