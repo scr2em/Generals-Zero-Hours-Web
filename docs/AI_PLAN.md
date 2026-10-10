@@ -366,3 +366,98 @@ and the same on `tournamenta` (4 starts: `--starts 1,2,3,4`). In the logs of eve
 frames); `waves: army A of N needed` shows `allies` above 0 once the allies have an army and N below the value without the allies;
 `BASEDEF clear after` seconds summed stay below a quarter of the game and an alarm of more than 90 s ends with `(stale:`; `GEO: ... way(s) in` for a large base does not say
 `terrain closes the perimeter` on open ground. The old behaviour for comparison: `expert:China:trace+off-team+bdcap@0`.
+
+## Allied base support (a user report: Expert allies did not come to help)
+
+The report (retail data, Hostile Dawn, 50,000 cash, the human (China) and two Expert allies against two Experts): when the human's base was
+attacked, the Expert allies did not come. They had no reason to: the base defence (`basedef`) only looks at the player's own base zone, and the
+damage reports of the body module only went to the owner of the object.
+
+**What the Expert does now** (`AIAllyHelp.cpp`, word `allyhelp`, `ExpertSkill` settings `AllyHelp*`, `AIStrategy::xfer` version 14):
+
+* The **base zone of an ally** (any player of our team, human or computer, by player index) is the bounds of its structures within 1200 of its start
+  position plus `AllyHelpMargin` (150), refreshed every 10 s (radius at least 150, at most 1000).
+* A **threat** there is the armed enemy units seen in the zone in the last 3 s (the enemy model, so with the shared vision of a team game what the
+  ally sees counts too) worth at least `AllyHelpMinValue` (300), or a hit on an object of the ally inside the zone: `AIProtectNotifyDamage` (the
+  damage hook of `ActiveBody`) now also reports a hit to every Expert ally of the owner (players in list order), the game's "our ally is under
+  attack". `AIStrategy::onObjectDamaged` tells our own objects from an ally's. When several allies are attacked, the largest threat, the nearer the
+  better, is chosen, and that ally stays chosen until its base is clear. The help is sized against the largest force seen there in the last 20 s
+  (what is in sight changes from second to second).
+* **How much**: `AllyHelpForce` (1.5) times the threat, less the armed units of the ally and of the other allies in the zone, the allied defences
+  that cover the place, and our own units there or on their way. Nothing is sent when that is covered (`ALLYHELP: player P holds its base ...`).
+* **From where**: the teams at home (within the base radius plus 850, as for the base defence) and the teams of a wave that are within
+  `AllyHelpWaveReach` (900) of the threat, none farther than `AllyHelpMaxDistance` (2500); the smallest single team that is enough and not much
+  farther than the nearest, else the nearest teams until the need is covered. A team from a wave leaves the wave.
+* **Our own base first**: no help while the base defence has an alarm, and help that is out comes back at once (also when the old recall of a wave,
+  `sendReinforcementsToThreat`, fires); at home stays at least `AllyHelpHomeGuard` (1.0) times the enemy value seen near our base in the last 20 s,
+  and then at least one team. Help that, with the defenders, would be below `AllyHelpMinAdvantage` (0.6) of the threat is not sent, and teams that
+  are there when the fight has become that bad withdraw. While help is out no wave is launched (the army is split).
+* **Back**: when the ally's base has been clear for `AllyHelpClearSeconds` (10), or when the alarm has lasted `AllyHelpMaxSeconds` (90) and nothing of
+  the ally was hit for 15 s (stale: the same force is ignored for 90 s unless it hits something), the teams go back to their role (the rally point, or
+  the next wave). With the word off (`off-allyhelp`) the alarms are still traced, with `response OFF`.
+
+Trace lines (new, parsed by the real-data report): `ALLYHELP alarm N: player P base at (x,y) radius R attacked by V at (x,y) ...; response on|OFF`,
+`ALLYHELP: N team(s) to player P base at (x,y) against V (own home H): value S from (x,y), a from home and b from the wave, D away; need ...`,
+`ALLYHELP: N team(s) withdraw ...`, `ALLYHELP clear after N s: K team(s) go back to their role (player P, helped H s; reason)`, and the status
+line `ally help: A alarm(s) ..., T team(s), S s helping`. The texts `WAVE launches`, `BASEDEF alarm`, `BASEDEF clear after N` and `BUNKER: ... goes into`
+are unchanged.
+
+New on the bench: the player kind `idle` (`idle:China@1`): a computer player whose AI is removed when the match starts, a stand-in for a human who
+builds and orders nothing; the statistics give each player's index (the `p<N>` of the trace).
+
+**Development checks** (starter pack, native build; they show that the mechanism works, not that it plays better: CLAUDE.md). Map Ironwood Teams,
+`--overlay teams,sprawl[,openmap] --no-rotate --starts 1,3,4,6 --engine-arg cash=50000`, 10 seeds each:
+
+Before (`off-allyhelp`), the stand-in's base is attacked and the Expert next door does nothing:
+
+```
+AISTRAT[p3 f4230] ALLYHELP alarm 1: player 2 base at (300,520) radius 150 attacked by 400 at (589,439), 1220 from our base; response OFF
+AISTRAT[p3 f6000] ALLYHELP clear after 59 s: 0 team(s) go back to their role (player 2, helped 0 s; our own base is under attack)
+```
+
+After (same seed):
+
+```
+AISTRAT[p3 f4230] ALLYHELP alarm 1: player 2 base at (300,520) radius 150 attacked by 400 at (589,439), 1220 from our base; response on
+AISTRAT[p3 f4230] ALLYHELP: 1 team(s) to player 2 base at (589,439) against 400 (own home 5800): value 600 from (450,1808), 1 from home and 0 from the wave, 1376 away; need 600 (the ally's defenders 0, ours there 0); 5200 stays home (enemies seen near our base 400)
+AISTRAT[p3 f4380] ALLYHELP: 1 team(s) to player 2 base at (421,431) against 800 (own home 5200): value 1050 from (874,1755), 1 from home and 0 from the wave, 1400 away; need 600 (the ally's defenders 0, ours there 600); 4150 stays home (enemies seen near our base 0)
+AISTRAT[p3 f5910] ALLYHELP clear after 56 s: 2 team(s) go back to their role (player 2, helped 56 s; the base is clear)
+```
+
+| setup (team 1 against team 2) | help | ally alarms | teams sent | seconds helping | stand-in fell (mean frame) | team wins |
+|---|---|---|---|---|---|---|
+| idle + Expert against 2 Experts, `openmap` | on | 31 | 20 | 533 | 11,250 (10 of 10) | team 2: 10 |
+| | off | 32 | 0 | 0 | 11,514 (10 of 10) | team 2: 10 |
+| Easy + Expert against Expert + Easy, `openmap` (team 2's Easy is the one attacked) | on | 31 | 47 | 363 | 12,194 (10 of 10) | team 1: 10 |
+| | off | 24 | 0 | 0 | 10,153 (10 of 10) | team 1: 10 |
+| 2 Experts with help against 2 without, both slot orders, no `openmap`, 25 min | on / off | 157 | 30 | 550 | - | with help 2, without 0, 18 timeouts |
+
+Every help ended with `ALLYHELP clear after` (help with teams out lasted 10-65 s, median about 50 s; the base was clear, or the helper's own base was
+attacked); 13 of 76 sends were withdrawn when a larger force arrived. The first version sent more teams every 5 s because it did not count the teams on
+their way, sent the nearest (the largest) team against a small raid, and kept a half-dead team at the ally's base for 300 s, which held the waves back:
+fixed by counting the teams on the way, preferring the smallest team that is enough, sizing against the largest force of the last 20 s, and withdrawing
+from a lost fight. In the idle setup the stand-in (a headquarters and two workers) falls anyway against two Experts; with an Easy stand-in that builds
+an army it holds out about 2,000 frames longer. On the starter pack the bases of a team stand 1200 apart (start 2 is left out: at 600 the zones overlap
+and the own base defence answers).
+
+1v1 unchanged (plain Expert against Hard, Ironwood Crossing, seeds 1-40, native build): before and after the change Expert 21/40 (53%, CI 37-67%), Hard
+12, 7 timeouts, and every match has the same statistics and timelines frame for frame (outcome, frames, units built and lost, money, army value
+samples); only the CRC differs, because the CRC covers the `ExpertSkill` settings, which have ten new fields. Determinism 4 of 4 (native). Web build,
+same 40 seeds: Expert 24/40 (60%, CI 45-74%), Hard 1, 15 timeouts, determinism 4 of 4 (the last web measurement above, on an older commit: 24/40, Hard
+0, 16 timeouts; one match came out differently, the native comparison shows that the AI's decisions in a 1v1 did not change). A team game with help
+(Easy + Expert against Expert + Easy, 3 seeds) replayed identically on both builds (native 3 of 3, web 3 of 3). The native numbers differ from the
+web numbers: the two builds differ in floating point details (see `scripts/aibench/README.md`).
+
+**Real-data check** (`scripts/gameplay/realdata_tests.sh allyhelp`, the user's game): Hostile Dawn, starts 1,2,3 against 4,6, 50,000 cash, 27 minutes:
+`idle:China@1,expert:China:trace@1,expert:America:trace@1,expert:GLA:trace@2,expert:China:trace@2`, the same with `off-allyhelp` for the two allies,
+and with `easy:China@1` in place of the idle human. The summary has a column per match: per Expert, alarms about an allied base, teams sent, seconds
+helping, and when each player fell. A pass: when the stand-in's base is attacked, an Expert ally prints `ALLYHELP alarm ... response on` and, unless its
+own base has an alarm or the defenders are enough, `ALLYHELP: N team(s) to player P ...` within a few seconds; every help ends with
+`ALLYHELP clear after`; seconds helping stay below about a quarter of the game; the Experts still launch waves (first by minute 11); the stand-in holds
+out longer than in the `off-allyhelp` match of the same seed.
+
+Not tested: everything with the real data (the size of the threats, real base layouts and expansions far from the start, defences of the human, how
+often the human's base is attacked while the Expert's own base is quiet); help from a wave that is near the ally (no wave was near an attacked ally
+in the bench games); the stale end of an ally alarm (never reached on the bench); several allies attacked at once; a saved and loaded game with help
+out (the state is in `xfer` version 14, but no save was made during help); aircraft as threats (counted like ground units, but teams that cannot hit
+them are sent anyway).
