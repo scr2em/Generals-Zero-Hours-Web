@@ -52,6 +52,8 @@
 #     lines ("  team T mode M ... target ... units N idle I") stands idle for minutes with a target it never reaches.
 #   * reinforcements: "team T: the force that went out is gone, N reinforcement(s) are the team now" can appear; such a
 #     team joins the next wave or follow-up group (it does not stay in the base until the end).
+#   * enemy supply near ours: "CONTEST: enemy <supply center> at (x,y), D from our supply center: N team(s) ... attack it"
+#     when the enemy builds a supply center next to one of the Expert's.
 #
 # Options:
 #   --quick           fewer games (about a third of the time)

@@ -488,6 +488,7 @@ private:
 
 	// razing (AIStrategy.cpp)
 	Bool razeStructures( Team *team, const Coord3D &center );
+	void updateContest();
 
 	// airborne insertion (AIAirborne.cpp)
 	enum { MAX_SQUAD = 8 };
@@ -700,6 +701,8 @@ private:
 	Int						m_surplusAdopted;
 	Int						m_razeOrders;										///< statistics for the trace
 	Int						m_huntOrders;
+	Int						m_contestOrders;
+	UnsignedInt		m_nextContest;
 	Int						m_airPhase;											///< airborne insertion: 0 = no mission
 	ObjectID			m_airTransport;
 	ObjectID			m_squad[MAX_SQUAD];

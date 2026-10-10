@@ -176,6 +176,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_surplusAdopted(0),
 	m_razeOrders(0),
 	m_huntOrders(0),
+	m_contestOrders(0),
+	m_nextContest(0),
 	m_airPhase(0),
 	m_airTransport(INVALID_ID),
 	m_numSquad(0),
@@ -483,7 +485,7 @@ void AIStrategy::update()
 				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
 				AI_TRACE("garrisons: %d infantry entered (%d unit-seconds inside, %d of them firing), %d structures of the enemy attacked (%d brought down), %d holding now", m_garrisonEntered, m_garrisonSeconds, m_garrisonFiring, m_garrisonClearJobs, m_garrisonClears, m_numGarrisoned);
 				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
-				AI_TRACE("razing: %d attack orders on structures, %d hunt orders", m_razeOrders, m_huntOrders);
+				AI_TRACE("razing: %d attack orders on structures, %d hunt orders, %d team orders against enemy supply near ours", m_razeOrders, m_huntOrders, m_contestOrders);
 				for (Int ti = 0; ti < m_numTeams; ++ti)
 				{
 					Team *tm = TheTeamFactory->findTeamByID(m_teams[ti].m_team);
@@ -520,6 +522,7 @@ void AIStrategy::update()
 	updateAirborne();
 	updateBunkers();
 	updateSurplus();
+	updateContest();
 
 	if (now >= m_nextTeamEval)
 	{
@@ -2036,6 +2039,97 @@ Bool AIStrategy::razeStructures( Team *team, const Coord3D &center )
 	return TRUE;
 }
 
+/// The enemy builds a supply center (or another economy structure) near one of ours, to share the supply field: the teams at home
+/// (not on a wave) attack it at once, when they are stronger than the enemy army seen around it.
+void AIStrategy::updateContest()
+{
+	const AISkillSettings &sk = skill();
+	const UnsignedInt now = TheGameLogic->getFrame();
+	if (!sk.m_useContest || now < m_nextContest)
+		return;
+	m_nextContest = now + 3 * LOGICFRAMES_PER_SECOND;
+
+	enum { MAX_OURS = 8 };
+	Coord3D ours[MAX_OURS];
+	Int numOurs = 0;
+	for (BuildListInfo *info = m_player->getBuildList(); info && numOurs < MAX_OURS; info = info->getNext())
+	{
+		if (!info->isSupplyBuilding())
+			continue;
+		Object *obj = TheGameLogic->findObjectByID(info->getObjectID());
+		if (obj && !obj->isEffectivelyDead())
+			ours[numOurs++] = *obj->getPosition();
+	}
+	if (numOurs == 0)
+		return;
+
+	const AIContact *target = nullptr;
+	Real targetDist = 0.0f;
+	for (Int i = 0; i < m_enemy.numContacts(); ++i)
+	{
+		const AIContact &c = m_enemy.contacts()[i];
+		if (c.m_role != AIROLE_ECONOMY)
+			continue;
+		Object *obj = TheGameLogic->findObjectByID(c.m_id);
+		if (obj == nullptr || obj->isEffectivelyDead() || !obj->isKindOf(KINDOF_STRUCTURE))
+			continue;
+		for (Int k = 0; k < numOurs; ++k)
+		{
+			const Real d = dist2D(c.m_pos, ours[k]);
+			if (d <= sk.m_contestRadius && (target == nullptr || d < targetDist))
+			{
+				target = &c;
+				targetDist = d;
+			}
+		}
+	}
+	if (target == nullptr)
+		return;
+
+	// The enemy army seen around it, against the teams at home.
+	Real theirs = 0.0f;
+	for (Int i = 0; i < m_enemy.numContacts(); ++i)
+	{
+		const AIContact &c = m_enemy.contacts()[i];
+		const AICombatFigures *f = AICombatModel::figures(templateOf(c.m_templateID));
+		if (f && f->m_armed && dist2D(c.m_pos, target->m_pos) < 450.0f)
+			theirs += f->m_cost;
+	}
+	Real home = 0.0f;
+	for (Int i = 0; i < m_numTeams; ++i)
+	{
+		const AITeamRecord &rec = m_teams[i];
+		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
+		if (team && rec.m_mode == AITEAM_FREE && (m_armyState == ARMY_GATHER || !rec.m_inWave))
+			home += teamValue(team);
+	}
+	if (home <= 0.0f || home < 1.2f * theirs)
+		return;
+
+	Coord3D where = target->m_pos;
+	Int sent = 0;
+	for (Int i = 0; i < m_numTeams; ++i)
+	{
+		AITeamRecord &rec = m_teams[i];
+		Team *team = TheTeamFactory->findTeamByID(rec.m_team);
+		if (team == nullptr || !isManageableTeam(team) || rec.m_mode != AITEAM_FREE || (m_armyState != ARMY_GATHER && rec.m_inWave))
+			continue;
+		rec.m_mode = AITEAM_ATTACKING;
+		rec.m_modeFrame = now;
+		rec.m_orderFrame = now;
+		rec.m_target = where;
+		rec.m_idleSince = 0;
+		orderTeamAttackMove(team, &where);
+		++sent;
+	}
+	if (sent > 0)
+	{
+		m_contestOrders += sent;
+		AI_TRACE("CONTEST: enemy %s at (%.0f,%.0f), %.0f from our supply center: %d team(s) (value %.0f) attack it (enemy army seen there %.0f)",
+			templateOf(target->m_templateID) ? templateOf(target->m_templateID)->getName().str() : "?", where.x, where.y, targetDist, sent, home, theirs);
+	}
+}
+
 /// Value of our other field teams near a place: the army an objective can count on to follow up.
 Real AIStrategy::alliedValueNear( const Coord3D *center, Team *except ) const
 {
@@ -2641,6 +2735,7 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferInt(&m_numSurplusUnits);
 		xfer->xferInt(&m_surplusOrdered);
 		xfer->xferInt(&m_surplusInfantry);
+		xfer->xferUnsignedInt(&m_nextContest);
 	}
 }
 

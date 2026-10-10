@@ -267,6 +267,10 @@ struct AISkillSettings
 	Bool m_useRaze;	///< A wave team that has arrived and has nothing to fight attacks the known enemy structures around it (attack-move and idle units leave buildings alone).
 	Real m_razeRadius;	///< ... within this distance of the team.
 	Real m_huntAdvantage;	///< A wave team that has no known objective left hunts (seek and destroy) when the army is at least this many times what has been seen of the enemy; 0 = never.
+
+	// ---- enemy supply near ours ----
+	Bool m_useContest;	///< An enemy economy structure (a supply center) built near one of ours is attacked at once by the teams at home.
+	Real m_contestRadius;	///< ... within this distance of our supply center.
 };
 
 class AISideBuildList : public MemoryPoolObject
