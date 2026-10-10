@@ -486,6 +486,9 @@ private:
 	void updateSurplus();
 	void adoptSurplusUnits();
 
+	// razing (AIStrategy.cpp)
+	Bool razeStructures( Team *team, const Coord3D &center );
+
 	// airborne insertion (AIAirborne.cpp)
 	enum { MAX_SQUAD = 8 };
 	Bool airborneOn() const;
@@ -695,6 +698,8 @@ private:
 	Int						m_surplusInfantry;
 	Real					m_surplusSpent;
 	Int						m_surplusAdopted;
+	Int						m_razeOrders;										///< statistics for the trace
+	Int						m_huntOrders;
 	Int						m_airPhase;											///< airborne insertion: 0 = no mission
 	ObjectID			m_airTransport;
 	ObjectID			m_squad[MAX_SQUAD];

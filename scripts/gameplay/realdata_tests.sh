@@ -47,6 +47,9 @@
 #   * surplus production: "SURPLUS: <unit> ordered at <factory>" lines from about 150 s on, the status line
 #     "surplus production: N units ordered (S spent), A given to teams" grows, and the Expert ends the game with little
 #     money left (money.final in the match JSON a few thousand at most, where Hard keeps tens of thousands).
+#   * razing and hunting: a wave that stands in an enemy base attacks its structures ("razing: N attack orders on
+#     structures" grows); with no target known and a far stronger army, "team T HUNTS" lines. No team of the per-team
+#     lines ("  team T mode M ... target ... units N idle I") stands idle for minutes with a target it never reaches.
 #
 # Options:
 #   --quick           fewer games (about a third of the time)

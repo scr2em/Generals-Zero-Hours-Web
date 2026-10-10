@@ -262,6 +262,11 @@ struct AISkillSettings
 	Real m_surplusStartSeconds;	///< ... not before this time in the match (the build order of the scripts comes first).
 	Real m_surplusInfantryShare;	///< At most this share of the surplus units ordered so far is infantry (tanks crush infantry, which the combat model does not know).
 	Bool m_surplusAircraft;	///< Surplus production may build aircraft too.
+
+	// ---- razing and hunting ----
+	Bool m_useRaze;	///< A wave team that has arrived and has nothing to fight attacks the known enemy structures around it (attack-move and idle units leave buildings alone).
+	Real m_razeRadius;	///< ... within this distance of the team.
+	Real m_huntAdvantage;	///< A wave team that has no known objective left hunts (seek and destroy) when the army is at least this many times what has been seen of the enemy; 0 = never.
 };
 
 class AISideBuildList : public MemoryPoolObject

@@ -174,6 +174,8 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_surplusInfantry(0),
 	m_surplusSpent(0.0f),
 	m_surplusAdopted(0),
+	m_razeOrders(0),
+	m_huntOrders(0),
 	m_airPhase(0),
 	m_airTransport(INVALID_ID),
 	m_numSquad(0),
@@ -481,6 +483,18 @@ void AIStrategy::update()
 				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
 				AI_TRACE("garrisons: %d infantry entered (%d unit-seconds inside, %d of them firing), %d structures of the enemy attacked (%d brought down), %d holding now", m_garrisonEntered, m_garrisonSeconds, m_garrisonFiring, m_garrisonClearJobs, m_garrisonClears, m_numGarrisoned);
 				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
+				AI_TRACE("razing: %d attack orders on structures, %d hunt orders", m_razeOrders, m_huntOrders);
+				for (Int ti = 0; ti < m_numTeams; ++ti)
+				{
+					Team *tm = TheTeamFactory->findTeamByID(m_teams[ti].m_team);
+					const Coord3D *tp = tm ? tm->getEstimateTeamPosition() : nullptr;
+					Int n = 0, idle = 0;
+					if (tm)
+						for (DLINK_ITERATOR<Object> oit = tm->iterate_TeamMemberList(); !oit.done(); oit.advance())
+							if (oit.cur() && !oit.cur()->isEffectivelyDead()) { ++n; if (oit.cur()->getAI() && oit.cur()->getAI()->isIdle()) ++idle; }
+					AI_TRACE("  team %u mode %d inWave %d at (%.0f,%.0f) target (%.0f,%.0f) units %d idle %d adv %.2f", m_teams[ti].m_team, m_teams[ti].m_mode, m_teams[ti].m_inWave ? 1 : 0,
+						tp ? tp->x : -1.0f, tp ? tp->y : -1.0f, m_teams[ti].m_target.x, m_teams[ti].m_target.y, n, idle, m_teams[ti].m_lastAdvantage);
+				}
 				AI_TRACE("surplus production: %d units ordered (%.0f spent), %d given to teams, %d waiting for a team, %d on order", m_surplusOrdered, m_surplusSpent, m_surplusAdopted, m_numSurplusUnits, m_numSurplusOrders);
 				AI_TRACE("bunkers: %d posts, %d men inside or on the way, %d entered so far, %d infantry trained for them", m_bunkerPosts, m_numBunkerMen, m_bunkerEntered, m_bunkerTrained);
 				AI_TRACE("airborne: %d missions, %d drops, %d targets destroyed, %d aircraft lost, %d times no safe way", m_airMissions, m_airDrops, m_airKills, m_airLost, m_airNoPath);
@@ -1843,6 +1857,12 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 			// Arrived and nothing to do.
 			if (rec->m_mode != AITEAM_FREE && (allIdle || dist2D(center, rec->m_target) < 120.0f))
 			{
+				// Buildings are left alone by attack-move and by idle units: the ones known around are attacked one by one.
+				if (rec->m_mode == AITEAM_ATTACKING && razeStructures(team, center))
+				{
+					rec->m_idleSince = 0;
+					break;
+				}
 				rec->m_mode = AITEAM_FREE;
 				rec->m_modeFrame = now;
 			}
@@ -1881,6 +1901,29 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 					rec->m_target = objective;
 					orderTeamAttackMove(team, &objective);
 				}
+				else if (sk.m_huntAdvantage > 0.0f && m_armyValue >= sk.m_huntAdvantage * (m_enemy.armedValue() + 1.0f))
+				{
+					// Nothing known is left, and the army is far stronger than what has been seen: the rest of the enemy is
+					// out of sight somewhere.  Seek and destroy, as the scripts of the computer player do.
+					AIGroupPtr group = TheAI->createGroup();
+					if (group)
+					{
+#if RETAIL_COMPATIBLE_AIGROUP
+						team->getTeamAsAIGroup(group);
+#else
+						team->getTeamAsAIGroup(group.Peek());
+#endif
+						removeDetachedFrom(group, team);
+						group->groupHunt(CMD_FROM_AI);
+					}
+					rec->m_mode = AITEAM_ATTACKING;
+					rec->m_modeFrame = now;
+					rec->m_orderFrame = now;
+					rec->m_target = center;
+					rec->m_idMark = TheGameLogic->getObjectIDCounter();
+					++m_huntOrders;
+					AI_TRACE("team %u HUNTS: no known objective, army %.0f against %.0f seen", team->getID(), m_armyValue, m_enemy.armedValue());
+				}
 				else
 				{
 					m_armyState = ARMY_GATHER;
@@ -1917,6 +1960,58 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 			break;
 		}
 	}
+}
+
+/// A wave team has arrived and nothing fights it: every idle member attacks the nearest known enemy structure around that it can
+/// damage.  Returns TRUE while there are such structures.
+Bool AIStrategy::razeStructures( Team *team, const Coord3D &center )
+{
+	if (!skill().m_useRaze)
+		return FALSE;
+	const Real radius = skill().m_razeRadius;
+	enum { MAX_TARGETS = 24 };
+	Object *targets[MAX_TARGETS];
+	Int numTargets = 0;
+	for (Int i = 0; i < m_enemy.numContacts() && numTargets < MAX_TARGETS; ++i)
+	{
+		const AIContact &c = m_enemy.contacts()[i];
+		if (c.m_role < AIROLE_DEFENCE || dist2D(c.m_pos, center) > radius)
+			continue;
+		Object *obj = TheGameLogic->findObjectByID(c.m_id);
+		if (obj == nullptr || obj->isEffectivelyDead() || !obj->isKindOf(KINDOF_STRUCTURE) || m_player->getRelationship(obj->getTeam()) != ENEMIES)
+			continue;
+		targets[numTargets++] = obj;
+	}
+	if (numTargets == 0)
+		return FALSE;
+	for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+	{
+		Object *unit = it.cur();
+		if (unit == nullptr || unit->isEffectivelyDead() || isDetached(unit->getID()) || unit->getAI() == nullptr || !unit->getAI()->isIdle())
+			continue;
+		const AICombatFigures *f = AICombatModel::figures(unit->getTemplate());
+		if (f == nullptr || !f->m_armed)
+			continue;
+		Object *best = nullptr;
+		Real bestDist = 0.0f;
+		for (Int t = 0; t < numTargets; ++t)
+		{
+			if (AICombatModel::damagePerSecond(f, AICombatModel::figures(targets[t]->getTemplate())) <= 0.0f)
+				continue;
+			const Real d = dist2D(*unit->getPosition(), *targets[t]->getPosition());
+			if (best == nullptr || d < bestDist)
+			{
+				best = targets[t];
+				bestDist = d;
+			}
+		}
+		if (best)
+		{
+			unit->getAI()->aiAttackObject(best, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
+			++m_razeOrders;
+		}
+	}
+	return TRUE;
 }
 
 /// Value of our other field teams near a place: the army an objective can count on to follow up.

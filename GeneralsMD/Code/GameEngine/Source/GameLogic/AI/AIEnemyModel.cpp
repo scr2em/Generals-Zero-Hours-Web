@@ -98,6 +98,10 @@ void AIEnemyModel::noteObject(Object *obj, Player *me, UnsignedInt now)
 	}
 	if (me->getRelationship(obj->getTeam()) != ENEMIES)
 		return;
+	// Civilian and neutral things (tech buildings nobody has captured, for one) are not an enemy to defeat: an army sent to them
+	// would stand there for ever.
+	if (!owner->isPlayableSide())
+		return;
 
 	// Things that are not a part of the fight.
 	static const Int ignoreKinds[] = { KINDOF_UNATTACKABLE, KINDOF_INERT, KINDOF_PROP, KINDOF_SHRUBBERY, KINDOF_PROJECTILE,

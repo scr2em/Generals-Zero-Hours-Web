@@ -352,6 +352,9 @@ static const FieldParse s_skillFieldParse[] =
 		{ "SurplusStartSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusStartSeconds ) },
 		{ "SurplusInfantryShare",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusInfantryShare ) },
 		{ "SurplusAircraft",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_surplusAircraft ) },
+		{ "RazeBases",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRaze ) },
+		{ "RazeRadius",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_razeRadius ) },
+		{ "HuntAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_huntAdvantage ) },
 		{ nullptr,								nullptr,					nullptr, 0 }
 	};
 
@@ -1334,6 +1337,9 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_surplusStartSeconds = 150.0f;
 	ex.m_surplusInfantryShare = 1.0f;
 	ex.m_surplusAircraft = false;
+	ex.m_useRaze = true;
+	ex.m_razeRadius = 700.0f;
+	ex.m_huntAdvantage = 2.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1471,6 +1477,9 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_surplusStartSeconds );
 		xfer->xferReal( &sk.m_surplusInfantryShare );
 		xfer->xferBool( &sk.m_surplusAircraft );
+		xfer->xferBool( &sk.m_useRaze );
+		xfer->xferReal( &sk.m_razeRadius );
+		xfer->xferReal( &sk.m_huntAdvantage );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 
