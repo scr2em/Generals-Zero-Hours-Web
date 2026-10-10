@@ -28,6 +28,7 @@
 //              e:EXPR  like v:, but the step fails (exit code 1) unless the result is truthy
 //              u:EXPR  wait (30 s) until the expression is truthy, else the step fails
 //              F:N     wait for N more logic frames (the log shows a frame every 100)   f:N     wait (up to 40 min) until the game has reached logic frame N     W:RE   wait (up to 40 min) until a log line matches
+//              Wt:SEC:RE  like W:, but the step fails after SEC seconds
 //              K:N:REGEX  fail unless at least N log lines match
 //              t:ID=REGEX   wait (30 s) until the text of element #ID matches, else the step fails
 //              reload  reload the page (same browser profile: OPFS, localStorage stay) and press Play again
@@ -243,6 +244,14 @@ async function runStep(step) {
 			const until = Date.now() + 40 * 60000;
 			while (Date.now() < until && !logs.some((l) => re.test(l))) await page.waitForTimeout(500);
 			if (!logs.some((l) => re.test(l))) fail('no log line matched /' + arg + '/ in 40 min');
+			break;
+		}
+		case 'Wt': {	// Wt:SEC:RE  like W:, but fails after SEC seconds
+			const sec = Number(arg.slice(0, arg.indexOf(':')));
+			const re = new RegExp(arg.slice(arg.indexOf(':') + 1).replace(/~/g, ' '));
+			const until = Date.now() + sec * 1000;
+			while (Date.now() < until && !logs.some((l) => re.test(l))) await page.waitForTimeout(500);
+			if (!logs.some((l) => re.test(l))) fail('no log line matched /' + re.source + '/ in ' + sec + ' s');
 			break;
 		}
 		case 'P': {	// break into the engine's thread(s) and print the call stack (finds a hang; needs the browser's DevTools protocol)

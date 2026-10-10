@@ -22,7 +22,7 @@
 #   base-alert       the "base under attack" response: idle army units are sent to the attacked place and back (Alt+A twice)
 #   base-alert-replay  the same, recorded and played back
 #   stance-kite      stance: rocketeers step back while their weapon reloads
-#   stance-retreat   stance: damaged riflemen go to an infirmary and come back healed
+#   stance-retreat   stance: riflemen hurt by the test hook go to an infirmary and come back healed (bounded waits, minutes)
 #   stance-spread    stance: riflemen keep apart when an enemy mortar (big blast) is about
 #   stance-split     stance: riflemen do not pile on a target that has enough fire on it
 #   stance-replay    all four stances at once, recorded and played back
@@ -146,11 +146,15 @@ run stance-kite "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~2~x~IronwoodRocke
 	W:ASSISTTEST~created~2~x~IronwoodRifleman~for~player~1 W:ASSIST~stance~kite:~unit~[0-9]+~steps~back~from s:kite_step \
 	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$KITE_UNITS" --arg -assistDebug --options AssistStances=1
 
-RETREAT_UNITS="0:IronwoodRifleman:2:0:-150:-130+0:IronwoodInfirmary:1:0:-230:-80+1:IronwoodRifleman:2:0:-30:-130:900"
-run stance-retreat "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodInfirmary~for~player~0 $STANCE_ASSIST_ON k:Home w:4 r:60,340,270,410 w:3 \
-	kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 W:ASSIST~stance~set~mask=2~value=2~percent=70 s:retreat_set \
-	W:ASSIST~stance~retreat:~unit~[0-9]+~at~[0-9]+%~goes~to~heal~facility s:retreating W:ASSIST~stance~retreat:~unit~[0-9]+~goes~back~to s:healed \
-	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$RETREAT_UNITS" --arg -assistDebug --options AssistStances=1
+# The riflemen are hurt by the test hook (a "damage" entry of -assistTest: 60% off in logic frame 90, before or after the
+# stance is set) instead of a fight, which may not come to them; every wait is bounded, so a failure costs minutes, not hours.
+RETREAT_UNITS="0:IronwoodRifleman:2:0:-150:-130+0:IronwoodInfirmary:1:0:-230:-80+damage:0:IronwoodRifleman:60:90"
+run stance-retreat "w:3 $SKIRMISH w:3 $START Wt:300:ASSISTTEST~created~1~x~IronwoodInfirmary~for~player~0 Wt:120:ASSIST~match~allowed=1 k:Home w:4 r:60,340,270,410 w:3 \
+	kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 Wt:120:ASSIST~stance~set~mask=2~value=2~percent=70~for~2~units s:retreat_set \
+	Wt:240:ASSISTTEST~damaged~2~x~IronwoodRifleman \
+	Wt:180:ASSIST~stance~retreat:~unit~[0-9]+~at~40%~goes~to~heal~facility s:retreating \
+	Wt:300:ASSIST~stance~retreat:~unit~[0-9]+~goes~back~to~-?[0-9]+,-?[0-9]+~at~100% s:healed \
+	N:RuntimeError N:ASSISTTEST~cannot N:ASSIST~stance~retreat:.*(rally~point|cannot)" --arg -assistTest --arg "$RETREAT_UNITS" --arg -assistDebug --options AssistStances=1
 
 SPREAD_UNITS="0:IronwoodRifleman:3:0:-150:-130+0:IronwoodRifleman:3:0:-135:-130+1:IronwoodMortar:1:0:-60:-220:900"
 run stance-spread "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~3~x~IronwoodRifleman~for~player~0 $STANCE_ASSIST_ON k:Home w:4 r:60,340,300,410 w:3 \
@@ -165,12 +169,13 @@ run stance-split "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~8~x~IronwoodRifl
 	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$SPLIT_UNITS" --arg -assistDebug --options AssistStances=1
 
 # all four at once, recorded and played back: same positions and no CRC mismatch
-ALL_UNITS="0:IronwoodRifleman:4:0:-150:-130+0:IronwoodRocketeer:2:0:-150:-160+0:IronwoodInfirmary:1:0:-230:-80+1:IronwoodRifleman:3:0:-40:-230:900+1:IronwoodMortar:1:0:-60:-260:900"
+# (the riflemen are hurt to 25% in frame 300, below the 30% of one Alt+R: they go to the infirmary in the match and in the replay)
+ALL_UNITS="0:IronwoodRifleman:4:0:-150:-130+0:IronwoodRocketeer:2:0:-150:-160+0:IronwoodInfirmary:1:0:-230:-80+1:IronwoodRifleman:3:0:-40:-230:900+1:IronwoodMortar:1:0:-60:-260:900+damage:0:IronwoodRifleman:75:300"
 run stance-replay "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~4~x~IronwoodRifleman~for~player~0 $STANCE_ASSIST_ON k:Home w:4 r:60,320,400,410 w:3 \
 	kd:Alt w:1 k:KeyK w:1 ku:Alt w:2 kd:Alt w:1 k:KeyR w:1 ku:Alt w:2 kd:Alt w:1 k:KeyS w:1 ku:Alt w:2 kd:Alt w:1 k:KeyX w:1 ku:Alt w:2 \
 	W:ASSIST~stance~set~mask=8~value=8 W:ASSISTTEST~created~3~x~IronwoodRifleman~for~player~1 f:1500 \
 	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:600 \
-	K:2:ASSIST~stance~set~mask=8 N:CRC~Mismatch N:RuntimeError" --arg -assistTest --arg "$ALL_UNITS" --arg -assistDebug --options AssistStances=1
+	K:2:ASSIST~stance~set~mask=8 K:8:ASSIST~stance~retreat:~unit~[0-9]+~at~25%~goes~to~heal~facility N:CRC~Mismatch N:RuntimeError" --arg -assistTest --arg "$ALL_UNITS" --arg -assistDebug --options AssistStances=1
 
 # 12. Repeat production: the headquarters is selected, W queues a worker, Alt+Q switches repeat on; the worker is built again.
 #     Recorded and played back (no CRC mismatch, the same orders), and saved and loaded (the state is in the save).
