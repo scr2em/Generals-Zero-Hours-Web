@@ -227,7 +227,7 @@ struct PlayerSpec
 
 struct Config
 {
-	Config() : seed(0), seedGiven(FALSE), maxFrames(kDefaultMaxFrames), assists(TRUE), startingCash(-1), debug(TRUE) {}
+	Config() : seed(0), seedGiven(FALSE), maxFrames(kDefaultMaxFrames), assists(TRUE), startingCash(-1), debug(TRUE), retaliation(TRUE) {}
 	std::string map;
 	std::string mapPath;
 	std::string steps;
@@ -239,6 +239,7 @@ struct Config
 	Bool assists;
 	Int startingCash;
 	Bool debug;
+	Bool retaliation;
 };
 
 Bool parsePlayers(const std::string &text, std::vector<PlayerSpec> &out, std::string &error)
@@ -332,10 +333,10 @@ Bool parseConfig(Config &cfg, std::string &error)
 				return FALSE;
 			}
 		}
-		else if (key == "assists" || key == "debug")
+		else if (key == "assists" || key == "debug" || key == "retaliation")
 		{
 			const Bool on = value != "0" && lowered(value) != "no" && lowered(value) != "false";
-			(key == "assists" ? cfg.assists : cfg.debug) = on;
+			(key == "assists" ? cfg.assists : key == "debug" ? cfg.debug : cfg.retaliation) = on;
 		}
 		else if (key == "cash")
 		{
@@ -1702,6 +1703,12 @@ void Runner::runStep(Int index, const Step &s, std::string &fatal)
 					o->getBodyModule() ? o->getBodyModule()->getHealth() : 0.0f, ai && ai->isIdle() ? 1 : 0, kFormationNames[ThePlayerAssist->formationOf(ids[i])],
 					(int)o->getFormationID(), off.x, off.y, link ? kStateNames[link->m_state < 3 ? link->m_state : 0] : "-",
 					link ? link->m_home.x : 0.0f, link ? link->m_home.y : 0.0f);
+				// what the unit's AI is doing: its state, its target, where its last order came from, its last shot
+				const Weapon *w = o->getCurrentWeapon();
+				const Object *victim = ai ? ai->getCurrentVictim() : nullptr;
+				printf("ASSISTMATCH_DUMP id=%d ai=%d victim=%d src=%d stance=%d lastshot=%d frame=%d\n", (int)ids[i],
+					ai ? (int)ai->getAIStateType() : -1, victim ? (int)victim->getID() : 0, ai ? (int)ai->getLastCommandSource() : -1,
+					ThePlayerAssist->stanceOf(ids[i]), w ? (int)w->getLastShotFrame() : -1, (int)TheGameLogic->getFrame());
 			}
 		}
 	}
@@ -2093,6 +2100,16 @@ Bool Runner::play(std::string &error)
 		Player *p = ThePlayerList->getPlayerFromSlotIndex((Int)i);
 		if (p && m_cfg.players[i].kind == KIND_IDLE)
 			p->deletePlayerAI();
+	}
+	// The retaliation option of the player (on by default, as in the game's options): the game client sends it as
+	// MSG_ENABLE_RETALIATION_MODE through the message stream (Player::update), which the bench does not run.  Without
+	// it the units of the human player would not answer an attacker together the way they do in a real match.
+	{
+		GameMessage *msg = message(GameMessage::MSG_ENABLE_RETALIATION_MODE);
+#if RETAIL_COMPATIBLE_CRC
+		msg->appendIntegerArgument(m_human->getPlayerIndex());
+#endif
+		msg->appendBooleanArgument(m_cfg.retaliation);
 	}
 	printf("ASSISTMATCH_START map=%s frame=%u assists=%d human=%d\n", m_cfg.mapPath.c_str(), TheGameLogic->getFrame(), m_assistsAllowed ? 1 : 0, (int)m_human->getPlayerIndex());
 	fflush(stdout);

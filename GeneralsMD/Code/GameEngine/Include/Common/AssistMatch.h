@@ -25,6 +25,7 @@
 //
 //   <game> -assistMatch map=<map> players=human:<side>[:<team>[:<start>]],<idle|easy|normal|hard|expert>:<side>[...],...
 //          seed=<n> steps=<script> [maxframes=<logic frames>] [label=<text>] [assists=1|0] [cash=<money>] [debug=1|0]
+//          [retaliation=1|0]
 //
 // The script language and the checks are described in AssistMatch.cpp and scripts/assistbench/README.md.
 // The mode implies -headless and reuses the plumbing of the AI test bench (AIMatchShared.h).

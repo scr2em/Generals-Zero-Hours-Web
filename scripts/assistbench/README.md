@@ -86,7 +86,7 @@ dispatcher and the assists exactly as clicks and hotkeys do (and as a replay wou
 | `send <command> [int:\|bool:\|real:\|pos:\|obj:]...` | any command of the player by name, e.g. `send ASSIST_STANCE int:2 int:2 int:70` |
 | `ai <objects> attack <objects>` / `move\|attackmove\|guard <pos>` / `stop` | direct orders for any player's units (attackers) |
 | `damage <objects> <amount>[%] [by=<objects>]` | damage as if `by` had hit them (raises a protect alarm) |
-| `kill <objects>`, `snapshot <objects> [as=]`, `dump <objects>` | remove, remember where units stand, print their state |
+| `kill <objects>`, `snapshot <objects> [as=]`, `dump <objects>` | remove, remember where units stand, print their state (two `ASSISTMATCH_DUMP` lines per unit: place, health, formation, protect link; then `ai=` the AI state (`AIStateType`, 43 is the game's retaliation `AI_GUARD_RETALIATE`), `victim=` its target, `src=` the source of its last order, `stance=` its stance bits, `lastshot=` the frame of its last shot) |
 | `wait <frames>` | 30 frames are a second |
 | `until [not] <condition> [max=<frames>]` | waits for the condition; a check that fails after `max` (default 900) |
 | `expect [not] <condition>` | a check now |
@@ -141,12 +141,15 @@ build without them they fail with "this build has no command".
 
 ```
 <game> -assistMatch map=<map> players=human:<side>,idle:<side> seed=<n> steps=<step;step;...>
-       [maxframes=<n>] [label=<text>] [assists=0] [cash=<n>] [debug=0]
+       [maxframes=<n>] [label=<text>] [assists=0] [cash=<n>] [debug=0] [retaliation=0]
 ```
 
 It implies `-headless`, plays the logic as fast as it can, prints `ASSISTMATCH_STEP` / `ASSISTMATCH_CHECK` lines and one
 `ASSISTMATCH_RESULT {json}` line (`ASSISTMATCH_ERROR` first when it cannot go on), and exits (0 when every check passed).
-The `ASSIST` decision lines of `-assistDebug` are on unless `debug=0`. The skirmish setup, the match loop and the result
+The `ASSIST` decision lines of `-assistDebug` are on unless `debug=0`. The human player plays with the game's
+retaliation option on (as the options of the game have it by default; `retaliation=0` turns it off): when one of its
+units is hit, the idle units around it answer the attacker by themselves. The game client sends that option as a game
+message, which the bench sends at the start of the match. The skirmish setup, the match loop and the result
 JSON are those of `-aiMatch` (`AIMatchShared.h`).
 
 Files: `GeneralsMD/Code/GameEngine/Source/Common/AssistMatch.cpp` (the mode, the script language and the conditions),
