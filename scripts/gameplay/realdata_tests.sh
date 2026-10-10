@@ -31,6 +31,12 @@
 # off-allyhelp match of the same seed (it fell later, or not at all). In the off-allyhelp match the alarm lines say "response OFF"
 # and no team is sent.
 #
+# What a pass looks like in the assists suite: every scenario passes (assists/report.md). For split fire on units that answer
+# an attack by themselves, stance-split-retaliate (tournamenta, human:America against idle:China; eight Rangers with split
+# fire, a Red Guard shoots at them, a second one 20 frames later): assists/stance-split-retaliate.trace.txt has between one and
+# eight "ASSIST stance split: unit N leaves A (enough on its way) for B" (A the first Red Guard, never back to it), both Red
+# Guards dead within 300 frames and every Ranger alive. See docs/PLAYER_ASSISTS.md for the other scenarios.
+#
 # Options:
 #   --quick           fewer games (about a third of the time)
 #   --workers N       games at the same time (default 2; each needs about 1 GB of memory and a core)

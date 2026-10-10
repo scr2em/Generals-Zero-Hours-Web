@@ -308,6 +308,23 @@ static Bool visibleTo( const Object *victim, Int playerIndex )
 }
 
 //-------------------------------------------------------------------------------------------------
+/// The enemy the unit is shooting at, or null.  A unit that answers an attack on itself or on a unit next to it (the
+/// game's retaliation: AI_GUARD_RETALIATE, what the units of a human player do when they are hit) fights as well, but its
+/// state does not say that it attacks (isAttacking() is false there): its target counts all the same.
+static Object *fightingVictim( AIUpdateInterface *ai )
+{
+	const AIStateType state = ai->getAIStateType();
+	if (!ai->isAttacking() && state != AI_GUARD_RETALIATE)
+		return nullptr;
+	Object *victim = ai->getCurrentVictim();
+	// an attack order (the one split fire gives, for instance) takes its target in the unit's next update: until then
+	// the target is the goal of the order
+	if (victim == nullptr && state == AI_ATTACK_OBJECT)
+		victim = ai->getGoalObject();
+	return victim;
+}
+
+//-------------------------------------------------------------------------------------------------
 /// Send the unit to the nearest place of repair or healing, or else to the rally point in front of the base.  Called
 /// when the unit drops below its threshold (it remembers where it stood, to go back there), and again when the place
 /// it was going to is gone or a place turns up while it waits at the rally point (where it stood is kept).
@@ -588,10 +605,11 @@ void PlayerAssist::stanceUnit( Object *unit, StanceState &st, UnsignedInt now )
 	if (((now + unit->getID()) % LOOK_EVERY) != 0)
 		return;
 
-	Object *victim = ai->isAttacking() ? ai->getCurrentVictim() : nullptr;
+	Object *victim = fightingVictim( ai );
 	const Real range = unit->getCurrentWeapon() ? unit->getCurrentWeapon()->getAttackRange( unit ) : 0.0f;
 
-	// split fire: damage that other units have assigned to the target already counts against it
+	// split fire: damage that other units have assigned to the target already counts against it.  Every unit holds one
+	// share, on the target it shoots at (the ledger is made from the shares in every frame, see updateStances).
 	if ((st.m_flags & STANCE_SPLIT) != 0 && victim != nullptr && range > 0.0f && visibleTo( victim, playerIndex ))
 	{
 		AITactics::SplitLedger &ledger = m_ledgers[playerIndex < MAX_LEDGERS ? playerIndex : 0];
@@ -601,29 +619,21 @@ void PlayerAssist::stanceUnit( Object *unit, StanceState &st, UnsignedInt now )
 		BodyModuleInterface *vbody = victim->getBodyModule();
 		if (mine && vf && vbody)
 		{
+			const Bool holding = st.m_splitTarget == victim->getID() && now < st.m_splitUntil;
 			Real assigned = ledger.assigned( victim->getID(), now );
-			if (st.m_splitTarget == victim->getID() && now < st.m_splitUntil)
+			if (holding)
 				assigned -= st.m_splitDamage;		// what this unit itself has put on it
 			if (assigned < 0.0f)
 				assigned = 0.0f;
 
-			if (AITactics::splitPenalty( assigned, vbody->getHealth() ) < 100.0f)
+			if (AITactics::splitPenalty( assigned, vbody->getHealth() ) >= 100.0f)
 			{
-				// not overkilled: keep this target and keep it on the ledger
-				if (st.m_splitTarget != victim->getID() || now >= st.m_splitUntil)
-				{
-					st.m_splitTarget = victim->getID();
-					st.m_splitDamage = AICombatModel::damagePerSecond( mine, vf ) * params.m_splitWindowSeconds;
-					st.m_splitUntil = now + window;
-					ledger.assign( victim->getID(), st.m_splitDamage, now, window );
-				}
-			}
-			else
-			{
-				// enough is on its way: the best other target in reach
+				// enough is on its way: the best other target in reach that does not have enough yet
 				Object *best = pickOtherTarget( unit, victim, range, ledger, now, params );
 				if (best)
 				{
+					if (holding)
+						ledger.release( victim->getID(), st.m_splitDamage, now );
 					st.m_splitTarget = best->getID();
 					st.m_splitDamage = AICombatModel::damagePerSecond( mine, AICombatModel::figures( best->getTemplate() ) ) * params.m_splitWindowSeconds;
 					st.m_splitUntil = now + window;
@@ -632,6 +642,15 @@ void PlayerAssist::stanceUnit( Object *unit, StanceState &st, UnsignedInt now )
 					ASSIST_DEBUG(( "ASSIST stance split: unit %d leaves %d (enough on its way) for %d", (int)unit->getID(), (int)victim->getID(), (int)best->getID() ));
 					return;
 				}
+				// nothing else to shoot at: it keeps firing at this one
+			}
+			if (!holding)
+			{
+				// its share on this target (a new target, or the share of the last window ran out)
+				st.m_splitTarget = victim->getID();
+				st.m_splitDamage = AICombatModel::damagePerSecond( mine, vf ) * params.m_splitWindowSeconds;
+				st.m_splitUntil = now + window;
+				ledger.assign( victim->getID(), st.m_splitDamage, now, window );
 			}
 		}
 	}
@@ -747,7 +766,13 @@ Object *PlayerAssist::pickOtherTarget( Object *unit, Object *current, Real range
 		AITactics::scoreTarget( mine, f, health, dist, range, TRUE, mates, &ts );
 		Real score = ts.m_threat;
 		if (body)
-			score -= AITactics::splitPenalty( ledger.assigned( e->getID(), now ), body->getHealth() );
+		{
+			// a target that has enough on its way as well is no better than the one the unit leaves
+			const Real penalty = AITactics::splitPenalty( ledger.assigned( e->getID(), now ), body->getHealth() );
+			if (penalty >= 100.0f)
+				continue;
+			score -= penalty;
+		}
 		if (best == nullptr || score > bestScore)
 		{
 			best = e;
@@ -763,6 +788,30 @@ void PlayerAssist::updateStances( UnsignedInt now )
 {
 	if (m_stances.empty())
 		return;
+
+	// Split fire: the ledgers are made again from the shares the units hold, so that a share counts once and only while
+	// the unit shoots at that target (a unit that took another target, lost its target or stopped gives its share back).
+	// The ledger alone would add a renewed share to the old one, and keep the share of a unit that has left.
+	for (Int p = 0; p < MAX_LEDGERS; ++p)
+		m_ledgers[p].clear();
+	for (StanceMap::iterator it = m_stances.begin(); it != m_stances.end(); ++it)
+	{
+		StanceState &st = it->second;
+		if (st.m_splitTarget == INVALID_ID)
+			continue;
+		Object *unit = TheGameLogic->findObjectByID( it->first );
+		Object *victim = unit && !unit->isEffectivelyDead() && unit->getAI() && unit->getControllingPlayer() ? fightingVictim( unit->getAI() ) : nullptr;
+		if (now >= st.m_splitUntil || victim == nullptr || victim->getID() != st.m_splitTarget)
+		{
+			st.m_splitTarget = INVALID_ID;
+			st.m_splitDamage = 0.0f;
+			st.m_splitUntil = 0;
+			continue;
+		}
+		const Int p = unit->getControllingPlayer()->getPlayerIndex();
+		m_ledgers[p < MAX_LEDGERS ? p : 0].assign( st.m_splitTarget, st.m_splitDamage, now, st.m_splitUntil - now );
+	}
+
 	std::vector<ObjectID> gone;
 	for (StanceMap::iterator it = m_stances.begin(); it != m_stances.end(); ++it)
 	{

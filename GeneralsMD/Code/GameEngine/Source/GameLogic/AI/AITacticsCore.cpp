@@ -444,6 +444,21 @@ void SplitLedger::assign( ObjectID target, Real damage, UnsignedInt now, Unsigne
 	e.m_expire = expire;
 }
 
+void SplitLedger::release( ObjectID target, Real damage, UnsignedInt now )
+{
+	if (damage <= 0.0f)
+		return;
+	for (Int i = 0; i < SIZE; ++i)
+	{
+		Entry &e = m_entries[i];
+		if (e.m_target == target && e.m_expire > now)
+		{
+			e.m_damage = e.m_damage > damage ? e.m_damage - damage : 0.0f;
+			return;
+		}
+	}
+}
+
 //-------------------------------------------------------------------------------------------------
 Bool playerStart( Player *player, Coord3D *out )
 {

@@ -131,6 +131,7 @@ Every unit must meet the condition (`any=1`: one is enough).
 | `stance-retreat-repair` | three Crusaders hurt to 35% (retreat at 50%) dock at the repair building (`@REPAIR_PAD`), are repaired to 100% and go back |
 | `stance-retreat-rally` | without a repair building: three Crusaders hurt to 35% pull back to the rally point and park there; a move order of the player wins, and they pull back again only after the 15 s |
 | `stance-kite`, `stance-spread`, `stance-split` | the stance's decision lines while a fight goes on |
+| `stance-split-retaliate` | split fire on units that answer an attack by themselves (the game's retaliation, no order): eight Rangers, a Red Guard shoots, a second comes 20 frames later; one to eight switches to the second (no back and forth), both dead within 10 s, no Ranger lost |
 | `repeat-production` | a Ranger is built again and again; it waits while money minus cost is below the reserve; it stops when switched off |
 | `idle-select` | idle hotkeys: the next idle army unit by id (round again), never a busy one; all idle army units; the next idle worker |
 

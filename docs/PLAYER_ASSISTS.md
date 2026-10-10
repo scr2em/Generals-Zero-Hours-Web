@@ -48,7 +48,7 @@ skirmish against an Easy AI with the assist switched on, and look for the `ASSIS
 | Kite | Select 6 out-ranging units (artillery or rocket units) facing an enemy infantry group, press Alt+K, attack. | `ASSIST stance set mask=1 ...`, then `ASSIST stance kite: unit N steps back from M`. |
 | Retreat | Scripted: `stance-retreat-heal`, `-repair`, `-rally` in `scripts/assistbench/scenarios/realdata` (see below). By hand: select units in a fight and press Alt+R three times. | `percent=70`; then `ASSIST stance retreat: unit N at P% goes to repair facility M` (vehicles, with a repair building), `... heal facility M` (infantry), or `... the rally point x,y` and `... parks at the rally point`; after the repair or heal, `... goes back to x,y at 100%`. A move order while it retreats: `... takes the order of the player (no retreat for 15 s)`. |
 | Spread | Face an enemy with artillery or blast weapons and press Alt+S. | `ASSIST stance spread: ... moves apart` or `... steps aside`. |
-| Split fire | Have 8+ units attack a few enemies and press Alt+X. | `ASSIST stance split: unit N leaves A (enough on its way) for B`. |
+| Split fire | Have 8+ units attack a few enemies and press Alt+X; or press Alt+X first and let enemies come: the units that answer the attack by themselves (the game's retaliation) split their fire too. | `ASSIST stance split: unit N leaves A (enough on its way) for B`, at most once per unit for a target (no switching back and forth). Scripted: `stance-split`, `stance-split-retaliate` (see below). |
 
 **Retreat when damaged, scripted** (`realdata_tests.sh assists`). The repair and heal buildings are not named: the
 scenarios create the first structure of the America side with KindOf `REPAIR_PAD` / `HEAL_PAD` (else of any side) and
@@ -60,6 +60,16 @@ really repairs vehicles / heals infantry at. A pass:
 - `stance-retreat-repair`: the same with three `... at 35% goes to repair facility M` and three `... at 100%`.
 - `stance-retreat-rally`: six `... at 35% goes to the rally point`, six `... parks at the rally point`, three
   `... takes the order of the player`, no `facility` or `goes back` line.
+
+**Split fire, scripted** (`realdata_tests.sh assists`). A unit holds one share of the damage on its way, on the target
+it shoots at, whether it was ordered to attack, found the enemy itself or answers an attack (the game's retaliation);
+a share is given back when the unit takes another target. A pass:
+- `stance-split`: eight Rangers ordered to attack one of three Red Guards: at least one
+  `ASSIST stance split: unit N leaves A (enough on its way) for B`.
+- `stance-split-retaliate`: eight Rangers with split fire and no order are shot at by a Red Guard and all answer it; a
+  second one comes 20 frames later. Every check passes: between one and eight `... leaves A (enough on its way) for B`
+  lines (A the first Red Guard, B the second; no line back to A), both Red Guards dead within 300 frames, all Rangers alive.
+  No `leaves` line at all: the units that answered the attack were not seen as fighting.
 
 **Idle hotkeys** (no rule of the match needed: they only select)
 1. Scripted: `scripts/assistbench/scenarios/realdata/idle-select.json` (part of `realdata_tests.sh assists`). A pass: every
