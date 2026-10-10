@@ -37,8 +37,9 @@ export class NativeRunner {
 	async prepareData(build, data, log) { log(`[${build}] native: game data read in place from ${this.zeroHour}${this.generals ? ' and ' + this.generals : ''}`); }
 	async runBoot() { return { ok: false, error: '--boot needs a web build (the native build has no window)', log: [] }; }
 
-	// Plays one match: { ok, result (parsed AIMATCH_RESULT), error, log (engine output lines), wallMs }.
-	runMatch(build, args, timeoutMs) {
+	// Plays one match: { ok, result (parsed <tag>_RESULT), error, log (engine output lines), wallMs }. `tag` names the
+	// result lines ("AIMATCH" for -aiMatch, "ASSISTMATCH" for -assistMatch), as in Browser.runMatch.
+	runMatch(build, args, timeoutMs, tag = 'AIMATCH') {
 		const t0 = Date.now();
 		const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'aibench-native-'));
 		const argv = ['--zh', this.zeroHour, '--userdata', userData];
@@ -54,8 +55,8 @@ export class NativeRunner {
 				partial = parts.pop();
 				for (const l of parts) {
 					lines.push(l);
-					if (l.startsWith('AIMATCH_RESULT ')) { try { result = JSON.parse(l.slice(15)); } catch (e) { error = 'unreadable result: ' + e.message; } }
-					else if (l.startsWith('AIMATCH_ERROR ')) error = error || l.slice(14);
+					if (l.startsWith(tag + '_RESULT ')) { try { result = JSON.parse(l.slice(tag.length + 8)); } catch (e) { error = 'unreadable result: ' + e.message; } }
+					else if (l.startsWith(tag + '_ERROR ')) error = error || l.slice(tag.length + 7);
 				}
 			};
 			child.stdout.on('data', take);

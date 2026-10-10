@@ -21,9 +21,15 @@ node scripts/assistbench/assistbench.mjs --site build/web/GeneralsMD --zh "$ZH_P
 
 # smoke check of the bench on the starter content (a development aid)
 node scripts/assistbench/assistbench.mjs --site build/web/GeneralsMD
+
+# the same with the native headless build (no browser; cmake --preset native-headless, targets zh_headless starter_pack)
+node scripts/assistbench/assistbench.mjs --native build/native-headless
 ```
 
-The build is the usual web build (`scripts/web/run.sh --build-only`, or `ninja -C build/web z_generals starter_pack`).
+The build is the usual web build (`scripts/web/run.sh --build-only`, or `ninja -C build/web z_generals starter_pack`), or
+with `--native` the native headless build (`zh_headless`, its game data read in place; see `scripts/aibench/README.md`).
+The two builds can differ in the last bit of some floating point results, so a scenario that passes in one may land a
+unit a little differently in the other.
 The game data options are those of `aibench.mjs`: `--zh`/`$ZH_PATH`, `--generals`/`$GENERALS_PATH`, `--data starter|DIR`,
 `--profile` (the browser profile that keeps the imported data; the default is the one aibench uses). `--workers N` runs N
 scenarios at a time (default 2), `--keep-logs` keeps every engine log, `--out DIR` sets the report folder.
