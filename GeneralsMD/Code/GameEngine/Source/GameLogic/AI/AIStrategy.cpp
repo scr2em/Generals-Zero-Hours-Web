@@ -499,6 +499,7 @@ void AIStrategy::update()
 				AI_TRACE("terrain defence: %d way(s) in%s, %d defence(s) placed (%d moved in the build list), main way in %d, %d change(s) of the rally point", m_numEntrances, m_geoWall ? " (perimeter closed by terrain)" : "", m_geoPlaced, m_geoPlacedFixed, m_geoMain + 1, m_geoRallyMoves);
 				AI_TRACE("garrisons: %d infantry entered (%d unit-seconds inside, %d of them firing), %d structures of the enemy attacked (%d brought down), %d holding now", m_garrisonEntered, m_garrisonSeconds, m_garrisonFiring, m_garrisonClearJobs, m_garrisonClears, m_numGarrisoned);
 				AI_TRACE("abilities: %d targeted powers used", m_abilityUses);
+				AI_TRACE("powered defences: %.0f%% of the defences seen need power", 100.0f * poweredDefenceShare());
 				AI_TRACE("razing: %d attack orders on structures, %d hunt orders, %d team orders against enemy supply near ours", m_razeOrders, m_huntOrders, m_contestOrders);
 				for (Int ti = 0; ti < m_numTeams; ++ti)
 				{
@@ -2285,6 +2286,27 @@ void AIStrategy::updateAssault()
 	}
 }
 
+/// The share of the value of the enemy defences seen that needs power (KindOf POWERED: they stop when their owner is low on power).
+/// The higher it is, the more the enemy's power plants are worth as a target.
+Real AIStrategy::poweredDefenceShare() const
+{
+	Real all = 0.0f, powered = 0.0f;
+	for (Int i = 0; i < m_enemy.numContacts(); ++i)
+	{
+		const AIContact &c = m_enemy.contacts()[i];
+		if (c.m_role != AIROLE_DEFENCE && c.m_role != AIROLE_AIRDEFENCE)
+			continue;
+		const ThingTemplate *tt = templateOf(c.m_templateID);
+		const AICombatFigures *f = AICombatModel::figures(tt);
+		if (f == nullptr)
+			continue;
+		all += f->m_cost;
+		if (tt->isKindOf(KINDOF_POWERED))
+			powered += f->m_cost;
+	}
+	return all > 0.0f ? powered / all : 0.0f;
+}
+
 /// The enemy ground defence with the longest reach that has been seen (*defence, nullptr when none), the range that out-ranges it
 /// (*siegeRange), and how many units of our teams have that range and can hurt it.
 Int AIStrategy::siegeUnits( const AICombatFigures **defence, Real *siegeRange ) const
@@ -2671,6 +2693,7 @@ Bool AIStrategy::computeSuperweaponTarget( const SpecialPowerTemplate *power, Co
 	Int numFriends = 0;
 
 	const Int me = m_player->getPlayerIndex();
+	const Real poweredShare = poweredDefenceShare();
 	for (Object *obj = TheGameLogic->getFirstObject(); obj; obj = obj->getNextObject())
 	{
 		if (obj->isEffectivelyDead() || obj->isOffMap() || obj->isContained())
@@ -2699,6 +2722,9 @@ Bool AIStrategy::computeSuperweaponTarget( const SpecialPowerTemplate *power, Co
 				value *= 1.3f;
 			else if (obj->isKindOf(KINDOF_HARVESTER))
 				value *= 1.4f;
+			// Defences that need power stop when the power is gone: the power plants open the base up.
+			if (obj->isKindOf(KINDOF_FS_POWER))
+				value *= 1.0f + 4.0f * poweredShare;
 			if (numKnown < MAX_KNOWN)
 			{
 				known[numKnown].pos = *obj->getPosition();

@@ -492,6 +492,7 @@ private:
 	void updateContest();
 	void planSiege( const Coord3D &center );
 	Int siegeUnits( const AICombatFigures **defence, Real *siegeRange ) const;
+	Real poweredDefenceShare() const;
 	void updateAssault();
 	// adaptive wave plans (AIStrategy.cpp)
 	enum { PLAN_EARLY = 0, PLAN_MASS, PLAN_SIEGE, NUM_PLANS };

@@ -65,6 +65,8 @@
 #     the first wave goes by about minute 11.
 #   * assault: "ASSAULT begins: army A against E of the enemy seen" when the army is far stronger than the enemy seen,
 #     and "ASSAULT ends" when it is not any more.
+#   * power plants: "powered defences: P% of the defences seen need power" (100% against China); the superweapon and
+#     the general's powers then hit power plants first.
 #
 # Options:
 #   --quick           fewer games (about a third of the time)
