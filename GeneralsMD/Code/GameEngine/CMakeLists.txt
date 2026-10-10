@@ -872,6 +872,7 @@ set(GAMEENGINE_SRC
     Source/GameClient/AssistUICoverage.cpp
     Source/GameClient/AssistUIIdle.cpp
     Source/GameClient/AssistUIRepeat.cpp
+    Source/GameClient/AssistUIInfo.cpp
     Source/Common/AssistOptions.cpp
     Source/GameLogic/AssistFormation.cpp
     Source/GameLogic/AssistStance.cpp

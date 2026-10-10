@@ -30,6 +30,7 @@
 #   coverage         the defence coverage view: rings of a ground and an air defence, uncovered stretches of the base edge
 #   repeat-replay    repeat production on the headquarters (W, Alt+Q): the worker is built again; recorded and played back
 #   repeat-save      the same, saved and loaded from the pause menu: the repeat state is in the save and goes on
+#   info-strip       the info strip: income, army value (two tanks), game time and the actions per minute of a few clicks
 #   view-options     the dialog's "+" of the zoom-out and the panel size rows: Options.ini has them; in a match the mouse
 #                    wheel zooms out beyond the game's limit
 site=$(cd "$1" && pwd)
@@ -45,8 +46,8 @@ MENU="c:515,449"; PAUSE_EXIT="c:399,412"; YES="c:318,368"; OK_REPORT="c:699,566"
 REPLAY_ROW="c:62,100"; REPLAY_PLAY="c:124,502"
 ASSIST_CHECKBOX="c:565,480"		# "Player assists allowed" on the skirmish setup screen
 ASSIST_BUTTON="c:208,481"			# "Player assists..." on the Options screen
-OPT_FORMATIONS="c:400,67"; OPT_CLOSE="c:399,445"		# in the Player assists dialog
-OPT_ZOOM_UP="c:607,337"; OPT_UISCALE_UP="c:607,367"		# the "+" buttons of the zoom-out and panel size rows
+OPT_FORMATIONS="c:400,67"; OPT_CLOSE="c:399,475"		# in the Player assists dialog
+OPT_ZOOM_UP="c:607,367"; OPT_UISCALE_UP="c:607,397"		# the "+" buttons of the zoom-out and panel size rows
 
 # the units the matches start with: left of the base, in the first screen
 UNITS="0:IronwoodRifleman:6+0:IronwoodTank:3+0:IronwoodRocketeer:4+0:IronwoodScout:2"
@@ -197,6 +198,11 @@ run view-options "w:3 $OPTIONS w:6 $ASSIST_BUTTON w:4 $OPT_ZOOM_UP w:2 $OPT_UISC
 	$OPT_CLOSE w:3 c:702,566 w:5 $SKIRMISH w:3 $START W:ASSIST~match~allowed k:Home w:5 m:400,300 \
 	wheel:500 w:1 wheel:500 w:1 wheel:500 w:1 wheel:500 w:1 wheel:500 w:1 wheel:500 w:3 s:zoomed \
 	W:ASSIST~camera~zoomed~out~to~1[0-9][0-9]%~of~the~game's~limit~.allowed~125%. N:RuntimeError" --arg -assistDebug
+
+# 14. Info strip: two tanks for the army value, a few selections for the actions per minute; the strip prints its values.
+run info-strip "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~2~x~IronwoodTank w:3 k:Home w:4 c:400,215 w:2 r:30,312,430,436 w:2 c:400,215 w:2 \
+	W:ASSIST~info~income=[0-9]+/min~army=[1-9][0-9]*~time=[0-9]+:[0-9][0-9]~apm=[1-9] s:strip N:RuntimeError N:ASSISTTEST~cannot" \
+	--arg -assistTest --arg 0:IronwoodTank:2 --arg -assistDebug --options AssistInfoStrip=1
 
 echo "$failed flow(s) failed"
 exit $((failed > 0))

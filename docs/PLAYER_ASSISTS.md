@@ -15,6 +15,7 @@ and are the same on every machine.
 | Unit stances | orders | Stance panel above the command bar for the selected units: Alt+K kite, Alt+R retreat when damaged (off / 30 / 50 / 70%), Alt+S spread out, Alt+X split fire. A player order always wins over a stance |
 | Idle hotkeys | selection | Alt+I selects the next idle army unit and centres the view on it, Ctrl+Alt+I selects all idle army units, Alt+W the next idle worker (builders and supply gatherers). The "Idle" counter at the top right shows how many stand idle; its buttons do the same |
 | Repeat production | orders | Select a production building: "Production" panel above the command bar, or Alt+Q. When its queue runs empty because the last unit came out, it queues that unit again, as long as the money stays at or above the reserve set in the options ("Repeat production keeps this much money", default 0) and the unit can still be built. Cancelling the queue by hand stops it until you queue a unit again. A "REPEAT" tag marks the buildings that repeat ("REPEAT (waiting)" while the money or the rules hold it back) |
+| Info strip | display | A slim line at the top of the screen: income per minute (the game's own cash per minute: supplies, derricks, bounties), army value (build cost of the armed units, in transports too), game time, and actions per minute (your commands in the last minute of game time, not the camera). The toolbar's "Info" button hides it. Only your own figures |
 | Camera zoom-out | view | Options → Player assists, "Camera zoom-out: N% of the game's limit" (100–300%, steps of 25): the mouse wheel zooms out that much further. The default view and the scripted cameras keep the game's height; more terrain is drawn while the camera is above it |
 | Panel size | view | "Size of the assist panels and the info strip" (50–300%, steps of 10): the boxes and the text of the assist panels, the info strip and the overlays' labels, on top of the size that follows the resolution. The Player assists dialog itself keeps its size |
 
@@ -71,6 +72,14 @@ skirmish against an Easy AI with the assist switched on, and look for the `ASSIS
    prerequisite (sell the radar for a unit that needs it): `... cannot build <unit> now (reason 1), waits`.
 3. Save the game with repeat on and load it: `ASSIST loaded: allowed=1, repeat production on N buildings`, and it goes on.
 4. Record the match and play it back: the same `queues ... again` lines and no `CRC Mismatch`.
+
+**Info strip** (display only, works in every match)
+1. Switch it on, start a skirmish, build a few units and harvest. Every ten seconds of game time the log has
+   `ASSIST info income=I/min army=A time=m:ss apm=P`.
+2. A pass: I matches the money that came in over the last minute (it is 0 before the first delivery and rises with each
+   truck), A is the sum of the build costs of your armed units (it drops when one dies, a dozer or truck adds nothing),
+   time is the game clock and P rises when you click and order fast and falls to 0 after a minute of doing nothing. The
+   strip on screen shows the same figures and never anything about the enemy.
 
 **Camera zoom-out and panel size** (no rule of the match needed: they only change the view)
 1. Set the zoom-out to 200% in the options: `ASSIST camera zoom-out allowance 200% of the game's limit`.

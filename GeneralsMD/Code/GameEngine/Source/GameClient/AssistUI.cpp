@@ -845,6 +845,7 @@ void AssistUI::reset()
 	AssistOddsUI::reset();
 	AssistIdleUI::reset();
 	AssistRepeatUI::reset();
+	AssistInfoUI::reset();
 	for (size_t i = 0; i < s_panels.size(); ++i)
 		s_panels[i]->destroy();
 	s_selection.m_valid = FALSE;
@@ -893,6 +894,7 @@ void AssistUI::update()
 	AssistAlertUI::init();
 	AssistOddsUI::init();
 	AssistRepeatUI::init();
+	AssistInfoUI::init();
 	if (s_toolbar == nullptr)
 		s_toolbar = new ToolbarPanel;
 	AssistIdleUI::init();		// after the toolbar: it is placed below it
@@ -924,6 +926,7 @@ void AssistUI::drawOverlays( View *view )
 	AssistAlertUI::drawOverlays( view );
 	AssistOddsUI::drawOverlays( view );
 	AssistRepeatUI::drawOverlays( view );
+	AssistInfoUI::drawOverlays( view );
 }
 
 //=================================================================================================
@@ -1026,7 +1029,7 @@ void AssistUI::drawAim()
 namespace
 {
 	enum { OPT_FORMATIONS = 1, OPT_PROTECT = 2, OPT_COVERAGE = 3, OPT_ALERT = 4, OPT_ODDS = 5, OPT_STANCES = 6, OPT_IDLE = 7,
-		OPT_REPEAT = 8, OPT_CLOSE = 100 };
+		OPT_REPEAT = 8, OPT_INFO = 9, OPT_CLOSE = 100 };
 
 	// rows with a number and "-" / "+" buttons (ids VALUE_DOWN + row, VALUE_UP + row)
 	enum { OPT_RESERVE = 50, OPT_ZOOM = 51, OPT_UISCALE = 52, VALUE_DOWN = 1000, VALUE_UP = 2000 };
@@ -1082,6 +1085,7 @@ public:
 		addButton( OPT_ALERT, 0, L"Base under attack: one click sends idle army units to defend", nullptr );
 		addButton( OPT_IDLE, 0, L"Idle hotkeys: select idle army units and workers, idle counter", nullptr );
 		addButton( OPT_REPEAT, 0, L"Repeat production: buildings build their last unit again", nullptr );
+		addButton( OPT_INFO, 0, L"Info strip: income, army value, game time, actions per minute", nullptr );
 		for (size_t i = 0; i < ARRAY_SIZE( valueRows ); ++i)
 		{
 			addButton( valueRows[i].m_id, 0, L"", nullptr );
@@ -1128,6 +1132,7 @@ public:
 		find( OPT_STANCES )->m_on = TheAssistOptions.m_stances;
 		find( OPT_IDLE )->m_on = TheAssistOptions.m_idleKeys;
 		find( OPT_REPEAT )->m_on = TheAssistOptions.m_repeatProduction;
+		find( OPT_INFO )->m_on = TheAssistOptions.m_infoStrip;
 		for (size_t i = 0; i < ARRAY_SIZE( valueRows ); ++i)
 		{
 			const ValueRow &r = valueRows[i];
@@ -1197,6 +1202,7 @@ public:
 			case OPT_STANCES: TheAssistOptions.m_stances = !TheAssistOptions.m_stances; break;
 			case OPT_IDLE: TheAssistOptions.m_idleKeys = !TheAssistOptions.m_idleKeys; break;
 			case OPT_REPEAT: TheAssistOptions.m_repeatProduction = !TheAssistOptions.m_repeatProduction; break;
+			case OPT_INFO: TheAssistOptions.m_infoStrip = !TheAssistOptions.m_infoStrip; break;
 			case OPT_CLOSE: closeDialog(); return;
 			default:
 			{

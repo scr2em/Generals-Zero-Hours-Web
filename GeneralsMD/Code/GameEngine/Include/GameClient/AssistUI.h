@@ -271,6 +271,17 @@ public:
 
 
 //-------------------------------------------------------------------------------------------------
+/// The info strip (AssistUIInfo.cpp).
+class AssistInfoUI
+{
+public:
+	static void init();
+	static void reset();
+	static void drawOverlays( View *view );
+};
+
+
+//-------------------------------------------------------------------------------------------------
 /// Repeat production (AssistUIRepeat.cpp).
 class AssistRepeatUI
 {

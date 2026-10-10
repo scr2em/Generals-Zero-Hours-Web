@@ -67,6 +67,7 @@
 #include "GameLogic/VictoryConditions.h"
 #include "GameLogic/Weapon.h"
 
+#include "GameClient/AssistHooks.h"
 #include "GameClient/CommandXlat.h"
 #include "GameClient/ControlBar.h"
 #include "GameClient/Drawable.h"
@@ -352,6 +353,8 @@ void GameLogic::prepareNewGame( GameMode gameMode, GameDifficulty diff, Int rank
 
 }
 
+AssistCommandHook TheAssistCommandHook = nullptr;
+
 //-------------------------------------------------------------------------------------------------
 /** This message handles dispatches object command messages to the
   * appropriate objects.
@@ -404,6 +407,10 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 
 				if(TheStatsCollector)
 					TheStatsCollector->collectMsgStats(msg);
+
+				// the info strip of the player assists counts the local player's commands (display only)
+				if (TheAssistCommandHook)
+					TheAssistCommandHook(msg);
 			}
 		}
 	}
