@@ -178,6 +178,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_huntOrders(0),
 	m_contestOrders(0),
 	m_nextContest(0),
+	m_expandCost(0.0f),
 	m_airPhase(0),
 	m_airTransport(INVALID_ID),
 	m_numSquad(0),
@@ -2271,12 +2272,14 @@ void AIStrategy::updateEconomy()
 void AIStrategy::tryExpand()
 {
 	const UnsignedInt now = TheGameLogic->getFrame();
+	m_expandCost = 0.0f;
 	const UnsignedInt minutes = now / (LOGICFRAMES_PER_SECOND * 60);
 	if (minutes < 3 || now - m_lastExpandFrame < 90 * LOGICFRAMES_PER_SECOND)
 		return;
 	if (m_expansions >= 1 + (Int)(minutes / 6) || m_expansions >= 3)
 		return;
-	if (m_player->getAttackedFrame() + 20 * LOGICFRAMES_PER_SECOND > now)
+	// Only a real alarm at the base stops it: an enemy that pokes at some object of ours now and then must not keep us poor.
+	if (m_bdActive)
 		return;
 
 	// The supply center template is whatever our build list uses for it.
@@ -2298,12 +2301,15 @@ void AIStrategy::tryExpand()
 	const ThingTemplate *center = TheThingFactory->findTemplate(centerName);
 	if (center == nullptr)
 		return;
-	if (m_player->getMoney()->countMoney() < 2 * (Int)center->calcCostToBuild(m_player))
-		return;
-
 	Object *source = m_ai->findSupplyCenter(1500);
 	if (source == nullptr || !m_ai->isLocationSafe(source->getPosition(), center))
 		return;
+	// The money for it is kept back from the surplus production (updateSurplus) until it is there.
+	m_expandCost = (Real)center->calcCostToBuild(m_player);
+	if (m_player->getMoney()->countMoney() < (Int)m_expandCost + 500)
+		return;
+	AI_TRACE("EXPAND: supply center at the supply source at (%.0f,%.0f)", source->getPosition()->x, source->getPosition()->y);
+	m_expandCost = 0.0f;
 	m_ai->buildBySupplies(1500, centerName);
 	m_lastExpandFrame = now;
 	++m_expansions;
@@ -2736,6 +2742,7 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferInt(&m_surplusOrdered);
 		xfer->xferInt(&m_surplusInfantry);
 		xfer->xferUnsignedInt(&m_nextContest);
+		xfer->xferReal(&m_expandCost);
 	}
 }
 

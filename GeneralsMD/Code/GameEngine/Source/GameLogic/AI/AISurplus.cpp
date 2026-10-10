@@ -115,7 +115,7 @@ void AIStrategy::updateSurplus()
 			break;
 		}
 	}
-	const Real reserve = skill().m_surplusReserve + pending;
+	const Real reserve = skill().m_surplusReserve + m_expandCost + pending;
 	const Real infantryShare = skill().m_surplusInfantryShare;
 	Real money = (Real)m_player->getMoney()->countMoney();
 	if (money < reserve)

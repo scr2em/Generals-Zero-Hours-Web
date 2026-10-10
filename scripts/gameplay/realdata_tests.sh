@@ -54,6 +54,7 @@
 #     team joins the next wave or follow-up group (it does not stay in the base until the end).
 #   * enemy supply near ours: "CONTEST: enemy <supply center> at (x,y), D from our supply center: N team(s) ... attack it"
 #     when the enemy builds a supply center next to one of the Expert's.
+#   * expansion: "EXPAND: supply center at the supply source at (x,y)" at least once in the first 10 minutes.
 #
 # Options:
 #   --quick           fewer games (about a third of the time)
