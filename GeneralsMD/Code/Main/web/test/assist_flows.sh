@@ -132,9 +132,10 @@ run base-alert-replay "$ALERT_GAME $ALERT_DO f:300 \
 	$MENU w:4 $PAUSE_EXIT w:4 $YES w:10 $OK_REPORT w:6 $BACK w:5 $REPLAYS w:5 $REPLAY_ROW w:1 $REPLAY_PLAY W:replay=1 f:600 \
 	K:2:ASSIST~base~defend:~[1-9]~units~sent~to N:CRC~Mismatch N:RuntimeError" --arg -assistTest --arg "$ALERT_UNITS" --arg -assistDebug --options AssistBaseAlert=1
 
-# 9. Odds meter: three own riflemen are selected, the mouse is moved onto the lone enemy rifleman: the verdict is favourable.
+# 9. Odds meter: three own riflemen are selected, the mouse is moved onto the middle of the lone enemy rifleman (it shoots the
+#    headquarters; at its edge the hover comes and goes with the firing animation): the verdict is favourable.
 run odds "w:3 $SKIRMISH w:3 $START W:ASSISTTEST~created~1~x~IronwoodRifleman~for~player~1 w:3 k:Home w:5 r:120,345,260,400 w:4 \
-	kd:Alt w:1 k:KeyO w:1 ku:Alt w:2 W:ASSIST~odds~view~on s:viewon m:700,270 w:2 m:699,268 w:3 W:ASSIST~odds~probe~armed s:hover W:ASSIST~odds~kind=1~ratio=[0-9.]+~own=[1-3]~enemy=1 s:odds \
+	kd:Alt w:1 k:KeyO w:1 ku:Alt w:2 W:ASSIST~odds~view~on s:viewon m:692,281 w:2 m:691,279 w:3 W:ASSIST~odds~probe~armed s:hover W:ASSIST~odds~kind=1~ratio=[0-9.]+~own=[1-3]~enemy=1 s:odds \
 	N:RuntimeError N:ASSISTTEST~cannot" --arg -assistTest --arg "$ALERT_UNITS" --arg -assistDebug --options AssistOddsMeter=1
 
 # 11. Unit stances.  The enemy appears at a late logic frame (the last field of the "-assistTest" entry), so the stance is set before
