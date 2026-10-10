@@ -1,0 +1,1004 @@
+{
+ "description": "Original placeholder game data: one faction, one skirmish map. Not Command & Conquer content.",
+ "files": [
+  {
+   "path": "art/terrain/swcliff.tga",
+   "sha256": "5f860e3f7e82da57b26c3fdb7c7d049b8ba293d50f30a94e2f940d6cceb46807",
+   "size": 47959
+  },
+  {
+   "path": "art/terrain/swdirt.tga",
+   "sha256": "992be6d357f0042750a1ec340a1fdab0eb713f070218366133e1c1302f36f05e",
+   "size": 42695
+  },
+  {
+   "path": "art/terrain/swgrass.tga",
+   "sha256": "d95e23291f1110566e120d3277017b9fd5051ca9bca6da19877a4764053bb91a",
+   "size": 43049
+  },
+  {
+   "path": "art/terrain/swrock.tga",
+   "sha256": "e524d718f61ea460fb526e7a5d32049e6ed2be35fd6e5695647944356919b871",
+   "size": 44328
+  },
+  {
+   "path": "art/terrain/swsand.tga",
+   "sha256": "1b412d6d532de44cb418b75ebb7cf268bb610e8b7055ad4def0f709ab042bc43",
+   "size": 48402
+  },
+  {
+   "path": "art/textures/alphaclip.tga",
+   "sha256": "4e64a28d347a5e896ab790ba7e8dc9660005fa4c2c9731e0fbdb14dd08f75f26",
+   "size": 4070
+  },
+  {
+   "path": "art/textures/cloudmap.tga",
+   "sha256": "b5534dcae6935728d6df42c83bf7ce5e5ae1665e5cda13b27acf73394851e373",
+   "size": 36560
+  },
+  {
+   "path": "art/textures/exlaser.tga",
+   "sha256": "18bac4111cb2b22656c71b53b15f4cd65df371a15d4653a97677e9968e75e741",
+   "size": 4050
+  },
+  {
+   "path": "art/textures/exscorch01.tga",
+   "sha256": "a3a1a2df5a706550489226a63da84ef1ef049576ae97be147bc4080d797a6d42",
+   "size": 11827
+  },
+  {
+   "path": "art/textures/missing.tga",
+   "sha256": "4ced267272658e84ece7ccfb88c8fb77f2cbf7a8d6df9367d386e9c3881bb040",
+   "size": 530
+  },
+  {
+   "path": "art/textures/noise0000.tga",
+   "sha256": "4fdc71934da6bd53dbbcd9af0d7851cd4dc8a67069e1dbcfa157cbc34f359010",
+   "size": 11579
+  },
+  {
+   "path": "art/textures/shadow.tga",
+   "sha256": "5707438cb48bb45ceac487c131c432677c2469d2dcb8307ca489a2a99402ab2d",
+   "size": 12146
+  },
+  {
+   "path": "art/textures/sp_bar.tga",
+   "sha256": "c47349921631d4ff4a9778f6b16570bc917ecad149fbf2fd387ab414d4eadf72",
+   "size": 5153
+  },
+  {
+   "path": "art/textures/sp_flame.tga",
+   "sha256": "07a3430e42aa232b638896fe4d3f429cadaa288b233f205cf6f71eefbbd65593",
+   "size": 13209
+  },
+  {
+   "path": "art/textures/sp_iw.tga",
+   "sha256": "2965e05c7c66a6afb0ba2c47995492c5462058f771619cd3606d3e268378cbf0",
+   "size": 3007
+  },
+  {
+   "path": "art/textures/sp_load_bg.tga",
+   "sha256": "76396f94362932a6f24229687744c42fabbbc29964284adeac92e86aaeba77ae",
+   "size": 29567
+  },
+  {
+   "path": "art/textures/sp_menu_bg.tga",
+   "sha256": "a3dc940a2fb47d7db9e6495b0e18f320cd8a16595ea815d0459c5e6fb3b12100",
+   "size": 29495
+  },
+  {
+   "path": "art/textures/sp_score_bg.tga",
+   "sha256": "3844f9c5a09d08d62f456be05e0ff677432da15d73f80234e9a8f73aa3f96a24",
+   "size": 29201
+  },
+  {
+   "path": "art/textures/sp_shadow.tga",
+   "sha256": "5707438cb48bb45ceac487c131c432677c2469d2dcb8307ca489a2a99402ab2d",
+   "size": 12146
+  },
+  {
+   "path": "art/textures/sp_smoke.tga",
+   "sha256": "0d203fe5289f2a57ad2a19f75898fd7039efd8c14d1fdf2b266556aacadf6125",
+   "size": 11134
+  },
+  {
+   "path": "art/textures/sp_ui.tga",
+   "sha256": "9481e4ee2b1f9a348a0cad811f23492bc9519592c680450cba412851288d713f",
+   "size": 82753
+  },
+  {
+   "path": "art/textures/swsky.tga",
+   "sha256": "7e05221d271b46802d7bd94fd02303d11cb853e83e77799a9a18301932caa38b",
+   "size": 11647
+  },
+  {
+   "path": "art/textures/swwater.tga",
+   "sha256": "295401bb46f46646a408cf30368f9d2b5f92b920768f625491e5c10c765181e9",
+   "size": 42359
+  },
+  {
+   "path": "art/textures/tbbib.tga",
+   "sha256": "155978e33e830fa00313b132123f733638076e00cb1fd3d1e20e7eecb12df5a7",
+   "size": 10431
+  },
+  {
+   "path": "art/textures/tbredbib.tga",
+   "sha256": "155978e33e830fa00313b132123f733638076e00cb1fd3d1e20e7eecb12df5a7",
+   "size": 10431
+  },
+  {
+   "path": "art/textures/tscloudmed.tga",
+   "sha256": "b5534dcae6935728d6df42c83bf7ce5e5ae1665e5cda13b27acf73394851e373",
+   "size": 36560
+  },
+  {
+   "path": "art/textures/tsmoonlarg.tga",
+   "sha256": "4c46134bda67f5117ec1f8e4e45be45c351741861a083f37b787ad30c977bd4a",
+   "size": 14397
+  },
+  {
+   "path": "art/textures/tsnoiseurb.tga",
+   "sha256": "c6e905a972d206ecca4d6621df7325caecaba7f6f04b57a78d1a7ab939e373c5",
+   "size": 11574
+  },
+  {
+   "path": "art/textures/twalphaedge.tga",
+   "sha256": "dcb536e074ceac73610e3ebcef1a3406d2ef5594443e20f6cc2bf5072b884fa8",
+   "size": 16466
+  },
+  {
+   "path": "art/textures/watersurfacebubbles.tga",
+   "sha256": "729dfb79c8e46f9e07614a57f0af7fd9710199bba1a21a54b087e4103064236f",
+   "size": 2138
+  },
+  {
+   "path": "art/textures/wave1.tga",
+   "sha256": "dc27441044bb2c60d7880248d603c531504f0c466efcc4a0df0c2abd3304ce8b",
+   "size": 8869
+  },
+  {
+   "path": "art/textures/wave2.tga",
+   "sha256": "dc27441044bb2c60d7880248d603c531504f0c466efcc4a0df0c2abd3304ce8b",
+   "size": 8869
+  },
+  {
+   "path": "art/textures/wave256.tga",
+   "sha256": "3d0b97ea35e110ba7a984269dfa8a1995c5f9407e2721f3c3c3549d9104f4fca",
+   "size": 31918
+  },
+  {
+   "path": "art/w3d/iw_barracks.w3d",
+   "sha256": "5c63786c8dce2db7cf96376dcff2030a880324f3deabb7b116b8faf1016ae8b4",
+   "size": 12954
+  },
+  {
+   "path": "art/w3d/iw_factory.w3d",
+   "sha256": "ce50d5a26750bbd1957476c88277c3af0192160d4ce0e252457657933dfa422c",
+   "size": 17050
+  },
+  {
+   "path": "art/w3d/iw_hq.w3d",
+   "sha256": "fea83bda1f6a4dea753c7720dbe9fab669d526f2dd4c9fb7f62583ce7f525bba",
+   "size": 32282
+  },
+  {
+   "path": "art/w3d/iw_power.w3d",
+   "sha256": "b176c62c9a742f0643dab0b8a2da0e6f5685b0ba2a141b3c0794ab92e3594ce4",
+   "size": 28090
+  },
+  {
+   "path": "art/w3d/iw_rifleman.w3d",
+   "sha256": "eee02826e37e08f6053e49dde2d32bf047537bb218771be0b635d0af0e74aa65",
+   "size": 19866
+  },
+  {
+   "path": "art/w3d/iw_rocketeer.w3d",
+   "sha256": "1dc59359079d6b3f08fc8e1c2951e9df18a252d877866fb0543c9570882981a9",
+   "size": 21146
+  },
+  {
+   "path": "art/w3d/iw_scout.w3d",
+   "sha256": "d2c77fae5a25132bc70cffaace919ebaafe95edc794d59e2e83a849f7ee83609",
+   "size": 31514
+  },
+  {
+   "path": "art/w3d/iw_tank.w3d",
+   "sha256": "b86560c3ff932c9863d25962b70ff498c8055f6dd73cbe489694f9b0b7e7851a",
+   "size": 40410
+  },
+  {
+   "path": "art/w3d/iw_worker.w3d",
+   "sha256": "25c737cafdefefebeaaab0184191b8fd85786337c01d07f7a8f884c7b53fc356",
+   "size": 19866
+  },
+  {
+   "path": "art/w3d/locater01.w3d",
+   "sha256": "28e6e35821bf1a5b1cc2929880bdf64cc6274f9bc7ca4e601967e28451d98d75",
+   "size": 11770
+  },
+  {
+   "path": "art/w3d/locater02.w3d",
+   "sha256": "308d21c6f2247e6190dec2a9b18657b503e90f25c6de5ecd665f38e95734d5f0",
+   "size": 2618
+  },
+  {
+   "path": "art/w3d/new_skybox.w3d",
+   "sha256": "86753a19d404f73fb951359ac122f57c296893c8bab921a3439155c9e9c7e5f7",
+   "size": 1593
+  },
+  {
+   "path": "art/w3d/scmnode.w3d",
+   "sha256": "91c576903c10d0f6331edf73ef1744bbb37d98c593bb99e3b2163afd673410ec",
+   "size": 6842
+  },
+  {
+   "path": "art/w3d/sp_flag.w3d",
+   "sha256": "56452bc774ee5b9fa56286dcff4e0b3894eeb12152ae9ec710bec5f888cc963c",
+   "size": 3098
+  },
+  {
+   "path": "art/w3d/sp_pine.w3d",
+   "sha256": "70cc74b15a41e83ed2dc5b390bf1f82f3cb4b2fa88f2c7cad44a8a214af5d9dd",
+   "size": 12154
+  },
+  {
+   "path": "art/w3d/sp_rock.w3d",
+   "sha256": "cc6f52d8e9294b950fd254762c7a202aef9ebd4ef17fa151bb5ca8803f8ebdf7",
+   "size": 11962
+  },
+  {
+   "path": "art/w3d/sp_tree.w3d",
+   "sha256": "f277e3cc295054f1e130c811d7750436a0c2cb1e7370e21ad2aa2c9e1f8fa661",
+   "size": 13754
+  },
+  {
+   "path": "art/w3d/spmovehint.w3d",
+   "sha256": "60ec5d1400941c7abc437061e21eb88f72d14e81ec87964f645e6c42d04142f7",
+   "size": 9210
+  },
+  {
+   "path": "data/audio/sounds/attack_unit.wav",
+   "sha256": "4a16875f87f34baa0d79a134f0d7208c268d3dcee9d6202be2b11b7112cac36f",
+   "size": 6216
+  },
+  {
+   "path": "data/audio/sounds/building_collapse.wav",
+   "sha256": "5bb863772d04ff31516fa928e10abe6d99e3a4516a2b7af4b40e2fb546409580",
+   "size": 105884
+  },
+  {
+   "path": "data/audio/sounds/cannon_fire.wav",
+   "sha256": "c760a58321e933d26124ae3dde9a9b874dab56e5ae4187c43d6021d0a8092840",
+   "size": 30912
+  },
+  {
+   "path": "data/audio/sounds/construction_done.wav",
+   "sha256": "d561dd62e072e6a1f8d792a2ad9fe92dabd74ff01bb2fb403f344c3391e534f5",
+   "size": 23414
+  },
+  {
+   "path": "data/audio/sounds/construction_loop.wav",
+   "sha256": "6e45bcd38413be5bd6e4607bd2238c5d72870761ed6075388e0d6760e7e353b1",
+   "size": 35322
+  },
+  {
+   "path": "data/audio/sounds/engine_loop.wav",
+   "sha256": "788ca9cbb33efe3baa586c92834257d667548b3cb0f1792d05a7838be6b897d8",
+   "size": 44144
+  },
+  {
+   "path": "data/audio/sounds/explosion_big.wav",
+   "sha256": "3b7147d52de9e63c46f969cbfe675ba1ed259ab2792ffdab206fc1d596dee9a4",
+   "size": 66194
+  },
+  {
+   "path": "data/audio/sounds/explosion_small.wav",
+   "sha256": "95dfd160d6880e4dc37cc058829f7fef0e2154a4a9d15f45b01014f1fdd5bd85",
+   "size": 35324
+  },
+  {
+   "path": "data/audio/sounds/gui_blip.wav",
+   "sha256": "3ae8836e053c28c86918b3151fc3a3b0d60ad779d9afc6e590b702a6e2f6d5d9",
+   "size": 2690
+  },
+  {
+   "path": "data/audio/sounds/gui_click.wav",
+   "sha256": "0e909981f85bc79b6d9f193b498a493b9c442e7d5bc6603530ec44d308674643",
+   "size": 2028
+  },
+  {
+   "path": "data/audio/sounds/gui_click_disabled.wav",
+   "sha256": "7ffa11223ca293e7bd31103b598770678f6c09c6e5b77edd925daa13bd767be2",
+   "size": 8420
+  },
+  {
+   "path": "data/audio/sounds/gui_combo_click.wav",
+   "sha256": "21d51b47b7f6dffef7eec13c2a4da7e025a3ff604535af871bdf9ce205768556",
+   "size": 1586
+  },
+  {
+   "path": "data/audio/sounds/gui_command_click.wav",
+   "sha256": "15a5442e35952708323cf56fd2f3e6a7df613d3d3c726362114053a3db08c884",
+   "size": 4894
+  },
+  {
+   "path": "data/audio/sounds/gui_message.wav",
+   "sha256": "9f79c955627dc8ab3c847640f8267dd5a629ef8df7cd0379b267ed94f0652203",
+   "size": 11068
+  },
+  {
+   "path": "data/audio/sounds/gui_type.wav",
+   "sha256": "83a705378c43e71c4c88abadc9a55bb0cf11df7d2b22214d61c9e2dd9a9949bf",
+   "size": 836
+  },
+  {
+   "path": "data/audio/sounds/money.wav",
+   "sha256": "7bc9f9ccdf502587143809be120fec95f3b3ac4f00bfbd17bf461e350b84d8a4",
+   "size": 12392
+  },
+  {
+   "path": "data/audio/sounds/move_unit.wav",
+   "sha256": "0026c940624853c7e312553f23b43ea80d6b7fc7b7250590e484743446860746",
+   "size": 4454
+  },
+  {
+   "path": "data/audio/sounds/no_can_do.wav",
+   "sha256": "17bd068f8149bcc382c35ba217d6f4a647696d73f4472fa9cf89a07c1d89a89e",
+   "size": 13714
+  },
+  {
+   "path": "data/audio/sounds/radar_ping.wav",
+   "sha256": "4baab14fa3ad97ccfe4765204be973c52155718e42cab8641b79ec312599b74e",
+   "size": 21208
+  },
+  {
+   "path": "data/audio/sounds/rifle_fire.wav",
+   "sha256": "096592b84e717f82521831af918dd8dbf048c60d4703de806d03d6a40522165f",
+   "size": 8864
+  },
+  {
+   "path": "data/audio/sounds/rocket_fire.wav",
+   "sha256": "78d27f884833d4dc8717f286ad699c64e6133fcbfe88d2155d99510b7d4aee58",
+   "size": 39734
+  },
+  {
+   "path": "data/audio/sounds/select_building.wav",
+   "sha256": "e26e9328280a9d10f5670949b30acdb5bdc47e0f1f38294df164cad6271492ca",
+   "size": 8422
+  },
+  {
+   "path": "data/audio/sounds/select_unit.wav",
+   "sha256": "a63042c6ed85bd157a03899812ddd0a734447214461dd2543c1f86aef38a3c44",
+   "size": 4674
+  },
+  {
+   "path": "data/audio/sounds/unit_created.wav",
+   "sha256": "c41fe76a7483b0b535e3902b58f01af2c26da4d7a41b57acf7a90a184d0bf7b3",
+   "size": 11510
+  },
+  {
+   "path": "data/audio/tracks/starter_battle.wav",
+   "sha256": "d84ffe0fda95f8b34bb09174fa8cf443b0b5de881627e5f8bf1daaaec8b03613",
+   "size": 198716
+  },
+  {
+   "path": "data/audio/tracks/starter_load.wav",
+   "sha256": "aac921617d047e7b25b3983a43466bfc85b3ae1bf0139b57280fadd40cc90679",
+   "size": 139836
+  },
+  {
+   "path": "data/audio/tracks/starter_menu.wav",
+   "sha256": "0b8ddb3f5bd1b20cfddfc8289eb40f5dcd5c2b4d1c74c80e386b6fe09222e0f9",
+   "size": 278076
+  },
+  {
+   "path": "data/audio/tracks/starter_score.wav",
+   "sha256": "511cfcf41b1562d66ca938ba5fa3ec8743eaf5cd7237bdbd19f5b42f84695240",
+   "size": 167740
+  },
+  {
+   "path": "data/english/commandmap.ini",
+   "sha256": "c720d1ba2c4921179af483016bd18ce5b20e42b1cc74d8f03802b76e03b45938",
+   "size": 81
+  },
+  {
+   "path": "data/english/headertemplate.ini",
+   "sha256": "9d1bd6ffbb3b7c24087e285a41a75a5fd42938332b4a4399a7ceb44c27e4a342",
+   "size": 661
+  },
+  {
+   "path": "data/english/language.ini",
+   "sha256": "14ed7ffcdebe57d3786c7befafec8258860eec0daeeaa371ff81976331b0a36b",
+   "size": 1200
+  },
+  {
+   "path": "data/fonts/dejavu-license.txt",
+   "sha256": "63d3ba759d12804c5b31a9d5940d855c1820d1f5999e6b0872eb1c7ff045fbc9",
+   "size": 3859
+  },
+  {
+   "path": "data/fonts/dejavusans-bold.ttf",
+   "sha256": "5c1247acef7f2b8522a31742c76d6adcb5569bacc0be7ceaa4dc39dd252ce895",
+   "size": 708920
+  },
+  {
+   "path": "data/fonts/dejavusans.ttf",
+   "sha256": "ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280",
+   "size": 759720
+  },
+  {
+   "path": "data/generals.str",
+   "sha256": "be2887bc044091fb903147835a729ddd0c23f1800fe8c230d81f2d5ef57360f5",
+   "size": 32761
+  },
+  {
+   "path": "data/ini/aidata.ini",
+   "sha256": "e9d23be2c2df418ad9870b2fa8bd8efeb97e82fdfd1e990e956e132b1a14855e",
+   "size": 2784
+  },
+  {
+   "path": "data/ini/animation2d.ini",
+   "sha256": "59c296ba7a5675c9d3e319afeadcc0e8434ca53194d1f3d6a93e5291bf0bc273",
+   "size": 2282
+  },
+  {
+   "path": "data/ini/armor.ini",
+   "sha256": "14ee8c50a843f509abab62ccc852fc5fe5e8b7d78a7a8d7db1e4deeffd3c9980",
+   "size": 1141
+  },
+  {
+   "path": "data/ini/audiosettings.ini",
+   "sha256": "9a67d6c7cea35312153da2289b6004f91a8b151c6fbb765130c77aea2c4fc348",
+   "size": 1004
+  },
+  {
+   "path": "data/ini/campaign.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/challengemode.ini",
+   "sha256": "4badd556c04c87f877aa6aa5513badbba658785dc311736bdfd2ddfde737379c",
+   "size": 671
+  },
+  {
+   "path": "data/ini/commandbutton.ini",
+   "sha256": "472769524a25ea512dde1ba9a2ea8b04aeffa26640d56ab33f89b0a4ed11420f",
+   "size": 5914
+  },
+  {
+   "path": "data/ini/commandmap.ini",
+   "sha256": "d94cc1e66d0416ec34551fab2d7a3fb3535f7d0972d89e3068ace0754ac4facc",
+   "size": 17751
+  },
+  {
+   "path": "data/ini/commandset.ini",
+   "sha256": "2183142b021e6ae6c53bd7c816a0dc1d98a2b23888f1210162464f9bd1e3a069",
+   "size": 1276
+  },
+  {
+   "path": "data/ini/controlbarresizer.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/controlbarscheme.ini",
+   "sha256": "5092e3a9fdb2132604555025208ff1352ba007afeaeeac5eacb02ddd907cf409",
+   "size": 4289
+  },
+  {
+   "path": "data/ini/crate.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/credits.ini",
+   "sha256": "0c7552f3b260f06c3cfbebe694615a0d0078cdf04c2525298642880adf4049db",
+   "size": 3234
+  },
+  {
+   "path": "data/ini/damagefx.ini",
+   "sha256": "a952d0b2c0120e75b11bf3668ef21e2286094f7a47dd6b3b685da54a27ed3713",
+   "size": 55
+  },
+  {
+   "path": "data/ini/default/aidata.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/commandbutton.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/controlbarscheme.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/crate.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/fxlist.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/gamedata.ini",
+   "sha256": "964acf12641d4cbb517389daa1dec71f0fd7dc9a489f6d78fe1b398b41693d7c",
+   "size": 2576
+  },
+  {
+   "path": "data/ini/default/multiplayer.ini",
+   "sha256": "fd45a3fc20aad44dded7801fb2931263ff8906b1777b01fcd5d38025270f6cae",
+   "size": 1498
+  },
+  {
+   "path": "data/ini/default/music.ini",
+   "sha256": "4b6269c1ce52ff3c324b1d98289a6e76f07f2d24a4682135adebb64d691fdb8c",
+   "size": 236
+  },
+  {
+   "path": "data/ini/default/object.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/objectcreationlist.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/playertemplate.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/roads.ini",
+   "sha256": "f2fef0d519718517c2bb58bc3bcd1ad6b7bab4571f8cec89b8b3a7ae29c64db3",
+   "size": 79
+  },
+  {
+   "path": "data/ini/default/science.ini",
+   "sha256": "a761665a2eaacab0b4bf72154d0c29fc3a37e9ac075b1079fbdd7dc5f1fc5f4c",
+   "size": 96
+  },
+  {
+   "path": "data/ini/default/shellmenuscheme.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/soundeffects.ini",
+   "sha256": "be1a4f4742bc4227a385266bd315cc726dcf7e429f087fda2615664141dc0d31",
+   "size": 340
+  },
+  {
+   "path": "data/ini/default/specialpower.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/speech.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/terrain.ini",
+   "sha256": "23f58185a11a498bf999cea776d614b98b32015023afa79c75861edc483bd2b1",
+   "size": 154
+  },
+  {
+   "path": "data/ini/default/upgrade.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/video.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/voice.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/default/water.ini",
+   "sha256": "2bd96370a9662a8bbca511a95f051850a84768be3d00d69ab4d32de5a94be6e8",
+   "size": 417
+  },
+  {
+   "path": "data/ini/default/weather.ini",
+   "sha256": "1e48898dc3587b4fc4ecebd937091aa04be260d207c3666ef92468d5ec14fd03",
+   "size": 417
+  },
+  {
+   "path": "data/ini/drawgroupinfo.ini",
+   "sha256": "64d04238b53274b4ae9eb1d5db196f4e6e948b3851554c72235cc410c128ae15",
+   "size": 374
+  },
+  {
+   "path": "data/ini/eva.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/fxlist.ini",
+   "sha256": "6693dd2271ff84265a8c9f6bf5a471acef46a9178de4f90a5b279aca0ec4e130",
+   "size": 1749
+  },
+  {
+   "path": "data/ini/gamedata.ini",
+   "sha256": "473bdf142cfce73f409d8125c184ad3020270b596a0aaca0c02a66d7aeb036d6",
+   "size": 2857
+  },
+  {
+   "path": "data/ini/gamelod.ini",
+   "sha256": "e624bcc6cafbdf1af3465266f7cd7c1a1d3146af0e6a7bb3b563441efef9dc9d",
+   "size": 2649
+  },
+  {
+   "path": "data/ini/gamelodpresets.ini",
+   "sha256": "a64e8e86eb481d77cbdecf016d1d351174ac8eec107ffcf05b125b8ec3375140",
+   "size": 125
+  },
+  {
+   "path": "data/ini/ingameui.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/locomotor.ini",
+   "sha256": "81f127d64b22c88ca1f581efaee9ac432ca8e5e7d9122e31c17659a1a88ca043",
+   "size": 2184
+  },
+  {
+   "path": "data/ini/mappedimages/handcreated/starterui.ini",
+   "sha256": "32a3937b2edc81cf3dfd404ca002ac34c640ac536fbb84793776b4abe5d9f074",
+   "size": 9006
+  },
+  {
+   "path": "data/ini/miscaudio.ini",
+   "sha256": "d4a1ee604060b16e9b936969d7370d68aa1d27432e9cc6dfed2a9343933f6cd6",
+   "size": 692
+  },
+  {
+   "path": "data/ini/mouse.ini",
+   "sha256": "8c73a312fbb8860e8dca3a299837927920f2680b74018e8057334da609b0077d",
+   "size": 3495
+  },
+  {
+   "path": "data/ini/multiplayer.ini",
+   "sha256": "2a3b976fa49f33097c77d736003a06a1dc43daaf8faedc1e7a42c4398a1eec6e",
+   "size": 121
+  },
+  {
+   "path": "data/ini/music.ini",
+   "sha256": "8f20d4fd79164468d8ed2db70dddf57ee303789a831d00b1183b4f36e4b57cf7",
+   "size": 568
+  },
+  {
+   "path": "data/ini/object.ini",
+   "sha256": "846237de19944c6a59718006424345a169a30c553af4cc2b2db89a2b28bfc2bd",
+   "size": 25716
+  },
+  {
+   "path": "data/ini/objectcreationlist.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/particlesystem.ini",
+   "sha256": "4f9526619a70ade18456df1e25cefa68a1273fc252fefb7e5f369c762e71db7b",
+   "size": 5431
+  },
+  {
+   "path": "data/ini/playertemplate.ini",
+   "sha256": "7ca82d4d35bf8e6e000217f01d836c0ae456520181c0294964dd06788a5e6ba0",
+   "size": 2704
+  },
+  {
+   "path": "data/ini/rank.ini",
+   "sha256": "8545b700349810ea61322afce3a0c8290fd73afed7a1badfe04c4b27b36c0f83",
+   "size": 696
+  },
+  {
+   "path": "data/ini/roads.ini",
+   "sha256": "07dcc6eea98f35d7c9aab50cb842c23022c1a9deaefb3686c6ed0e39bcf24421",
+   "size": 27
+  },
+  {
+   "path": "data/ini/science.ini",
+   "sha256": "5b0a22e041942bbf7dcccdf4da8d03f8b6944769e2342932655b3bcf482cff75",
+   "size": 30
+  },
+  {
+   "path": "data/ini/shellmenuscheme.ini",
+   "sha256": "84d3566cc39db4a12436f11779730495fc62829bb272ddbe219b12d3dc8cf83b",
+   "size": 367
+  },
+  {
+   "path": "data/ini/soundeffects.ini",
+   "sha256": "5ff9f9e0eaf23b33fcae90a2ee74358156db4b0a66bef44e65dd2840b20602fe",
+   "size": 5624
+  },
+  {
+   "path": "data/ini/specialpower.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/speech.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/terrain.ini",
+   "sha256": "0f3e736939e27fc5a3f277391e2eb05250f0c69c25ca43f2cdea259164a62563",
+   "size": 703
+  },
+  {
+   "path": "data/ini/upgrade.ini",
+   "sha256": "dcedbe8e74209c4808c3b781c29214668d3c3082aa442b93d4aecfd41db3519d",
+   "size": 338
+  },
+  {
+   "path": "data/ini/video.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/voice.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/water.ini",
+   "sha256": "2e23ae9df0679a02bf4fb7b9268dc33e250b00ec1e28cc5684259a07bb8bc259",
+   "size": 1879
+  },
+  {
+   "path": "data/ini/weapon.ini",
+   "sha256": "ee04bb555fbecc3f1ecd20bc25c1f098af6b05a0ff01cb47bf0fc7ba65899b99",
+   "size": 4216
+  },
+  {
+   "path": "data/ini/weather.ini",
+   "sha256": "769eed895e7b13dfb039d7bdf5d6d54554c9f47e0816831251ddba94224f51ab",
+   "size": 39
+  },
+  {
+   "path": "data/ini/webpages.ini",
+   "sha256": "aaff134aa2ae37eb2b974bbbd346b38af5c72f70edaae7b466089370f4d679aa",
+   "size": 8
+  },
+  {
+   "path": "data/ini/windowtransitions.ini",
+   "sha256": "92acce2e1360624be5fee045da06467ba2bea760560830131029c2537126a674",
+   "size": 4176
+  },
+  {
+   "path": "data/scripts/multiplayerscripts.scb",
+   "sha256": "697491dca10eb7ba16e5f87d60c604811fe653a35b6dfa0887ad0446c42d169f",
+   "size": 721
+  },
+  {
+   "path": "data/scripts/skirmishscripts.scb",
+   "sha256": "3841488542b1d6623e9f753828f139609958827d497c43fac47cabb0b569351a",
+   "size": 2532
+  },
+  {
+   "path": "generalszh.exe",
+   "sha256": "6b57deb3ae9f1bedc13bc03ef8aa9be4fcb44e7eba77030c9b84c574ba58d494",
+   "size": 129
+  },
+  {
+   "path": "maps/ironwood_crossing/ironwood_crossing.map",
+   "sha256": "fe27bf8960f4397c236bc1b494caa9e95ee8a766953c70d391d8cce137893bbc",
+   "size": 253140
+  },
+  {
+   "path": "maps/ironwood_crossing/ironwood_crossing.tga",
+   "sha256": "33361b63f24ea547ae4a2dbffcd959a9ae04702f7cb7c958269a778775d6e80d",
+   "size": 27739
+  },
+  {
+   "path": "maps/ironwood_crossing/map.str",
+   "sha256": "eef07931ed74cdf9447404173675b018927f9f943eb267c6e783b819c57dfdc6",
+   "size": 44
+  },
+  {
+   "path": "maps/mapcache.ini",
+   "sha256": "d1e59219fa37920d0686b690c62383a89f86e255bd42b5da98fe14458f5e1436",
+   "size": 550
+  },
+  {
+   "path": "window/controlbar.wnd",
+   "sha256": "221c2360db0f03bbb213bdb5c4253577ebf069b89690188c68f108850e7af4cb",
+   "size": 205894
+  },
+  {
+   "path": "window/controlbarpopupdescription.wnd",
+   "sha256": "1a2636ac3501e97d4426efa845d8d011663fda95a749af3c950ec6faebf66015",
+   "size": 9336
+  },
+  {
+   "path": "window/diplomacy.wnd",
+   "sha256": "9da1b4858b84398f1eb9c8b164f7dd208cd93203abab01ffbb8843a64546a16f",
+   "size": 168750
+  },
+  {
+   "path": "window/generalsexppoints.wnd",
+   "sha256": "46eaa9374109dd4016f0e7d927054b27fe158963da7bb4627f90204295577b09",
+   "size": 66407
+  },
+  {
+   "path": "window/imecandidatewindow.wnd",
+   "sha256": "3309c0be6b8640e9eb90f33a6620ede5fc4a451c34c80c9e58d7922b33d3ef80",
+   "size": 9180
+  },
+  {
+   "path": "window/imestatuswindow.wnd",
+   "sha256": "ec3bd4fc413d4f50c84134007bc1d5d5d06676edcd6fd335baa974838e9bc4e2",
+   "size": 2391
+  },
+  {
+   "path": "window/ingamechat.wnd",
+   "sha256": "fa8646c4e5f926456763a7e0f07ac33b42fb64f11e076aa1a1d5e49903b16659",
+   "size": 9445
+  },
+  {
+   "path": "window/ingamepopupmessage.wnd",
+   "sha256": "f39bf7a776f8612b7406e0fd4de4166d9dd0578bac38b78689e45180b8a8934c",
+   "size": 7128
+  },
+  {
+   "path": "window/menus/blankwindow.wnd",
+   "sha256": "363900c0df05191b2d266dff152395f8be587147f06ae8bdc4e66dd7cbbde82b",
+   "size": 2363
+  },
+  {
+   "path": "window/menus/creditsmenu.wnd",
+   "sha256": "6d68e58fdbb546b499a4b52e46b6bbcbc9a991122ef91cfbd8d91ded0936f376",
+   "size": 9291
+  },
+  {
+   "path": "window/menus/defeat.wnd",
+   "sha256": "82b157850f5049e22a0c3a82f0bc3c0d652c18817d31c6d7f1384e8ccbb7f4dc",
+   "size": 9261
+  },
+  {
+   "path": "window/menus/disconnectscreen.wnd",
+   "sha256": "1d402d6e62acd54161c88ea511291248dd0edaa5190c913c7db777be35ec29c3",
+   "size": 88206
+  },
+  {
+   "path": "window/menus/gameinfowindow.wnd",
+   "sha256": "4e22e0690dbb079fd8537537f53179b04c5d054a42d23712ea96b97464525ce6",
+   "size": 25362
+  },
+  {
+   "path": "window/menus/keyboardoptionsmenu.wnd",
+   "sha256": "ee188bcda16ae6e345ffed4c123a417a1ab46606eb9fd0427eb21d053e2e8c95",
+   "size": 54029
+  },
+  {
+   "path": "window/menus/langameoptionsmenu.wnd",
+   "sha256": "66212bc2b965613d1e1f74e4d9e3973b6867bed78f10ef38c4942ae8bf8d185a",
+   "size": 564865
+  },
+  {
+   "path": "window/menus/lanlobbymenu.wnd",
+   "sha256": "7aa590adbebb7ae5514f55830ba55d463e1f27f9f23b7dfc9e01e76b8a5998b5",
+   "size": 65206
+  },
+  {
+   "path": "window/menus/lanmapselectmenu.wnd",
+   "sha256": "6942a46b40c447c0080c78a2ceab41e3d482ba9322ef3302016a5b6628d8a1d9",
+   "size": 44917
+  },
+  {
+   "path": "window/menus/localdefeat.wnd",
+   "sha256": "1f8b7967408b104c2e8f31da0fb9df68cbf8422f96a1a52ba89ec2f84b2b1623",
+   "size": 9296
+  },
+  {
+   "path": "window/menus/mainmenu.wnd",
+   "sha256": "de45b428178f116b11e7983f218a90f72b6c9ce2640515c2aa148e8915446d7a",
+   "size": 55641
+  },
+  {
+   "path": "window/menus/messagebox.wnd",
+   "sha256": "56da1402b12ed26aeade6bcb554891e6ce13b69062ff4ab29d29a6d55072686b",
+   "size": 18671
+  },
+  {
+   "path": "window/menus/multiplayerloadscreen.wnd",
+   "sha256": "2b032fe8094786c1a93be27ffafffb39436c6a2155774230828a584b88a377e2",
+   "size": 106288
+  },
+  {
+   "path": "window/menus/observerquit.wnd",
+   "sha256": "8bed76283b50771b5d4dc505809aee14ed488294648dc33a9e98400b6df730a2",
+   "size": 9289
+  },
+  {
+   "path": "window/menus/optionsmenu.wnd",
+   "sha256": "8c893665a8c80956fce3d16f29d1a5776eeef4f62e550ec116bf82d40939e2c9",
+   "size": 210117
+  },
+  {
+   "path": "window/menus/popupreplay.wnd",
+   "sha256": "d4b7cc86f1f2b5fa96eb488a0788d66184763e14d89aae48157218bcb4a2392b",
+   "size": 28023
+  },
+  {
+   "path": "window/menus/popupsaveload.wnd",
+   "sha256": "14dc35f2872291e8c5a1af6c447b5d033ea679af4dcf442b921de3f2b6812e4a",
+   "size": 74749
+  },
+  {
+   "path": "window/menus/quitmenu.wnd",
+   "sha256": "3e051abc87cef023832764dfe6e5d74a9ce3141fedc8995fcbf61a861a38ebb4",
+   "size": 16500
+  },
+  {
+   "path": "window/menus/quitmessagebox.wnd",
+   "sha256": "5c39e65adb8ff2327ab82762371af98582a1b0cf9e3984a97bc4eb3ac8ff95cf",
+   "size": 18711
+  },
+  {
+   "path": "window/menus/quitnosave.wnd",
+   "sha256": "bcc3fb8fbde0c55ed9be49d78d89ac025459c581cc05bff74f28535b75d335fe",
+   "size": 14155
+  },
+  {
+   "path": "window/menus/replaymenu.wnd",
+   "sha256": "0ef52eff07ede8344310f00cdd46252b8e55ae89547970d189f1ee8ad385c7f5",
+   "size": 37232
+  },
+  {
+   "path": "window/menus/saveload.wnd",
+   "sha256": "239ce882c066d73d735a75b6e3cfd14ff22d50d944d75a3951fd7c31cd9ef624",
+   "size": 74644
+  },
+  {
+   "path": "window/menus/scorescreen.wnd",
+   "sha256": "e9bab3afa16cc2bbb04fe2d9c90047d7fd791262b3617e04c44b441b6bab6eac",
+   "size": 277608
+  },
+  {
+   "path": "window/menus/shellgameloadscreen.wnd",
+   "sha256": "623dc33dd6715a9ea767e2ddae26f04e8db6090768b1bb9d53481e1826249b06",
+   "size": 7051
+  },
+  {
+   "path": "window/menus/skirmishgameoptionsmenu.wnd",
+   "sha256": "c950da0145e3204738bdc8e93b8ba06ac8624e23928fe954a4fcf7756c190036",
+   "size": 561548
+  },
+  {
+   "path": "window/menus/skirmishmapselectmenu.wnd",
+   "sha256": "b9da242ad1a8306e5cfc33e86f6637259295adeaf9b028ba81733c3b7b623435",
+   "size": 45027
+  },
+  {
+   "path": "window/menus/victorious.wnd",
+   "sha256": "511ec8363372f81a368c373c34c5af5f0dd78ece7309ecdc130f57944a9a3538",
+   "size": 9285
+  },
+  {
+   "path": "window/replaycontrol.wnd",
+   "sha256": "8d08e4403e8c43d52e5921600dafcf8d7f67c2ca572c6ab45fc3e1335f02fbb3",
+   "size": 2375
+  }
+ ],
+ "license": "GPL-3.0-or-later",
+ "name": "Free starter content",
+ "totalSize": 7145448,
+ "version": 1
+}
