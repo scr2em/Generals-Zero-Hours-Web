@@ -210,6 +210,12 @@ static Bool theMainInitFlag = false;
 // stores to its objects with aligned SSE instructions (libc++'s std::filesystem::directory_iterator crashed on x86-64).
 #define MEM_BOUND_ALIGNMENT 16
 #define MEM_BLOCK_HEADER_ALIGN alignas(MEM_BOUND_ALIGNMENT)
+#elif defined(__EMSCRIPTEN__)
+// TheSuperHackers @fix The web build: blocks are 8-byte aligned, like malloc's. Libraries built for the default new
+// alignment keep 64-bit atomics in objects made with new (the WebGPU bindings' reference counts), and an unaligned
+// atomic access traps in WebAssembly.
+#define MEM_BOUND_ALIGNMENT 8
+#define MEM_BLOCK_HEADER_ALIGN alignas(MEM_BOUND_ALIGNMENT)
 #else
 #define MEM_BOUND_ALIGNMENT 4
 #define MEM_BLOCK_HEADER_ALIGN
