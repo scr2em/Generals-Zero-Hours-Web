@@ -95,6 +95,7 @@ struct AICombatFigures
 	Real		m_maxHealth;
 	Real		m_cost;							///< build cost, or a stand-in when the thing cannot be built
 	Real		m_range;						///< longest weapon range
+	Real		m_groundRange;				///< longest range of the weapons that hit ground targets (a defence's anti-air gun may reach further)
 	Real		m_minRange;					///< shortest range of the longest-range weapon
 	Real		m_maxSplash;				///< largest blast radius of the weapons (poison and radiation count as a cloud of 40)
 	Real		m_speed;						///< ground speed in world units per second (0: immobile)
@@ -319,6 +320,7 @@ public:
 
 	// ---- production --------------------------------------------------------------------------
 	/// Log2 weight of a team against the observed enemy army: positive if it counters it.  0 when nothing is known.
+	Real counterWeights( Real *weight, const AICombatFigures **enemyFig ) const;
 	Real teamCounterScore( const TeamPrototype *proto ) const;
 	/// Selection weight of a team: its production priority step below the best (hiPri) and how well it counters the enemy.
 	Real teamWeight( const TeamPrototype *proto, Int hiPri ) const;
@@ -327,6 +329,7 @@ public:
 	void noteTeamPicked() { m_savingSince = 0; }
 	/// True when production buildings idle while money piles up (shorten the team timer then).
 	Bool productionIsStarved() const { return m_productionStarved; }
+	void onUnitProduced( Object *factory, Object *unit );	///< a unit came out of a factory (surplus production takes its own)
 	/// Extra resource gatherers the economy can use in the current phase of the game.
 	Int extraGatherers() const;
 
@@ -477,6 +480,30 @@ private:
 	void trainForBunker( Int wantedClass );
 	void updateBunkers();
 
+	// surplus production (AISurplus.cpp)
+	enum { MAX_SURPLUS_ORDERS = 8, MAX_SURPLUS_UNITS = 32 };
+	Bool surplusOn() const;
+	Real unitCounterScore( const AICombatFigures *f ) const;
+	void updateSurplus();
+	void adoptSurplusUnits();
+
+	// razing (AIStrategy.cpp)
+	Bool razeStructures( Team *team, const Coord3D &center );
+	void updateContest();
+	void planSiege( const Coord3D &center );
+	Int siegeUnits( const AICombatFigures **defence, Real *siegeRange ) const;
+	Real poweredDefenceShare() const;
+	void updateAssault();
+	// adaptive wave plans (AIStrategy.cpp)
+	enum { PLAN_EARLY = 0, PLAN_MASS, PLAN_SIEGE, NUM_PLANS };
+	Real planMinWave() const;
+	Real planHoldSeconds() const;
+	Int planSiegeUnits() const;
+	void notePlanLaunch();
+	void notePlanEnd();
+	void planValues( Int *destroyed, Int *lost ) const;
+	Bool assaultOn() const { return m_assault; }
+
 	// airborne insertion (AIAirborne.cpp)
 	enum { MAX_SQUAD = 8 };
 	Bool airborneOn() const;
@@ -522,7 +549,8 @@ private:
 	Bool baseAlarmBlocksWaves( UnsignedInt now ) const;
 	Bool teamWavesOn() const;
 	void noteBaseDamage( Object *victim, ObjectID attacker, Real amount );
-	Bool findBaseThreat( Coord3D *where, Real *value ) const;
+	Bool findBaseThreat( Coord3D *where, Real *value, Bool *seen ) const;
+	Bool baseThreatUnseen( UnsignedInt now ) const;
 	void sendTeamToBase( Team *team, AITeamRecord &rec, const Coord3D &where );
 	void updateBaseDefence();
 
@@ -642,7 +670,8 @@ private:
 	ObjectID			m_breachTargets[MAX_BREACH_TARGETS];
 	Int						m_numBreachTargets;
 	Coord3D				m_breachStage;
-	UnsignedInt		m_breachStart;
+	UnsignedInt		m_breachStart;									///< when the breach began; the hold time counts from m_breachInRange
+	UnsignedInt		m_breachInRange;								///< when the first breacher came within range of a target (0 = still on its way)
 	UnsignedInt		m_nextBreachCheck;
 	Bool					m_breachHold;										///< the wave waits at the staging point for the breachers
 	Bool					m_breachFallback;								///< the breachers have fallen back to the wave because enemy troops came for them
@@ -665,6 +694,7 @@ private:
 	UnsignedInt		m_nextBaseDefence;
 	UnsignedInt		m_bdMuteUntil;									///< a stale alarm is not raised again by the same force until this frame
 	Real					m_bdMuteValue;
+	UnsignedInt		m_bdSeenFrame;									///< last frame an armed enemy was seen in the base zone
 	UnsignedInt		m_bdWeakFrame;									///< last trace line about a threat that the teams at home do not go out to
 	AIBunkerRecord m_bunkerMen[MAX_BUNKER_MEN];			///< infantry that hold defensive structures for good
 	Int						m_numBunkerMen;
@@ -675,6 +705,31 @@ private:
 	Int						m_bunkerPosts;									///< statistics for the trace
 	Int						m_bunkerEntered;
 	Int						m_bunkerTrained;
+	UnsignedInt		m_nextSurplus;
+	ObjectID			m_surplusFactory[MAX_SURPLUS_ORDERS];	///< surplus units ordered and not out yet: the factory,
+	Int						m_surplusThing[MAX_SURPLUS_ORDERS];		///< ... the template id of the unit,
+	UnsignedInt		m_surplusOrderFrame[MAX_SURPLUS_ORDERS];///< ... and when it was ordered
+	Int						m_numSurplusOrders;
+	ObjectID			m_surplusUnits[MAX_SURPLUS_UNITS];		///< surplus units out of the factory that wait for a team
+	Int						m_numSurplusUnits;
+	Int						m_surplusOrdered;										///< statistics for the trace
+	Int						m_surplusInfantry;
+	Real					m_surplusSpent;
+	Int						m_surplusAdopted;
+	Int						m_razeOrders;										///< statistics for the trace
+	Int						m_huntOrders;
+	Int						m_contestOrders;
+	UnsignedInt		m_nextContest;
+	UnsignedInt		m_nextSiegePlan;
+	Int						m_plan;													///< the plan of the current (or next) wave
+	Real					m_planScore[NUM_PLANS];					///< running result of each plan in this match (value destroyed against value lost)
+	Int						m_planTries[NUM_PLANS];
+	Int						m_planKills0, m_planLost0;			///< value destroyed and lost when the wave went out
+	Bool					m_planOut;											///< a wave of m_plan is out
+	Bool					m_assault;											///< the army is far stronger than the enemy seen: it commits to the attack
+	Int						m_assaultStarts;
+	UnsignedInt		m_siegeWaitSince;								///< the army was ready but for its siege units since this frame (0 = not waiting)
+	Real					m_expandCost;										///< money an expansion waits for (kept back from the surplus production)
 	Int						m_airPhase;											///< airborne insertion: 0 = no mission
 	ObjectID			m_airTransport;
 	ObjectID			m_squad[MAX_SQUAD];

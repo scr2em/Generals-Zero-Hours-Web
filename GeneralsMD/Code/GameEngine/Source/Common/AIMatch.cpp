@@ -262,6 +262,7 @@ struct Config
 	Bool record;
 	std::vector<std::pair<Int, UnsignedInt> > eliminations;	// (slot, frame): test hook, see the eliminate= option
 	Bool engineLoop;				// run the whole engine update (client included) instead of the game logic alone
+	std::vector<std::pair<std::string, std::string> > skill;	// (field, value) of the Expert skill settings, see the skill= option
 };
 
 // players=hard:Ironwood,normal:random:2:1:experiment
@@ -413,6 +414,18 @@ Bool parseConfig(Config &cfg, std::string &error)
 				return FALSE;
 			}
 			cfg.engineLoop = lowered(value) == "engine";
+		}
+		else if (key == "skill")
+		{
+			// skill=<field>:<value> sets one field of the "ExpertSkill" block of AIData.ini for this match (repeatable), for
+			// tuning runs without editing data files.
+			size_t colon = value.find(':');
+			if (colon == std::string::npos || colon == 0 || colon + 1 == value.size())
+			{
+				error = "bad skill '" + value + "' (<field>:<value>, a field of ExpertSkill)";
+				return FALSE;
+			}
+			cfg.skill.push_back(std::make_pair(value.substr(0, colon), value.substr(colon + 1)));
 		}
 		else if (key == "record")
 			cfg.record = (value != "0" && lowered(value) != "no" && lowered(value) != "false");
@@ -1712,12 +1725,22 @@ Int AIMatch::run()
 		return 1;
 	}
 
-	// The AI settings of aiini=, over the game's own (loaded by now with the rest of the INI data).
+	// The AI settings of aiini=, over the game's own (loaded by now with the rest of the INI data), then the single
+	// fields of skill=, which win over the file.
 	if (!loadAiIni(cfg, error))
 	{
 		reportError(cfg, error);
 		s_active = FALSE;
 		return 1;
+	}
+	for (size_t i = 0; i < cfg.skill.size(); ++i)
+	{
+		if (TheAI == nullptr || !TheAI->setExpertSkillValue(cfg.skill[i].first.c_str(), cfg.skill[i].second.c_str()))
+		{
+			reportError(cfg, "unknown skill field '" + cfg.skill[i].first + "'");
+			s_active = FALSE;
+			return 1;
+		}
 	}
 
 	Match match(cfg);

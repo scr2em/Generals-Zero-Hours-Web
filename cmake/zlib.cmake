@@ -6,20 +6,13 @@ FetchContent_Populate(zlib DOWNLOAD_EXTRACT_TIMESTAMP
     SOURCE_DIR     ${ZLIB_DIR}
 )
 
-if(APPLE)
-    # zlib 1.1.4 takes TARGET_OS_MAC for the classic Mac OS: zconf.h then leaves out its Byte type (z_Byte with
-    # Z_PREFIX, so nothing declares it) and zutil.h writes another OS code and drops fdopen. macOS defines
-    # TARGET_OS_MAC too (Apple clang predefines it, TargetConditionals.h), so only MACOS selects the classic Mac OS
-    # here, and macOS builds zlib like the other Unix systems.
-    foreach(zlib_header zconf.h zutil.h)
-        file(READ "${ZLIB_DIR}/${zlib_header}" zlib_text)
-        set(zlib_old_text "${zlib_text}")
-        string(REPLACE "!defined(MACOS) && !defined(TARGET_OS_MAC)" "!defined(MACOS)" zlib_text "${zlib_text}")
-        string(REPLACE "defined(MACOS) || defined(TARGET_OS_MAC)" "defined(MACOS)" zlib_text "${zlib_text}")
-        if(NOT zlib_text STREQUAL zlib_old_text)
-            file(WRITE "${ZLIB_DIR}/${zlib_header}" "${zlib_text}")
-        endif()
-    endforeach()
+# Apple clang 21 predefines TARGET_OS_MAC, which this zconf.h takes for classic Mac OS: it then leaves out its Byte
+# type. Only MACOS selects classic Mac OS from now on.
+file(READ "${ZLIB_DIR}/zconf.h" ZCONF_H)
+string(REPLACE "#if !defined(MACOS) && !defined(TARGET_OS_MAC)\ntypedef unsigned char  Byte;"
+    "#if !defined(MACOS)\ntypedef unsigned char  Byte;" ZCONF_H_PATCHED "${ZCONF_H}")
+if(NOT ZCONF_H_PATCHED STREQUAL ZCONF_H)
+    file(WRITE "${ZLIB_DIR}/zconf.h" "${ZCONF_H_PATCHED}")
 endif()
 
 add_library(libzlib STATIC)

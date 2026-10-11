@@ -150,7 +150,11 @@ const AICombatFigures *AICombatModel::figures(const ThingTemplate *tt)
 				if (fw.m_antiMask & WEAPON_ANTI_AIRBORNE_VEHICLE)
 					f->m_canHitAir = TRUE;
 				if (fw.m_antiMask & WEAPON_ANTI_GROUND)
+				{
 					f->m_canHitGround = TRUE;
+					if (w->getUnmodifiedAttackRange() > f->m_groundRange)
+						f->m_groundRange = w->getUnmodifiedAttackRange();
+				}
 			}
 
 			const Real range = w->getUnmodifiedAttackRange();
@@ -181,6 +185,7 @@ const AICombatFigures *AICombatModel::figures(const ThingTemplate *tt)
 		f->m_weapons[0].m_damageType = (Int)DAMAGE_SMALL_ARMS;
 		f->m_weapons[0].m_antiMask = WEAPON_ANTI_GROUND | WEAPON_ANTI_AIRBORNE_VEHICLE;
 		f->m_range = 150.0f;
+		f->m_groundRange = 150.0f;
 	}
 
 	if (f->m_maxHealth <= 0.0f)

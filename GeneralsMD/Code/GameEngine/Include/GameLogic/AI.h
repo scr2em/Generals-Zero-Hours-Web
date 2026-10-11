@@ -256,6 +256,36 @@ struct AISkillSettings
 	Real m_allyHelpHomeGuard;		///< At home stays at least this many times the value of the enemies seen near our own base (and then one team).
 	Real m_allyHelpClearSeconds;///< The teams go back when the ally's base has been clear this long.
 	Real m_allyHelpMaxSeconds;	///< An alarm without hits on the ally's objects for 15 s ends after this long (stale).
+
+	// ---- surplus production ----
+	Bool m_useSurplus;	///< Idle factories build army units (the best counter to what has been seen) while money piles up beyond the teams of the scripts.
+	Real m_surplusReserve;	///< ... when the money left after the unit is at least this.
+	Real m_surplusStartSeconds;	///< ... not before this time in the match (the build order of the scripts comes first).
+	Real m_surplusInfantryShare;	///< At most this share of the surplus units ordered so far is infantry (tanks crush infantry, which the combat model does not know).
+	Bool m_surplusAircraft;	///< Surplus production may build aircraft too.
+
+	// ---- razing and hunting ----
+	Bool m_useRaze;	///< A wave team that has arrived and has nothing to fight attacks the known enemy structures around it (attack-move and idle units leave buildings alone).
+	Real m_razeRadius;	///< ... within this distance of the team.
+	Real m_huntAdvantage;	///< A wave team that has no known objective left hunts (seek and destroy) when the army is at least this many times what has been seen of the enemy; 0 = never.
+
+	// ---- enemy supply near ours ----
+	Bool m_useContest;	///< An enemy economy structure (a supply center) built near one of ours is attacked at once by the teams at home.
+	Real m_contestRadius;	///< ... within this distance of our supply center.
+
+	// ---- siege ----
+	Int m_surplusSiegeUnits;	///< While the army has fewer units than this that out-range the enemy defences seen (BreachRangeFactor) and can hurt them, such units come first.
+	Int m_waveSiegeUnits;	///< When enemy ground defences are known, a wave waits until this many of our units out-range them (BreachRangeFactor),
+	Real m_waveSiegeWaitSeconds;	///< ... but not longer than this once it is ready otherwise.
+
+	// ---- waves ----
+	Real m_followUpShare;	///< Teams that wait at home follow the wave that is out once they are worth this share of it (of MinWaveValue at least).
+	Real m_followUpMinWave;	///< ... and only while the wave out there still holds this share of what was sent (0 = always): a beaten wave is not fed.
+	Bool m_adaptivePlans;	///< Every wave follows one of a few plans (early small waves, massed waves, siege first); the plan of the next wave is the one that has done best in this match (value destroyed against value lost), now and then another one.
+
+	// ---- assault ----
+	Real m_assaultAdvantage;	///< The army commits to the attack (no retreat, reinforcements at once, alarms only for a real threat) when it is this many times the enemy forces seen; 0 = never,
+	Real m_assaultMinutes;	///< ... and not before this minute of the match.
 };
 
 class AISideBuildList : public MemoryPoolObject
@@ -426,6 +456,7 @@ public:
 
 	static void parseAiDataDefinition( INI* ini );
 	const TAiData *getAiData() {return m_aiData;}
+	Bool setExpertSkillValue( const char *name, const char *value );	///< test bench: one field of the "ExpertSkill" block by its name
 
 	// Note: Does not work for things that do not have AI. (This is in AI.h, after all)
 	static Real getAdjustedVisionRangeForObject(const Object *object, Int factorsToConsider);

@@ -297,7 +297,7 @@ caffeinate -is node scripts/aibench/tune.mjs --native build/native-headless --wo
 ```
 
 (`caffeinate` keeps the Mac awake.) `scripts/gameplay/realdata_tests.sh --workers 8 tune` does the same after building.
-Defaults: map `tournamenta`, sides `America,China,GLA`, 30 game minutes per match (a timeout is not a win), 6 screening
+Defaults: map `tournament desert`, sides `America,China,GLA`, 30 game minutes per match (a timeout is not a win), 6 screening
 seeds, 20 confirmation seeds and 30 fresh seeds for the final check per side, the settings of `tune_params.json`, a budget
 of 10 hours. `node scripts/aibench/tune.mjs --help` lists the options.
 

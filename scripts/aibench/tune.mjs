@@ -29,7 +29,7 @@ Engine and data:
   --generals DIR        the original Generals install, optional (default $GENERALS_PATH)
   --data starter        the starter pack instead (development only: checks the mechanism, never a gameplay result)
 What to play:
-  --map NAME            a 2-player map (default tournamenta; Ironwood Crossing with --data starter)
+  --map NAME            a 2-player map (default tournament desert; Ironwood Crossing with --data starter)
   --sides A,B,C         the mirrors expert:S against hard:S, sides as aibench takes them (default America,China,GLA)
   --timeout MIN         game minutes before a match is a timeout, which is not a win (default 30)
   --engine-arg ARG      an extra engine argument for every match (repeatable), e.g. cash=10000
@@ -104,7 +104,7 @@ function parseArgs(argv) {
 		o.dataDirs = { zeroHour: zh ? path.resolve(zh) : null, generals: generals ? path.resolve(generals) : null };
 		if (o.dataDirs.generals && !fs.existsSync(o.dataDirs.generals)) throw new Error(`${o.dataDirs.generals} does not exist (--generals / $GENERALS_PATH)`);
 	}
-	o.map ||= o.starter ? 'Ironwood Crossing' : 'tournamenta';
+	o.map ||= o.starter ? 'Ironwood Crossing' : 'tournament desert';
 	o.sides ||= o.starter ? ['Ironwood'] : ['America', 'China', 'GLA'];
 	if (o.seeds < 1 || o.confirm < 1 || o.holdout < 1) throw new Error('--seeds, --confirm and --holdout must be at least 1');
 	// the three seed ranges must not overlap: the holdout is a fresh check

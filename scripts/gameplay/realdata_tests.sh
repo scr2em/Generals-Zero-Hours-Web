@@ -51,6 +51,33 @@
 # its slot by a late one sent back ("ASSIST formation return id=N ... (trip 1)" or "(trip 2)", never "(trip 3)").
 # See docs/PLAYER_ASSISTS.md for the other scenarios.
 #
+# What a pass looks like in the 1v1 suite: on the symmetrical 2-player map every Expert wins at least as often as the Hard AI
+# of its faction and ends the timeouts with more value (final.value in the match JSON). The trace of the Expert
+# (1v1/matches/*.trace.txt) shows its features at work:
+#   * surplus production: "SURPLUS: <unit> ordered at <factory>" lines from about 150 s on, the status line
+#     "surplus production: N units ordered (S spent), A given to teams" grows, and the Expert ends the game with little
+#     money left (money.final in the match JSON a few thousand at most, where Hard keeps tens of thousands).
+#   * razing and hunting: a wave that stands in an enemy base attacks its structures ("razing: N attack orders on
+#     structures" grows); with no target known and a far stronger army, "team T HUNTS" lines. No team of the per-team
+#     lines ("  team T mode M ... target ... units N idle I") stands idle for minutes with a target it never reaches.
+#   * reinforcements: "team T: the force that went out is gone, N reinforcement(s) are the team now" can appear; such a
+#     team joins the next wave or follow-up group (it does not stay in the base until the end).
+#   * enemy supply near ours: "CONTEST: enemy <supply center> at (x,y), D from our supply center: N team(s) ... attack it"
+#     when the enemy builds a supply center next to one of the Expert's.
+#   * expansion: "EXPAND: supply center at the supply source at (x,y)" at least once in the first 10 minutes.
+#   * base defence: damage by an enemy nobody sees gives "BASEDEF: only unseen damage at (x,y) for 20 s: one team looks,
+#     N team(s) go back to their role" (not the whole army at home); a recall during a wave says "base threatened ...:
+#     N team(s) recalled, M team(s) in a fight stay in it".
+#   * siege: against known ground defences "WAVE waits for its siege units", "SIEGE: the wave meets the defences at
+#     (x,y)", "BREACH: the first breacher is within range after S s", and in most games at least one "BREACH over: the
+#     defences are down".
+#   * wave plans: after every wave "PLAN p wave over: D destroyed against L lost (result R, ...); next wave: plan q";
+#     the first wave goes by about minute 11.
+#   * assault: "ASSAULT begins: army A against E of the enemy seen" when the army is far stronger than the enemy seen,
+#     and "ASSAULT ends" when it is not any more.
+#   * power plants: "powered defences: P% of the defences seen need power" (100% against China); the superweapon and
+#     the general's powers then hit power plants first.
+#
 # Options:
 #   --quick           fewer games (about a third of the time)
 #   --workers N       games at the same time (default 2; each needs about 1 GB of memory and a core)
@@ -61,7 +88,8 @@
 #   --no-build        test the build as it is
 #   -h, --help        this text
 #
-# Environment: ZH_PATH (required), GENERALS_PATH (optional), MAP_1V1 (default "tournamenta"), MAP_TEAM (default
+# Environment: ZH_PATH (required), GENERALS_PATH (optional), MAP_1V1 (default "tournament desert": two players,
+# the same income at both starts), MAP_TEAM (default
 # "hostile dawn"), TEAM_STARTS (default 1,2,4,6: the first two are one team's side of the map, the last two the other's), ALLY_STARTS (default 1,2,3,4,6:
 # the stand-in and its two Expert allies on one side, two Experts on the other, as in the user's game).
 #
@@ -69,7 +97,7 @@
 #   git add test-reports && git commit -m "Gameplay test report" && git push
 set -euo pipefail
 
-usage() { sed -n '2,68p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"; }
 
 QUICK=0
 WORKERS=2
@@ -103,7 +131,7 @@ if [ -n "${GENERALS_PATH:-}" ] && [ ! -d "$GENERALS_PATH" ]; then
 	exit 2
 fi
 
-MAP_1V1="${MAP_1V1:-tournamenta}"
+MAP_1V1="${MAP_1V1:-tournament desert}"
 MAP_TEAM="${MAP_TEAM:-hostile dawn}"
 TEAM_STARTS="${TEAM_STARTS:-1,2,4,6}"
 ALLY_STARTS="${ALLY_STARTS:-1,2,3,4,6}"

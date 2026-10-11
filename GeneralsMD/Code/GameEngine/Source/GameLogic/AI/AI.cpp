@@ -244,115 +244,134 @@ void AI::parseSideInfo(INI *ini, void *instance, void* /*store*/, const void* /*
 
 }
 
-// The fields of the "ExpertSkill" block (offsets into AISkillSettings).
-static const FieldParse TheExpertSkillFieldParseTable[] =
-{
-	{ "AttentionSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_attentionSeconds ) },
-	{ "ReactionSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_reactionSeconds ) },
-	{ "ScoutSeconds",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_scoutSeconds ) },
-	{ "MistakeChance",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_mistakeChance ) },
-	{ "CounterStrength",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_counterStrength ) },
-	{ "EngageAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_engageAdvantage ) },
-	{ "RetreatAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_retreatAdvantage ) },
-	{ "WaveHoldSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveHoldSeconds ) },
-	{ "MinWaveValue",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_minWaveValue ) },
-	{ "WaveSizeScale",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveSizeScale ) },
-	{ "Retreat",							INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRetreat ) },
-	{ "FocusFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useFocusFire ) },
-	{ "KeepBackline",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpacing ) },
-	{ "ExpandEconomy",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_expandEconomy ) },
-	{ "SmartPowers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_smartPowers ) },
-	{ "SplitFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSplitFire ) },
-	{ "SplitWindowSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splitWindowSeconds ) },
-	{ "ThreatTargets",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useThreatTargets ) },
-	{ "Kiting",								INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useKiting ) },
-	{ "KiteMinReloadSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteMinReloadSeconds ) },
-	{ "KiteRangeFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteRangeFactor ) },
-	{ "KiteSpeedFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteSpeedFactor ) },
-	{ "KiteGroupRadius",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteGroupRadius ) },
-	{ "KiteMinThreat",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteMinThreat ) },
-	{ "FightCheck",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useFightCheck ) },
-	{ "LaunchAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchAdvantage ) },
-	{ "PullbackAdvantage",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_pullbackAdvantage ) },
-	{ "LaunchBlockSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchBlockSeconds ) },
-	{ "MergeReinforcements",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useMerge ) },
-	{ "SpreadVsSplash",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpread ) },
-	{ "SplashRadiusThreshold",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splashRadiusThreshold ) },
-	{ "MaxSpacing",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_maxSpacing ) },
-	{ "RaidEconomy",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRaids ) },
-	{ "RaidUnits",						INI::parseInt,		nullptr, offsetof( AISkillSettings, m_raidUnits ) },
-	{ "RaidSpeedFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidSpeedFactor ) },
-	{ "RaidStartSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidStartSeconds ) },
-	{ "RaidMaxSeconds",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidMaxSeconds ) },
-	{ "RaidCooldownSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidCooldownSeconds ) },
-	{ "RaidPullbackAdvantage",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidPullbackAdvantage ) },
-	{ "RaidGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidGuardShare ) },
-	{ "ProtectWorkers",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useProtect ) },
-	{ "ProtectLeashRadius",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectLeash ) },
-	{ "ProtectResponseRadius",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectResponseRadius ) },
-	{ "ProtectCalmSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectCalmSeconds ) },
-	{ "ProtectMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectMaxSeconds ) },
-	{ "ProtectResponders",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_protectResponders ) },
-	{ "RepairAndHeal",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRepair ) },
-	{ "RepairBelow",					INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairBelow ) },
-	{ "RepairTripSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_repairTripSeconds ) },
-	{ "RepairDozerBelow",			INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairDozerBelow ) },
-	{ "AvoidDefences",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRoute ) },
-	{ "RouteMargin",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_routeMargin ) },
-	{ "RouteMaxDetour",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_routeMaxDetour ) },
-	{ "BreachRangeFactor",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachRangeFactor ) },
-	{ "BreachHoldSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachHoldSeconds ) },
-	{ "BaseDefencePriority",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useBaseDefence ) },
-	{ "BaseDefenceMargin",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_baseDefenceMargin ) },
-	{ "BaseDefenceMinValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_baseDefenceMinValue ) },
-	{ "BaseDefenceMinAdvantage",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceMinAdvantage ) },
-	{ "BaseDefenceClearSeconds",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceClearSeconds ) },
-	{ "TerrainDefence",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useGeo ) },
-	{ "OrientLayout",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useLayout ) },
-	{ "GeoRing",							INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRing ) },
-	{ "GeoChokeWidth",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoChokeWidth ) },
-	{ "GeoLookOut",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoLookOut ) },
-	{ "GeoReach",							INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoReach ) },
-	{ "GeoRallyOut",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOut ) },
-	{ "GeoRallyOffset",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOffset ) },
-	{ "UseGarrisons",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useGarrison ) },
-	{ "GarrisonThreatValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonThreatValue ) },
-	{ "GarrisonHoldSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonHoldSeconds ) },
-	{ "GarrisonClear",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_garrisonClear ) },
-	{ "UnitAbilities",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAbilities ) },
-	{ "AbilityRange",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityRange ) },
-	{ "AbilityMinValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityMinValue ) },
-	{ "AirborneInsertion",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAirborne ) },
-	{ "AirMargin",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMargin ) },
-	{ "AirGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airGuardShare ) },
-	{ "AirMinSquadValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMinSquadValue ) },
-	{ "AirMaxDetour",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMaxDetour ) },
-	{ "AirMaxSeconds",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMaxSeconds ) },
-	{ "AirAssaultSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airAssaultSeconds ) },
-	{ "AirCooldownSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airCooldownSeconds ) },
-	{ "FillBunkers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useBunkers ) },
-	{ "BunkerReserve",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerReserve ) },
-	{ "BunkerArmyShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerArmyShare ) },
-	{ "TeamWaves",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useTeamWaves ) },
-	{ "AllyWaveWeight",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveWeight ) },
-	{ "AllyWaveFloor",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveFloor ) },
-	{ "BaseDefenceMaxBlockSeconds",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceMaxBlockSeconds ) },
-	{ "AllyHelp",							INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAllyHelp ) },
-	{ "AllyHelpMargin",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMargin ) },
-	{ "AllyHelpMinValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMinValue ) },
-	{ "AllyHelpForce",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpForce ) },
-	{ "AllyHelpMinAdvantage",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMinAdvantage ) },
-	{ "AllyHelpMaxDistance",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMaxDistance ) },
-	{ "AllyHelpWaveReach",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpWaveReach ) },
-	{ "AllyHelpHomeGuard",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpHomeGuard ) },
-	{ "AllyHelpClearSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpClearSeconds ) },
-	{ "AllyHelpMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMaxSeconds ) },
-	{ nullptr,								nullptr,					nullptr, 0 }
-};
+// The fields of the "ExpertSkill" block.  The test bench sets single ones for a match by their names (AI::setExpertSkillValue).
+static const FieldParse s_skillFieldParse[] =
+	{
+		{ "AttentionSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_attentionSeconds ) },
+		{ "ReactionSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_reactionSeconds ) },
+		{ "ScoutSeconds",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_scoutSeconds ) },
+		{ "MistakeChance",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_mistakeChance ) },
+		{ "CounterStrength",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_counterStrength ) },
+		{ "EngageAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_engageAdvantage ) },
+		{ "RetreatAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_retreatAdvantage ) },
+		{ "WaveHoldSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveHoldSeconds ) },
+		{ "MinWaveValue",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_minWaveValue ) },
+		{ "WaveSizeScale",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveSizeScale ) },
+		{ "Retreat",							INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRetreat ) },
+		{ "FocusFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useFocusFire ) },
+		{ "KeepBackline",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpacing ) },
+		{ "ExpandEconomy",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_expandEconomy ) },
+		{ "SmartPowers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_smartPowers ) },
+		{ "SplitFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSplitFire ) },
+		{ "SplitWindowSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splitWindowSeconds ) },
+		{ "ThreatTargets",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useThreatTargets ) },
+		{ "Kiting",								INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useKiting ) },
+		{ "KiteMinReloadSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteMinReloadSeconds ) },
+		{ "KiteRangeFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteRangeFactor ) },
+		{ "KiteSpeedFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteSpeedFactor ) },
+		{ "KiteGroupRadius",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteGroupRadius ) },
+		{ "KiteMinThreat",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_kiteMinThreat ) },
+		{ "FightCheck",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useFightCheck ) },
+		{ "LaunchAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchAdvantage ) },
+		{ "PullbackAdvantage",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_pullbackAdvantage ) },
+		{ "LaunchBlockSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_launchBlockSeconds ) },
+		{ "MergeReinforcements",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useMerge ) },
+		{ "SpreadVsSplash",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpread ) },
+		{ "SplashRadiusThreshold",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_splashRadiusThreshold ) },
+		{ "MaxSpacing",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_maxSpacing ) },
+		{ "RaidEconomy",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRaids ) },
+		{ "RaidUnits",						INI::parseInt,		nullptr, offsetof( AISkillSettings, m_raidUnits ) },
+		{ "RaidSpeedFactor",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidSpeedFactor ) },
+		{ "RaidStartSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidStartSeconds ) },
+		{ "RaidMaxSeconds",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidMaxSeconds ) },
+		{ "RaidCooldownSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidCooldownSeconds ) },
+		{ "RaidPullbackAdvantage",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidPullbackAdvantage ) },
+		{ "RaidGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_raidGuardShare ) },
+		{ "ProtectWorkers",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useProtect ) },
+		{ "ProtectLeashRadius",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectLeash ) },
+		{ "ProtectResponseRadius",INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectResponseRadius ) },
+		{ "ProtectCalmSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectCalmSeconds ) },
+		{ "ProtectMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectMaxSeconds ) },
+		{ "ProtectResponders",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_protectResponders ) },
+		{ "RepairAndHeal",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRepair ) },
+		{ "RepairBelow",					INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairBelow ) },
+		{ "RepairTripSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_repairTripSeconds ) },
+		{ "RepairDozerBelow",			INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairDozerBelow ) },
+		{ "AvoidDefences",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRoute ) },
+		{ "RouteMargin",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_routeMargin ) },
+		{ "RouteMaxDetour",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_routeMaxDetour ) },
+		{ "BreachRangeFactor",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachRangeFactor ) },
+		{ "BreachHoldSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_breachHoldSeconds ) },
+		{ "BaseDefencePriority",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useBaseDefence ) },
+		{ "BaseDefenceMargin",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_baseDefenceMargin ) },
+		{ "BaseDefenceMinValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_baseDefenceMinValue ) },
+		{ "BaseDefenceMinAdvantage",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceMinAdvantage ) },
+		{ "BaseDefenceClearSeconds",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceClearSeconds ) },
+		{ "TerrainDefence",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useGeo ) },
+		{ "OrientLayout",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useLayout ) },
+		{ "GeoRing",							INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRing ) },
+		{ "GeoChokeWidth",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoChokeWidth ) },
+		{ "GeoLookOut",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoLookOut ) },
+		{ "GeoReach",							INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoReach ) },
+		{ "GeoRallyOut",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOut ) },
+		{ "GeoRallyOffset",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_geoRallyOffset ) },
+		{ "UseGarrisons",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useGarrison ) },
+		{ "GarrisonThreatValue",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonThreatValue ) },
+		{ "GarrisonHoldSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_garrisonHoldSeconds ) },
+		{ "GarrisonClear",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_garrisonClear ) },
+		{ "UnitAbilities",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAbilities ) },
+		{ "AbilityRange",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityRange ) },
+		{ "AbilityMinValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityMinValue ) },
+		{ "AirborneInsertion",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAirborne ) },
+		{ "AirMargin",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMargin ) },
+		{ "AirGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airGuardShare ) },
+		{ "AirMinSquadValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMinSquadValue ) },
+		{ "AirMaxDetour",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMaxDetour ) },
+		{ "AirMaxSeconds",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMaxSeconds ) },
+		{ "AirAssaultSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airAssaultSeconds ) },
+		{ "AirCooldownSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airCooldownSeconds ) },
+		{ "FillBunkers",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useBunkers ) },
+		{ "BunkerReserve",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerReserve ) },
+		{ "BunkerArmyShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerArmyShare ) },
+		{ "TeamWaves",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useTeamWaves ) },
+		{ "AllyWaveWeight",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveWeight ) },
+		{ "AllyWaveFloor",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyWaveFloor ) },
+		{ "BaseDefenceMaxBlockSeconds",INI::parseReal,	nullptr, offsetof( AISkillSettings, m_baseDefenceMaxBlockSeconds ) },
+		{ "AllyHelp",							INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAllyHelp ) },
+		{ "AllyHelpMargin",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMargin ) },
+		{ "AllyHelpMinValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMinValue ) },
+		{ "AllyHelpForce",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpForce ) },
+		{ "AllyHelpMinAdvantage",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMinAdvantage ) },
+		{ "AllyHelpMaxDistance",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMaxDistance ) },
+		{ "AllyHelpWaveReach",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpWaveReach ) },
+		{ "AllyHelpHomeGuard",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpHomeGuard ) },
+		{ "AllyHelpClearSeconds",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpClearSeconds ) },
+		{ "AllyHelpMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_allyHelpMaxSeconds ) },
+		{ "SurplusProduction",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSurplus ) },
+		{ "SurplusReserve",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusReserve ) },
+		{ "SurplusStartSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusStartSeconds ) },
+		{ "SurplusInfantryShare",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusInfantryShare ) },
+		{ "SurplusAircraft",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_surplusAircraft ) },
+		{ "RazeBases",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRaze ) },
+		{ "RazeRadius",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_razeRadius ) },
+		{ "HuntAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_huntAdvantage ) },
+		{ "ContestSupply",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useContest ) },
+		{ "ContestRadius",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_contestRadius ) },
+		{ "SurplusSiegeUnits",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_surplusSiegeUnits ) },
+		{ "WaveSiegeUnits",			INI::parseInt,		nullptr, offsetof( AISkillSettings, m_waveSiegeUnits ) },
+		{ "WaveSiegeWaitSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveSiegeWaitSeconds ) },
+		{ "FollowUpShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_followUpShare ) },
+		{ "FollowUpMinWave",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_followUpMinWave ) },
+		{ "AdaptivePlans",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_adaptivePlans ) },
+		{ "AssaultAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_assaultAdvantage ) },
+		{ "AssaultMinutes",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_assaultMinutes ) },
+		{ nullptr,								nullptr,					nullptr, 0 }
+	};
+
 
 void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const void* /*userData*/)
 {
-	ini->initFromINI(&((TAiData*)instance)->m_expertSkill, TheExpertSkillFieldParseTable);
+	ini->initFromINI(&((TAiData*)instance)->m_expertSkill, s_skillFieldParse);
 }
 
 const FieldParse *AI::getAiDataFieldParse()
@@ -362,7 +381,32 @@ const FieldParse *AI::getAiDataFieldParse()
 
 const FieldParse *AI::getSkillSettingsFieldParse()
 {
-	return TheExpertSkillFieldParseTable;
+	return s_skillFieldParse;
+}
+
+/// Sets one field of the Expert skill settings by its INI name (test bench: the match option skill=<name>:<value>).
+Bool AI::setExpertSkillValue( const char *name, const char *value )
+{
+	if (m_aiData == nullptr)
+		return FALSE;
+	for (const FieldParse *f = s_skillFieldParse; f->token; ++f)
+	{
+		if (stricmp(f->token, name) != 0)
+			continue;
+		char *field = (char *)&m_aiData->m_expertSkill + f->offset;
+		if (f->parse == INI::parseReal)
+			*(Real *)field = (Real)atof(value);
+		else if (f->parse == INI::parsePercentToReal)
+			*(Real *)field = (Real)atof(value) / 100.0f;
+		else if (f->parse == INI::parseInt)
+			*(Int *)field = atoi(value);
+		else if (f->parse == INI::parseBool)
+			*(Bool *)field = stricmp(value, "yes") == 0 || stricmp(value, "true") == 0 || strcmp(value, "1") == 0;
+		else
+			return FALSE;
+		return TRUE;
+	}
+	return FALSE;
 }
 
 void AI::parseSkillSet(INI *ini, void *instance, void* store, const void* /*userData*/)
@@ -1215,8 +1259,8 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_counterStrength = 1.0f;
 	ex.m_engageAdvantage = 1.3f;
 	ex.m_retreatAdvantage = 0.65f;
-	ex.m_waveHoldSeconds = 40.0f;
-	ex.m_minWaveValue = 2000.0f;
+	ex.m_waveHoldSeconds = 100000.0f;	// no early launch of an army that has stopped growing: it went out too small (measured with the real data)
+	ex.m_minWaveValue = 12000.0f;	// real units cost 300-2000: 2000 was a handful of units (tuned on the starter content)
 	ex.m_waveSizeScale = 1.0f;
 	ex.m_useRetreat = true;
 	ex.m_useFocusFire = true;
@@ -1308,6 +1352,24 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_allyHelpHomeGuard = 1.0f;
 	ex.m_allyHelpClearSeconds = 10.0f;
 	ex.m_allyHelpMaxSeconds = 90.0f;
+	ex.m_useSurplus = true;
+	ex.m_surplusReserve = 1500.0f;
+	ex.m_surplusStartSeconds = 150.0f;
+	ex.m_surplusInfantryShare = 1.0f;
+	ex.m_surplusAircraft = false;
+	ex.m_useRaze = true;
+	ex.m_razeRadius = 700.0f;
+	ex.m_huntAdvantage = 2.0f;
+	ex.m_useContest = true;
+	ex.m_contestRadius = 600.0f;
+	ex.m_surplusSiegeUnits = 6;
+	ex.m_waveSiegeUnits = 3;
+	ex.m_waveSiegeWaitSeconds = 120.0f;
+	ex.m_followUpShare = 0.3f;
+	ex.m_followUpMinWave = 0.0f;
+	ex.m_adaptivePlans = true;
+	ex.m_assaultAdvantage = 1.8f;
+	ex.m_assaultMinutes = 10.0f;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1440,6 +1502,24 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_allyHelpHomeGuard );
 		xfer->xferReal( &sk.m_allyHelpClearSeconds );
 		xfer->xferReal( &sk.m_allyHelpMaxSeconds );
+		xfer->xferBool( &sk.m_useSurplus );
+		xfer->xferReal( &sk.m_surplusReserve );
+		xfer->xferReal( &sk.m_surplusStartSeconds );
+		xfer->xferReal( &sk.m_surplusInfantryShare );
+		xfer->xferBool( &sk.m_surplusAircraft );
+		xfer->xferBool( &sk.m_useRaze );
+		xfer->xferReal( &sk.m_razeRadius );
+		xfer->xferReal( &sk.m_huntAdvantage );
+		xfer->xferBool( &sk.m_useContest );
+		xfer->xferReal( &sk.m_contestRadius );
+		xfer->xferInt( &sk.m_surplusSiegeUnits );
+		xfer->xferInt( &sk.m_waveSiegeUnits );
+		xfer->xferReal( &sk.m_waveSiegeWaitSeconds );
+		xfer->xferReal( &sk.m_followUpShare );
+		xfer->xferReal( &sk.m_followUpMinWave );
+		xfer->xferBool( &sk.m_adaptivePlans );
+		xfer->xferReal( &sk.m_assaultAdvantage );
+		xfer->xferReal( &sk.m_assaultMinutes );
 	}
 	CRCGEN_LOG(("CRC after AI TAiData for frame %d is 0x%8.8X", TheGameLogic->getFrame(), ((XferCRC *)xfer)->getCRC()));
 
