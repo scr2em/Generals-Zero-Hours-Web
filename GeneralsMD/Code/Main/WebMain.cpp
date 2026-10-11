@@ -447,6 +447,11 @@ static void describeException( const char *what )
 static unsigned s_frameCount = 0;
 static double s_busyMs = 0.0;	// time spent in executeFrame() since the last report
 static double s_worstMs = 0.0;	// the longest of those frames
+static unsigned s_notDueWaits = 0;	// waits for the browser because the fps limit was not due yet (for the page)
+static double s_logicMs = 0.0;	// of the busy time: the game logic (the simulation, the AI), see GameEngine::update
+static double s_worstLogicMs = 0.0;	// the longest logic update of those frames
+extern double TheWebLogicMs;
+void AI_QueueExpertSkill( const char *fieldColonValue );
 static double s_reportAt = 0.0;	// when the last report was made (emscripten_get_now)
 static bool s_logFrames = false;
 static bool s_logDirectStats = false;	// -webdirectstats: the read counters of the direct file mode, see WebStorage.cpp
@@ -472,6 +477,7 @@ static bool runFrames()
 			// Display frames come at the display's rate, which can be above the game's fps limit.
 			if( !TheFramePacer->isFrameDue() )
 			{
+				++s_notDueWaits;
 				WebPlatform_WaitFrame();
 				continue;
 			}
@@ -486,6 +492,10 @@ static bool runFrames()
 			s_busyMs += busy;
 			if( busy > s_worstMs )
 				s_worstMs = busy;
+			s_logicMs += TheWebLogicMs;
+			if( TheWebLogicMs > s_worstLogicMs )
+				s_worstLogicMs = TheWebLogicMs;
+			TheWebLogicMs = 0.0;
 
 			++s_frameCount;
 			if( s_crashTest && s_frameCount == 60 )
@@ -514,12 +524,21 @@ static bool runFrames()
 				const double now = emscripten_get_now();
 				const double fps = s_reportAt > 0.0 && now > s_reportAt ? 30000.0 / ( now - s_reportAt ) : 0.0;
 				s_reportAt = now;
+				// (__zhGl: the WebGL work of the last frame: draw calls, WebGL calls, bytes uploaded, calls that wait for the GPU.)
+				WebD3D8_Stats gl;
+				WebD3D8_GetStats( &gl );
+				MAIN_THREAD_ASYNC_EM_ASM( { window.__zhGl = {}; window.__zhGl.draws = $0; window.__zhGl.calls = $1; window.__zhGl.upload = $2; window.__zhGl.sync = $3;
+					window.__zhGl.drawsUP = $4; window.__zhGl.prims = $5; window.__zhGl.uploads = $6; window.__zhGl.programs = $7; window.__zhGl.state = $8; window.__zhGl.locks = $9; window.__zhGl.indexed = $10; },
+					gl.draws, gl.glCalls, gl.uploadBytes, gl.glSync, gl.drawsUserPointer, gl.primitives, gl.glUpload, gl.programSwitches, gl.glState, gl.locks, gl.drawsIndexed );
 				MAIN_THREAD_ASYNC_EM_ASM( { window.__zhFrames = $0; window.__zhHeapBytes = $1; window.__zhFrameMs = $2; window.__zhYields = $3; window.__zhGameWindowed = $4;
-					window.__zhFps = $5; window.__zhWorstFrameMs = $6; if (window.__zhOnFrames) window.__zhOnFrames(); },
+					window.__zhFps = $5; window.__zhWorstFrameMs = $6; window.__zhLogicMs = $7; window.__zhWorstLogicMs = $8; window.__zhNotDueWaits = $9; window.__zhFpsLimit = $10;
+					if (window.__zhOnFrames) window.__zhOnFrames(); },
 					s_frameCount, (unsigned)emscripten_get_heap_size(), s_busyMs / 30.0, WebPlatform_GetYieldCount(), TheDisplay ? (int)TheDisplay->getWindowed() : -1,
-					fps, s_worstMs );
+					fps, s_worstMs, s_logicMs / 30.0, s_worstLogicMs, s_notDueWaits, TheFramePacer->getActualFramesPerSecondLimit() );
 				s_busyMs = 0.0;
 				s_worstMs = 0.0;
+				s_logicMs = 0.0;
+				s_worstLogicMs = 0.0;
 				if( s_logFrames && s_frameCount % 300 == 0 )
 					printf( "frame %u (%u waits for the browser)\n", s_frameCount, WebPlatform_GetYieldCount() );
 			}
@@ -610,6 +629,8 @@ int main( int argc, char **argv )
 	DebugSetCrashHandler( reportFatal );
 	for( int i = 1; i < argc; ++i )
 	{
+		if( strcmp( argv[i], "-expertSkill" ) == 0 && i + 1 < argc )
+			AI_QueueExpertSkill( argv[i + 1] );	// Expert settings, see AI.cpp (in the page's address: ?arg=-expertSkill&arg=RepairUnits:1)
 		if( strcmp( argv[i], "-webframelog" ) == 0 )
 			s_logFrames = true;
 		if( strcmp( argv[i], "-webinputlog" ) == 0 )

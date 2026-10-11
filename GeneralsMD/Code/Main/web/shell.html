@@ -598,7 +598,7 @@
 <div id="stage" hidden>
 	<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
 	<div id="loading">Loading&hellip;</div>
-	<div id="fps" title="Game frames per second, and the longest frame of the game's own work in the last half second" hidden></div>
+	<div id="fps" title="Frames per second; the average and the slowest frame of the game's own work in the last 30 frames, in ms, and the part of it that is the game logic (simulation and AI)" hidden></div>
 	<div id="toolbar">
 		<span id="mode-badge" hidden>Free starter content &middot; original placeholder game</span>
 		<span id="net-badge" hidden></span>
@@ -2251,10 +2251,28 @@ document.addEventListener('visibilitychange', () => {
 // The frame rate, top left: the game thread reports it every 30 frames (WebMain.cpp). Add ?fps=0 to the address to hide it.
 const fpsBox = $('fps');
 const showFps = params.get('fps') !== '0';
+let fpsLast = null;	// the frame and wait counts of the last report
+// The page's own display frames per second (the main thread): when they are few too, the browser or the page is busy, not the game.
+let pageFrames = 0, pageFps = 0, pageFpsAt = performance.now();
+(function countPageFrames(t) {
+	++pageFrames;
+	if (t - pageFpsAt >= 1000) { pageFps = Math.round(pageFrames * 1000 / (t - pageFpsAt)); pageFrames = 0; pageFpsAt = t; }
+	requestAnimationFrame(countPageFrames);
+})(performance.now());
 window.__zhOnFrames = () => {
+	// Waits for the browser per frame: 1 is one picture a frame; more means the game showed pictures within a frame.
+	const now = { frames: window.__zhFrames || 0, yields: window.__zhYields || 0, notDue: window.__zhNotDueWaits || 0 };
+	const span = fpsLast && now.frames > fpsLast.frames ? now.frames - fpsLast.frames : 0;
+	const waits = span ? (now.yields - fpsLast.yields) / span : 1;
+	const notDue = span ? (now.notDue - fpsLast.notDue) / span : 0;	// of them: the fps limit was not due yet
+	fpsLast = now;
 	if (!showFps || !gameRunning || !window.__zhFps) return;
 	const fps = Math.round(window.__zhFps);
-	fpsBox.textContent = fps + ' fps · ' + Math.round(window.__zhWorstFrameMs || 0) + ' ms';
+	const ms = (v) => Math.round(v || 0);
+	// fps · the average frame's own work (of it the logic) · the slowest frame (of it the logic), in ms
+	fpsBox.textContent = fps + ' fps (page ' + pageFps + ') · avg ' + ms(window.__zhFrameMs) + ' (logic ' + ms(window.__zhLogicMs) + ') · max ' +
+		ms(window.__zhWorstFrameMs) + ' (logic ' + ms(window.__zhWorstLogicMs) + ') ms · waits ' + waits.toFixed(1) + ' (not due ' + notDue.toFixed(1) + ', limit ' + (window.__zhFpsLimit >= 100000 ? 'none' : window.__zhFpsLimit) + ')' +
+		(window.__zhGl ? ' · draws ' + window.__zhGl.draws + ', gl ' + window.__zhGl.calls + ', upload ' + Math.round(window.__zhGl.upload / 1024) + ' KB, sync ' + window.__zhGl.sync : '');
 	fpsBox.className = fps >= 55 ? '' : fps >= 30 ? 'slow' : 'bad';
 	fpsBox.hidden = false;
 };

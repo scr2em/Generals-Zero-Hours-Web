@@ -415,7 +415,7 @@ private:
 	void updateSiege();
 	void updateArmy();
 	Bool rallyPoint( Coord3D *pos );
-	Real waveTarget( Real *stallNeed = nullptr ) const;
+	Real waveTarget( Real *stallNeed = nullptr, const Coord3D *objective = nullptr ) const;
 	Real alliedValueNear( const Coord3D *center, Team *except ) const;
 
 	// tactics (AITactics.cpp)
@@ -569,6 +569,12 @@ private:
 	// income (AIIncome.cpp, AICapture.cpp)
 	enum { MAX_CAPTURES = 8 };
 	void updateIncome();
+	void updateIncomeBuildings();
+	Bool incomeSite( const ThingTemplate *plan, Coord3D *where );
+	Bool wavesOn() const;
+	static void resetTerrainRoutes();
+	Bool terrainLeg( const Coord3D &from, const Coord3D &to, Coord3D *leg );
+	const Coord3D *orderTarget( Team *team, const Coord3D *pos, Coord3D *leg );
 	void updateCapture();
 	Bool isCapturer( ObjectID id ) const;
 	Bool isIncomeBuilding( const ThingTemplate *tt ) const;
@@ -768,6 +774,8 @@ private:
 	Int						m_captured;
 	Int						m_incomeOrders;									///< statistics for the trace
 	Int						m_incomeTrained;
+	Int						m_incomeBuilt;
+	Int						m_terrainLegs;					///< statistics for the trace
 	Int						m_surplusKind[MAX_SURPLUS_KINDS];				///< the kinds of surplus units ordered (template ids) and how many of each
 	Int						m_surplusKindCount[MAX_SURPLUS_KINDS];
 	Int						m_numSurplusKinds;

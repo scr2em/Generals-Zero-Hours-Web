@@ -139,7 +139,10 @@ struct AISkillSettings
 	Real m_retreatAdvantage;	///< Estimated strength ratio below which a team pulls out of a fight.
 	Real m_waveHoldSeconds;		///< An army that has stopped growing waits this long, then goes with at least 60% of the wanted size.
 	Real m_minWaveValue;			///< Least army value (cost of the living units) that makes an attack wave, whatever has been seen of the enemy.
-	Real m_waveSizeScale;			///< Scales how big an attack wave must be compared to the enemy force it expects to meet.
+	Bool m_useWaves;	///< The army gathers at the rally point and goes in waves; off: the teams go as the scripts send them (variant "on-wave" forces it).
+	Real m_waveSizeScale;
+	Bool m_localWaveTarget;	///< The wave is sized for its objective (the enemy army near it, LocalWaveRestShare of the rest, the defences that reach it), not for all the enemies seen.
+	Real m_localWaveRestShare;			///< Scales how big an attack wave must be compared to the enemy force it expects to meet.
 	Bool m_useRetreat;				///< Pull out of losing fights, regroup and come back.
 	Bool m_useFocusFire;			///< Concentrate fire on the most valuable target in range.
 	Bool m_useSpacing;				///< Keep long range and fragile units behind the front line.
@@ -184,6 +187,7 @@ struct AISkillSettings
 	Int  m_protectResponders;	///< Most units sent per alarm.
 
 	// ---- batch 2: repair and heal ----
+	Bool m_repairUnits;	///< ... damaged units leave the army for the pads (off: only the dozers repair structures).
 	Bool m_useRepair;					///< Damaged vehicles go to repair pads, damaged infantry to heal pads, and dozers repair far structures.
 	Real m_repairBelow;				///< A unit hurt below this share of its health (0..1) goes for repairs.
 	Real m_repairTripSeconds;	///< Longest trip to a pad, at the unit's speed.
@@ -292,6 +296,11 @@ struct AISkillSettings
 	// ---- income ----
 	Int m_incomeHackers;	///< At least this many units that earn money (HackInternetAIUpdate) are kept, trained by the Expert when the scripts did not; 0 = off.
 	Real m_incomeStartSeconds;	///< ... from this time on.
+	Real m_incomeRate;	///< Structures that bring money by themselves (supply drop zone, black market) are built until they bring this much a minute; 0 = off.
+	Real m_incomeDropZoneRate;	///< ... what a supply drop zone brings a minute (its drops are not in a module the code can read).
+	Int m_incomeBuildings;	///< ... this many of them at most.
+	Int m_incomeRebuilds;	///< ... and ones destroyed are replaced this many times at most.
+	Bool m_terrainRoutes;	///< Orders to teams whose true way is much longer than the straight line (cliffs) go in legs along it.
 	Bool m_useCapture;	///< Neutral buildings that pay money (oil derricks) are captured by infantry with the capture power (the upgrade is researched when needed).
 	Real m_captureStartSeconds;	///< ... from this time on.
 

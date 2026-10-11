@@ -27,6 +27,9 @@
 // Author: Michael S. Booth, November 2000
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include <string>
+#include <vector>
+
 #include "Common/CRCDebug.h"
 #include "Common/GameState.h"
 #include "Common/PerfTimer.h"
@@ -256,7 +259,10 @@ static const FieldParse s_skillFieldParse[] =
 		{ "RetreatAdvantage",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_retreatAdvantage ) },
 		{ "WaveHoldSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveHoldSeconds ) },
 		{ "MinWaveValue",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_minWaveValue ) },
+		{ "UseWaves",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useWaves ) },
 		{ "WaveSizeScale",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveSizeScale ) },
+		{ "LocalWaveTarget",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_localWaveTarget ) },
+		{ "LocalWaveRestShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_localWaveRestShare ) },
 		{ "Retreat",							INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRetreat ) },
 		{ "FocusFire",						INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useFocusFire ) },
 		{ "KeepBackline",					INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useSpacing ) },
@@ -294,6 +300,7 @@ static const FieldParse s_skillFieldParse[] =
 		{ "ProtectMaxSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_protectMaxSeconds ) },
 		{ "ProtectResponders",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_protectResponders ) },
 		{ "RepairAndHeal",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useRepair ) },
+		{ "RepairUnits",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_repairUnits ) },
 		{ "RepairBelow",					INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairBelow ) },
 		{ "RepairTripSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_repairTripSeconds ) },
 		{ "RepairDozerBelow",			INI::parsePercentToReal, nullptr, offsetof( AISkillSettings, m_repairDozerBelow ) },
@@ -355,6 +362,11 @@ static const FieldParse s_skillFieldParse[] =
 		{ "SurplusRichMoney",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_surplusRichMoney ) },
 		{ "IncomeHackers",			INI::parseInt,		nullptr, offsetof( AISkillSettings, m_incomeHackers ) },
 		{ "IncomeStartSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_incomeStartSeconds ) },
+		{ "IncomeRate",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_incomeRate ) },
+		{ "IncomeDropZoneRate",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_incomeDropZoneRate ) },
+		{ "IncomeBuildings",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_incomeBuildings ) },
+		{ "IncomeRebuilds",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_incomeRebuilds ) },
+		{ "TerrainRoutes",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_terrainRoutes ) },
 		{ "CaptureIncome",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useCapture ) },
 		{ "CaptureStartSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_captureStartSeconds ) },
 		{ "SurplusAircraft",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_surplusAircraft ) },
@@ -394,6 +406,14 @@ const FieldParse *AI::getSkillSettingsFieldParse()
 }
 
 /// Sets one field of the Expert skill settings by its INI name (test bench: the match option skill=<name>:<value>).
+// Settings of the Expert given on the command line (-expertSkill Field:Value, repeatable): applied at the start of every map.
+static std::vector<std::string> s_commandLineSkills;
+void AI_QueueExpertSkill( const char *fieldColonValue )
+{
+	if (fieldColonValue && strchr(fieldColonValue, ':'))
+		s_commandLineSkills.push_back(fieldColonValue);
+}
+
 Bool AI::setExpertSkillValue( const char *name, const char *value )
 {
 	if (m_aiData == nullptr)
@@ -530,6 +550,15 @@ void AI::reset()
 	m_nextGroupID = 0;
 	m_nextFormationID = NO_FORMATION_ID;
 	getNextFormationID(); // increment once past NO_FORMATION_ID.  jba.
+
+	for (size_t i = 0; i < s_commandLineSkills.size(); ++i)
+	{
+		const std::string &s = s_commandLineSkills[i];
+		const size_t colon = s.find(':');
+		const std::string name = s.substr(0, colon), value = s.substr(colon + 1);
+		if (!setExpertSkillValue(name.c_str(), value.c_str()))
+			printf("-expertSkill: no Expert setting '%s'\n", name.c_str());
+	}
 }
 
 /**
@@ -1270,7 +1299,10 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_retreatAdvantage = 0.65f;
 	ex.m_waveHoldSeconds = 180.0f;	// an army that has stopped growing goes after 3 minutes (40 s sent it out too small, never let it stall for good: measured with the real data)
 	ex.m_minWaveValue = 12000.0f;	// real units cost 300-2000: 2000 was a handful of units (tuned on the starter content)
+	ex.m_useWaves = false;	// off at the player's request: the teams attack as they are ready (no gathering at the rally point)
 	ex.m_waveSizeScale = 1.0f;
+	ex.m_localWaveTarget = true;
+	ex.m_localWaveRestShare = 0.35f;
 	ex.m_useRetreat = true;
 	ex.m_useFocusFire = true;
 	ex.m_useSpacing = true;
@@ -1308,6 +1340,7 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_protectMaxSeconds = 75.0f;
 	ex.m_protectResponders = 4;
 	ex.m_useRepair = true;
+	ex.m_repairUnits = false;	// off at the player's request: damaged units stay in the fight
 	ex.m_repairBelow = 0.55f;
 	ex.m_repairTripSeconds = 30.0f;
 	ex.m_repairDozerBelow = 0.85f;
@@ -1368,10 +1401,15 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_surplusAircraft = false;
 	ex.m_surplusStrength = 0.5f;
 	ex.m_surplusRichMoney = 4000.0f;
-	ex.m_incomeHackers = 24;	// twice what the Hard AI keeps with the real data (12-14): the income that does not run out
+	ex.m_incomeHackers = 25;	// $150 a minute each: IncomeRate, about twice what the Hard AI keeps with the real data (12-14)
 	ex.m_incomeStartSeconds = 300.0f;
+	ex.m_incomeRate = 3750.0f;	// what 5 supply drop zones bring: $37,500 in 10 minutes
+	ex.m_incomeDropZoneRate = 750.0f;	// $1500 every 2 minutes (the real game data)
+	ex.m_incomeBuildings = 8;	// (7 black markets at $600 a minute)
+	ex.m_incomeRebuilds = 3;
+	ex.m_terrainRoutes = true;
 	ex.m_useCapture = true;
-	ex.m_captureStartSeconds = 60.0f;
+	ex.m_captureStartSeconds = 0.0f;	// as soon as there is a barracks (the Hard AI sends its first two early)
 	ex.m_useRaze = true;
 	ex.m_razeRadius = 700.0f;
 	ex.m_huntAdvantage = 2.0f;
@@ -1429,7 +1467,10 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_retreatAdvantage );
 		xfer->xferReal( &sk.m_waveHoldSeconds );
 		xfer->xferReal( &sk.m_minWaveValue );
+		xfer->xferBool( &sk.m_useWaves );
 		xfer->xferReal( &sk.m_waveSizeScale );
+		xfer->xferBool( &sk.m_localWaveTarget );
+		xfer->xferReal( &sk.m_localWaveRestShare );
 		xfer->xferBool( &sk.m_useRetreat );
 		xfer->xferBool( &sk.m_useFocusFire );
 		xfer->xferBool( &sk.m_useSpacing );
@@ -1467,6 +1508,7 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_protectMaxSeconds );
 		xfer->xferInt( &sk.m_protectResponders );
 		xfer->xferBool( &sk.m_useRepair );
+		xfer->xferBool( &sk.m_repairUnits );
 		xfer->xferReal( &sk.m_repairBelow );
 		xfer->xferReal( &sk.m_repairTripSeconds );
 		xfer->xferReal( &sk.m_repairDozerBelow );
@@ -1529,6 +1571,11 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_surplusRichMoney );
 		xfer->xferInt( &sk.m_incomeHackers );
 		xfer->xferReal( &sk.m_incomeStartSeconds );
+		xfer->xferReal( &sk.m_incomeRate );
+		xfer->xferReal( &sk.m_incomeDropZoneRate );
+		xfer->xferInt( &sk.m_incomeBuildings );
+		xfer->xferInt( &sk.m_incomeRebuilds );
+		xfer->xferBool( &sk.m_terrainRoutes );
 		xfer->xferBool( &sk.m_useCapture );
 		xfer->xferReal( &sk.m_captureStartSeconds );
 		xfer->xferBool( &sk.m_useRaze );

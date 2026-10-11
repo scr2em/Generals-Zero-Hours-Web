@@ -901,6 +901,12 @@ DECLARE_PERF_TIMER(GameEngine_update)
 /** -----------------------------------------------------------------------------------------------
  * Update the game engine by updating the GameClient and GameLogic singletons.
  */
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+/// Time spent in the logic updates since the web frame loop last read it (WebMain.cpp shows it on the page).
+double TheWebLogicMs = 0.0;
+#endif
+
 void GameEngine::update()
 {
 	USE_PERF_TIMER(GameEngine_update)
@@ -926,7 +932,13 @@ void GameEngine::update()
 		// TheSuperHackers @info Ignores frozen time because the script engine needs updating in the logic update regardless.
 		if (canUpdateGameLogic(FramePacer::IgnoreFrozenTime))
 		{
+#ifdef __EMSCRIPTEN__
+			const double logicStart = emscripten_get_now();
+#endif
 			TheGameLogic->UPDATE();
+#ifdef __EMSCRIPTEN__
+			TheWebLogicMs += emscripten_get_now() - logicStart;
+#endif
 
 			if (!TheFramePacer->isTimeFrozen())
 			{

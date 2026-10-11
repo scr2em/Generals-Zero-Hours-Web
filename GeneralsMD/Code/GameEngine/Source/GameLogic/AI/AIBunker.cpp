@@ -349,6 +349,9 @@ void AIStrategy::updateBunkers()
 						const AICombatFigures *f = AICombatModel::figures(obj->getTemplate());
 						if (f == nullptr || !f->m_armed || !f->m_canHitGround)
 							continue;
+						// The line troops sit in the bunkers; the specialists (snipers, heroes: the expensive infantry) go with the army.
+						if (f->m_cost > 450.0f)
+							continue;
 						Real health = 1.0f;
 						BodyModuleInterface *body = obj->getBodyModule();
 						if (body != nullptr && body->getMaxHealth() > 0.0f)

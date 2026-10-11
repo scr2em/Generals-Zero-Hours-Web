@@ -285,8 +285,8 @@ void AIStrategy::tryStartRepairs()
 	const AISkillSettings &sk = skill();
 	refreshRepairSites();
 
-	// Units.
-	if (m_numSites > 0 && m_numPatients < MAX_PATIENTS)
+	// Units (RepairUnits: they leave the army for the pads).
+	if (sk.m_repairUnits && m_numSites > 0 && m_numPatients < MAX_PATIENTS)
 	{
 		const Real below = sk.m_repairBelow;
 		Object *pick = nullptr;

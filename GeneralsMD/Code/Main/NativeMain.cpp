@@ -272,6 +272,8 @@ Int runGame()
 // main =======================================================================
 /** Application entry point */
 //=============================================================================
+void AI_QueueExpertSkill( const char *fieldColonValue );
+
 int main( int argc, char **argv )
 {
 	setvbuf( stdout, nullptr, _IOLBF, 0 );
@@ -290,6 +292,8 @@ int main( int argc, char **argv )
 	for( int i = 1; i < argc; ++i )
 	{
 		const char *arg = argv[i];
+		if( strcmp( arg, "-expertSkill" ) == 0 && i + 1 < argc )
+			AI_QueueExpertSkill( argv[i + 1] );	// Expert settings for every map, see AI.cpp
 		if( strcmp( arg, "--help" ) == 0 || strcmp( arg, "-h" ) == 0 )
 		{
 			printUsage();

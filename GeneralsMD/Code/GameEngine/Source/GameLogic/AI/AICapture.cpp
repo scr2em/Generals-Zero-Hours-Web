@@ -109,7 +109,10 @@ void AIStrategy::updateCapture()
 	{
 		Object *unit = TheGameLogic->findObjectByID(m_captureUnit[i]);
 		Object *target = TheGameLogic->findObjectByID(m_captureTarget[i]);
-		if (unit == nullptr || unit->isEffectivelyDead() || target == nullptr || target->isEffectivelyDead() ||
+		// An ally (another computer player, or the human) may take it first: then it is no target any more.
+		const Player *owner = target ? target->getControllingPlayer() : nullptr;
+		const Bool allyTook = owner && owner != m_player && owner->isPlayableSide() && m_player->getRelationship(target->getTeam()) != ENEMIES;
+		if (unit == nullptr || unit->isEffectivelyDead() || target == nullptr || target->isEffectivelyDead() || allyTook ||
 				target->getControllingPlayer() == m_player || now - m_captureFrame[i] > 180 * LOGICFRAMES_PER_SECOND)
 		{
 			if (target && target->getControllingPlayer() == m_player)
@@ -120,7 +123,14 @@ void AIStrategy::updateCapture()
 			else
 			{
 				const Bool died = unit == nullptr || unit->isEffectivelyDead();
-				AI_TRACE("CAPTURE: given up (%s)", died ? "the capturer died" : (target == nullptr || target->isEffectivelyDead() ? "the target is gone" : "time is up"));
+				AI_TRACE("CAPTURE: given up (%s)", died ? "the capturer died" : (target == nullptr || target->isEffectivelyDead() ? "the target is gone" : (allyTook ? "an ally took it" : "time is up")));
+				// Back to the army (it stood by the target).
+				if (!died && unit->getAI() && dist2D(*unit->getPosition(), base) > 300.0f)
+				{
+					Coord3D home;
+					if (rallyPoint(&home))
+						unit->getAI()->aiMoveToPosition(&home, CMD_FROM_AI);
+				}
 				// A place where the capturer was killed waits: longer after every loss there.
 				if (died)
 				{
@@ -240,7 +250,8 @@ void AIStrategy::updateCapture()
 			if (button)
 			{
 				anyButton = TRUE;
-				if (button->getUpgradeTemplate() && !m_player->hasUpgradeComplete(button->getUpgradeTemplate()))
+				// (While the upgrade is researched it walks already: it arrives about when the button works.)
+				if (button->getUpgradeTemplate() && !m_player->hasUpgradeComplete(button->getUpgradeTemplate()) && !m_player->hasUpgradeInProduction(button->getUpgradeTemplate()))
 					needed = button->getUpgradeTemplate();
 				else
 				{
@@ -271,13 +282,15 @@ void AIStrategy::updateCapture()
 					// A unit of a wave only takes a target that the wave passes by.
 					if (rec && rec->m_inWave && dist2D(*unit->getPosition(), *target->getPosition()) > 1200.0f)
 						continue;
-					if (button->getUpgradeTemplate() && !m_player->hasUpgradeComplete(button->getUpgradeTemplate()))
+					const Bool researching = button->getUpgradeTemplate() && !m_player->hasUpgradeComplete(button->getUpgradeTemplate()) &&
+						m_player->hasUpgradeInProduction(button->getUpgradeTemplate());
+					if (button->getUpgradeTemplate() && !m_player->hasUpgradeComplete(button->getUpgradeTemplate()) && !researching)
 					{
 						needed = button->getUpgradeTemplate();
 						continue;
 					}
 					SpecialPowerModuleInterface *module = unit->getSpecialPowerModule(button->getSpecialPowerTemplate());
-					if (module == nullptr || !module->isReady() || !TheSpecialPowerStore->canUseSpecialPower(unit, button->getSpecialPowerTemplate()))
+					if (!researching && (module == nullptr || !module->isReady() || !TheSpecialPowerStore->canUseSpecialPower(unit, button->getSpecialPowerTemplate())))
 						continue;
 					const Real d = dist2D(*unit->getPosition(), *target->getPosition());
 					if (best == nullptr || d < bestDist)

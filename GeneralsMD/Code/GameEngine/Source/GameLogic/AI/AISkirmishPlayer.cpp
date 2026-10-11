@@ -220,7 +220,35 @@ void AISkirmishPlayer::processBaseBuilding()
 			if (!isLocationSafe(info->getLocation(), curPlan)) {
 				continue;
 			}
-			if (info->isPriorityBuild()) {
+			// Expert: a priority build that cannot be built now (no rebuilds left, no money or technology for it, or its place is
+			// taken) does not hold up the ones after it: the first one that can be built is taken.
+			Bool priorityReady = true;
+			if (m_strategy && info->isPriorityBuild() && !isPriority) {
+				Object *priorityDozer = findDozer(info->getLocation());
+				priorityReady = info->isBuildable() && priorityDozer && TheBuildAssistant->canMakeUnit(priorityDozer, curPlan) == CANMAKE_OK;
+				if (priorityReady) {
+					// Its place may be taken (by one of our later structures, say): the nearest free place around it then.
+					Coord3D at = *info->getLocation();
+					priorityReady = LBC_OK == TheBuildAssistant->isLocationLegalToBuild(&at, curPlan, info->getAngle(),
+						BuildAssistant::TERRAIN_RESTRICTIONS | BuildAssistant::NO_OBJECT_OVERLAP, nullptr, m_player);
+					for (Int ring = 1; ring <= 6 && !priorityReady; ++ring) {
+						for (Int k = 0; k < 8 && !priorityReady; ++k) {
+							const Real a = k * (PI / 4.0f);
+							Coord3D p = *info->getLocation();
+							p.x += ring * 50.0f * Cos(a);
+							p.y += ring * 50.0f * Sin(a);
+							p.z = TheTerrainLogic->getGroundHeight(p.x, p.y);
+							if (LBC_OK == TheBuildAssistant->isLocationLegalToBuild(&p, curPlan, info->getAngle(),
+									BuildAssistant::TERRAIN_RESTRICTIONS | BuildAssistant::NO_OBJECT_OVERLAP, nullptr, m_player)) {
+								info->setLocation(p);
+								priorityReady = true;
+							}
+						}
+					}
+					TheTerrainVisual->removeAllBibs();	// isLocationLegalToBuild adds bib feedback
+				}
+			}
+			if (info->isPriorityBuild() && priorityReady) {
 				// Always take priority build, unless we already have priority build.
 				if (!isPriority) {
 					bldgPlan = curPlan;

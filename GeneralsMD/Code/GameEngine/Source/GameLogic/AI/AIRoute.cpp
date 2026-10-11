@@ -733,3 +733,205 @@ void AIStrategy::updateBreach()
 	m_numBreachers = 0;
 	m_numBreachTargets = 0;
 }
+
+//-------------------------------------------------------------------------------------------------
+// terrain routes
+//
+// The game's pathfinder gives up on a long way (a search limit) and then moves units to the point nearest to the destination
+// in a straight line: under a cliff below an enemy on top of it, in a dead end.  So a team whose way is much longer than the
+// straight line gets its order in legs: a point about TERRAIN_LEG along the true way first (the next order goes on from there).
+// The true way comes from a distance field over the pathfinder's grid, in blocks of 2 x 2 cells, where only the terrain counts
+// (cliffs, water and impassable cells are walls; structures and rubble are not: they come and go).  It depends on the map alone,
+// and it is kept for the last few destinations (the teams of a wave share theirs).
+//-------------------------------------------------------------------------------------------------
+#include "GameLogic/AIPathfind.h"
+#include "GameLogic/Pathfinder/PathfindCell.h"
+#include <queue>
+#include <vector>
+
+namespace
+{
+	enum { TERRAIN_BLOCK = 2, TERRAIN_FIELDS = 4 };
+	const Real TERRAIN_BLOCK_SIZE = TERRAIN_BLOCK * 10.0f;	// PATHFIND_CELL_SIZE_F is 10
+	const Real TERRAIN_LEG = 1000.0f;
+	const UnsignedInt TERRAIN_FAR = 0xFFFFFFFFu;
+
+	struct TerrainGrid
+	{
+		Int m_w = 0, m_h = 0;
+		std::vector<UnsignedByte> m_blocked;
+		struct Field { Int m_dest = -1; UnsignedInt m_age = 0; std::vector<UnsignedInt> m_dist; };
+		Field m_fields[TERRAIN_FIELDS];
+		UnsignedInt m_clock = 0;
+
+		void reset() { m_w = m_h = 0; m_blocked.clear(); for (Int i = 0; i < TERRAIN_FIELDS; ++i) { m_fields[i].m_dest = -1; m_fields[i].m_dist.clear(); } }
+
+		Bool build()
+		{
+			if (m_w > 0)
+				return TRUE;
+			const ICoord2D *ext = TheAI && TheAI->pathfinder() ? TheAI->pathfinder()->getExtent() : nullptr;
+			if (ext == nullptr || ext->x <= 0 || ext->y <= 0)
+				return FALSE;
+			const Int cw = ext->x + 1, ch = ext->y + 1;
+			m_w = (cw + TERRAIN_BLOCK - 1) / TERRAIN_BLOCK;
+			m_h = (ch + TERRAIN_BLOCK - 1) / TERRAIN_BLOCK;
+			m_blocked.assign((size_t)m_w * m_h, 0);
+			for (Int y = 0; y < ch; ++y)
+				for (Int x = 0; x < cw; ++x)
+				{
+					PathfindCell *c = TheAI->pathfinder()->getCell(LAYER_GROUND, x, y);
+					if (c == nullptr)
+						continue;
+					const Int t = c->getType();
+					if (t == PathfindCell::CELL_CLIFF || t == PathfindCell::CELL_WATER || t == PathfindCell::CELL_IMPASSABLE || t == PathfindCell::CELL_BRIDGE_IMPASSABLE)
+						m_blocked[(size_t)(y / TERRAIN_BLOCK) * m_w + x / TERRAIN_BLOCK] = 1;
+				}
+			return TRUE;
+		}
+
+		Int blockOf( const Coord3D &p ) const
+		{
+			Int x = (Int)(p.x / TERRAIN_BLOCK_SIZE), y = (Int)(p.y / TERRAIN_BLOCK_SIZE);
+			if (x < 0) x = 0;
+			if (y < 0) y = 0;
+			if (x >= m_w) x = m_w - 1;
+			if (y >= m_h) y = m_h - 1;
+			return y * m_w + x;
+		}
+
+		/// The nearest open block to this one (within a few blocks), or -1.
+		Int open( Int b ) const
+		{
+			if (!m_blocked[b])
+				return b;
+			const Int bx = b % m_w, by = b / m_w;
+			for (Int r = 1; r <= 4; ++r)
+				for (Int dy = -r; dy <= r; ++dy)
+					for (Int dx = -r; dx <= r; ++dx)
+					{
+						const Int x = bx + dx, y = by + dy;
+						if (x >= 0 && y >= 0 && x < m_w && y < m_h && !m_blocked[y * m_w + x])
+							return y * m_w + x;
+					}
+			return -1;
+		}
+
+		/// The distance field to this block (cost 10 a block straight, 14 diagonal; no corner cutting).
+		const std::vector<UnsignedInt> &field( Int dest )
+		{
+			++m_clock;
+			Int oldest = 0;
+			for (Int i = 0; i < TERRAIN_FIELDS; ++i)
+			{
+				if (m_fields[i].m_dest == dest)
+				{
+					m_fields[i].m_age = m_clock;
+					return m_fields[i].m_dist;
+				}
+				if (m_fields[i].m_age < m_fields[oldest].m_age)
+					oldest = i;
+			}
+			Field &f = m_fields[oldest];
+			f.m_dest = dest;
+			f.m_age = m_clock;
+			f.m_dist.assign((size_t)m_w * m_h, TERRAIN_FAR);
+			typedef std::pair<UnsignedInt, Int> Item;
+			std::priority_queue<Item, std::vector<Item>, std::greater<Item> > queue;
+			f.m_dist[dest] = 0;
+			queue.push(Item(0, dest));
+			static const Int dx[8] = { 1, -1, 0, 0, 1, 1, -1, -1 };
+			static const Int dy[8] = { 0, 0, 1, -1, 1, -1, 1, -1 };
+			while (!queue.empty())
+			{
+				const Item top = queue.top();
+				queue.pop();
+				if (top.first != f.m_dist[top.second])
+					continue;
+				const Int x = top.second % m_w, y = top.second / m_w;
+				for (Int k = 0; k < 8; ++k)
+				{
+					const Int nx = x + dx[k], ny = y + dy[k];
+					if (nx < 0 || ny < 0 || nx >= m_w || ny >= m_h || m_blocked[ny * m_w + nx])
+						continue;
+					if (k >= 4 && (m_blocked[y * m_w + nx] || m_blocked[ny * m_w + x]))
+						continue;
+					const UnsignedInt d = top.first + (k < 4 ? 10u : 14u);
+					if (d < f.m_dist[ny * m_w + nx])
+					{
+						f.m_dist[ny * m_w + nx] = d;
+						queue.push(Item(d, ny * m_w + nx));
+					}
+				}
+			}
+			return f.m_dist;
+		}
+	};
+
+	TerrainGrid s_terrain;
+}
+
+void AIStrategy::resetTerrainRoutes()
+{
+	s_terrain.reset();
+}
+
+/// When the true way from `from` to `to` is much longer than the straight line (cliffs in between): the point about TERRAIN_LEG
+/// along it, for the next order.  FALSE when the straight order is fine (or the terrain does not tell).
+Bool AIStrategy::terrainLeg( const Coord3D &from, const Coord3D &to, Coord3D *leg )
+{
+	if (!skill().m_terrainRoutes || !s_terrain.build())
+		return FALSE;
+	const Int start = s_terrain.open(s_terrain.blockOf(from));
+	const Int dest = s_terrain.open(s_terrain.blockOf(to));
+	if (start < 0 || dest < 0 || start == dest)
+		return FALSE;
+	const std::vector<UnsignedInt> &dist = s_terrain.field(dest);
+	if (dist[start] == TERRAIN_FAR)
+		return FALSE;	// not connected by this terrain (a bridge, say): the pathfinder knows better
+	const Real way = dist[start] * (TERRAIN_BLOCK_SIZE / 10.0f);
+	const Real straight = dist2D(from, to);
+	if (way < 1.3f * straight + 300.0f)
+		return FALSE;
+	// Down the field, TERRAIN_LEG of the way.
+	Int cur = start;
+	Real walked = 0.0f;
+	const Int w = s_terrain.m_w;
+	while (walked < TERRAIN_LEG && dist[cur] > 0)
+	{
+		const Int x = cur % w, y = cur / w;
+		Int best = cur;
+		for (Int dy = -1; dy <= 1; ++dy)
+			for (Int dx = -1; dx <= 1; ++dx)
+			{
+				const Int nx = x + dx, ny = y + dy;
+				if ((dx || dy) && nx >= 0 && ny >= 0 && nx < w && ny < s_terrain.m_h && dist[ny * w + nx] < dist[best])
+					best = ny * w + nx;
+			}
+		if (best == cur)
+			break;
+		walked += (best % w != x && best / w != y) ? 1.414f * TERRAIN_BLOCK_SIZE : TERRAIN_BLOCK_SIZE;
+		cur = best;
+	}
+	leg->x = (cur % w + 0.5f) * TERRAIN_BLOCK_SIZE;
+	leg->y = (cur / w + 0.5f) * TERRAIN_BLOCK_SIZE;
+	leg->z = TheTerrainLogic->getGroundHeight(leg->x, leg->y);
+	++m_terrainLegs;
+	AI_TRACE("TERRAIN leg: from (%.0f,%.0f) to (%.0f,%.0f) the way is %.0f against %.0f straight: first to (%.0f,%.0f)", from.x, from.y, to.x, to.y, way, straight, leg->x, leg->y);
+	return TRUE;
+}
+
+/// For an order to a team: the place to send it now (a leg of the true way, see terrainLeg), or `pos` itself.
+const Coord3D *AIStrategy::orderTarget( Team *team, const Coord3D *pos, Coord3D *leg )
+{
+	const Coord3D *at = team->getEstimateTeamPosition();
+	if (at == nullptr)
+		return pos;
+	// Aircraft fly straight.
+	Bool ground = FALSE;
+	for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done() && !ground; it.advance())
+		ground = it.cur() && !it.cur()->isEffectivelyDead() && !it.cur()->isKindOf(KINDOF_AIRCRAFT) && !it.cur()->isKindOf(KINDOF_STRUCTURE);
+	if (!ground)
+		return pos;
+	return terrainLeg(*at, *pos, leg) ? leg : pos;
+}

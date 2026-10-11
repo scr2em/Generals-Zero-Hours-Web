@@ -89,7 +89,7 @@ void FramePacer::reset()
 
 #ifdef __EMSCRIPTEN__
 // The web build draws at least this many frames a second.
-static const Int WebMinRenderFps = 60;
+static const Int WebMinRenderFps = 120;
 // Whether the logic time scale is on because of it (and not because the player turned it on).
 static Bool s_webLogicTimeScale = FALSE;
 #endif

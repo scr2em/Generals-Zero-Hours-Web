@@ -42,8 +42,17 @@ Bool FrameRateLimit::isDue(UnsignedInt maxFps) const
 	LARGE_INTEGER tick;
 	QueryPerformanceCounter(&tick);
 	const double elapsedSeconds = static_cast<double>(tick.QuadPart - m_start) / m_freq;
+#ifdef __EMSCRIPTEN__
+	// The browser paces the frames (one per display frame): a limit of 60 or more never holds one back, whatever the timing of the
+	// display frames (their jitter made frames wait a whole display frame more).  Lower limits: a quarter of the period early is
+	// on time.
+	if (maxFps >= 60)
+		return true;
+	return elapsedSeconds >= 0.75 / maxFps;
+#else
 	// A millisecond early is on time, so that a frame limit at the display's refresh rate is not missed by jitter.
 	return elapsedSeconds >= 1.0 / maxFps - 0.001;
+#endif
 }
 
 Real FrameRateLimit::wait(UnsignedInt maxFps)
@@ -64,8 +73,11 @@ Real FrameRateLimit::wait(UnsignedInt maxFps)
 	{
 		const Int64 period = m_freq / maxFps;
 		m_start += period;
+		// More than a frame behind (a stall, or a limit above the display's rate): the next frame is due at once, but only that one,
+		// so no burst.  (An anchor at now would make the next frame wait a period after this check, which comes right after a display
+		// frame: every frame would wait for two display frames, 30 fps on a 60 Hz display.)
 		if (tick.QuadPart - m_start > period)
-			m_start = tick.QuadPart; // more than a frame behind (a stall): do not run frames in a burst
+			m_start = tick.QuadPart - period;
 	}
 	else
 	{
