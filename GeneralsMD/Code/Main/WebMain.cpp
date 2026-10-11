@@ -76,7 +76,7 @@
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "WebDevice/Common/WebGameEngine.h"
 #include "WebDevice/Platform/WebPlatform.h"
-#include <WebD3D8/WebD3D8.h>
+#include <dxwebgl2/dxwebgl2.h>
 #include "Common/version.h"
 #include "BuildVersion.h"
 #include "GeneratedVersion.h"
@@ -589,7 +589,8 @@ int main( int argc, char **argv )
 {
 	Int exitcode = 1;
 
-	// The game reads its arguments from the C runtime's globals, like on Windows.
+	// The game reads its arguments from the C runtime's globals, like on Windows. So does the renderer
+	// (dxWebGL2 parses its -dxwebgl2-* options, -dxwebgl2-backend=webgpu for one, when the device is created).
 	__argc = argc;
 	__argv = argv;
 
@@ -609,8 +610,8 @@ int main( int argc, char **argv )
 			s_logDirectStats = true;
 		if( strncmp( argv[i], "-webcrashtest=", 14 ) == 0 )
 			s_crashTest = argv[i] + 14;
-		if( strncmp( argv[i], "-webd3d8debug", 13 ) == 0 )
-			WebD3D8_SetDebug( argv[i][13] == '=' ? atoi( argv[i] + 14 ) | 1 : 1 );	// see WebD3D8.h
+		if( strncmp( argv[i], "-dxwebgl2-debug", 15 ) == 0 )
+			dxwebgl2_SetDebug( argv[i][15] == '=' ? atoi( argv[i] + 16 ) | 1 : 1 );	// see dxwebgl2/dxwebgl2.h
 	}
 
 	try {
@@ -658,14 +659,14 @@ int main( int argc, char **argv )
 		// The renderer (Direct3D 8 on WebGL2) draws on the page's canvas, tells the page when the
 		// back buffer size changes, and leaves presenting the frame to the browser: the browser
 		// shows it when this thread suspends to its event loop, see runFrames().
-		WebD3D8_PlatformHooks d3dHooks = {};
+		dxwebgl2_PlatformHooks d3dHooks = {};
 		d3dHooks.OnClientSize = []( unsigned width, unsigned height ) { WebPlatform_SetClientSize( (int)width, (int)height ); };
 		// Every Present() lets the browser show the frame: the frame loop's pacing and, from inside
 		// blocking loops that render (load screens, movies), their progress.
 		d3dHooks.OnFramePresented = []() { WebPlatform_FramePresented(); };
-		WebD3D8_SetPlatformHooks( &d3dHooks );
-		WebD3D8_SetCanvas( WebPlatform_GetCanvasSelector() );
-		WebD3D8_SetPresentMode( WEBD3D8_PRESENT_IMPLICIT );
+		dxwebgl2_SetPlatformHooks( &d3dHooks );
+		dxwebgl2_SetCanvas( WebPlatform_GetCanvasSelector() );
+		dxwebgl2_SetPresentMode( DXWEBGL2_PRESENT_IMPLICIT );
 
 		// The Win32 mouse code and the renderer want a window handle, like in WinMain.
 		ApplicationHInstance = (HINSTANCE)0x00400000;

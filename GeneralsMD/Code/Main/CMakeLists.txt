@@ -143,7 +143,7 @@ if(EMSCRIPTEN)
             -sJSPI
             -sALLOW_MEMORY_GROWTH
             # Not GROWABLE_ARRAYBUFFERS: Chrome's WebGL rejects views of resizable/growable
-            # buffers ("The provided ArrayBuffer value must not be resizable"), and WebD3D8
+            # buffers ("The provided ArrayBuffer value must not be resizable"), and dxWebGL2
             # uploads straight from HEAPU8.
             -sGROWABLE_ARRAYBUFFERS=0
             -sINITIAL_MEMORY=512MB

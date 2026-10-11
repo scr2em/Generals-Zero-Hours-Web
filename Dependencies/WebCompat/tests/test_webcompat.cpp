@@ -497,7 +497,7 @@ static void TestMisc()
 	CHECK(GetFileAttributesA("/userdata") & FILE_ATTRIBUTE_DIRECTORY);
 	CHECK(GetModuleHandleA("shell32.dll") == nullptr);
 	char module[MAX_PATH];
-	// Only the Direct3D 8 library exists (and without WebD3D8 linked in, not even that).
+	// Only the Direct3D 8 library exists (and without dxWebGL2 linked in, not even that).
 	CHECK(LoadLibraryA("no_such_library.dll") == nullptr);
 	CHECK(GetProcAddress(nullptr, "Direct3DCreate8") == nullptr);
 	CHECK(GetModuleFileNameA(nullptr, module, sizeof(module)) > 0 && strcmp(module, "/game\\generalszh.exe") == 0);

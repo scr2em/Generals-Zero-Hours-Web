@@ -121,36 +121,55 @@ target_compile_options(deps_config INTERFACE
 
 target_link_libraries(deps_config INTERFACE webcompat_headers)
 
-# DirectX 8 headers. The interfaces are implemented on WebGL2 by the
-# web_d3d8 library (Core/GameEngineDevice, WebGL backend).
-# The SDK headers pick the Windows layout (4 byte packing, the LARGE_INTEGER
-# driver version, the interface ids) from _WIN32, which the web build does not
-# define. The patch makes them accept __EMSCRIPTEN__ as well.
-find_package(Git REQUIRED)
+# Direct3D 8 on WebGL2 (or WebGPU): dxWebGL2 (https://github.com/scr2em/dxWebGL2), which
+# implements the interfaces the renderer uses (Core/GameEngineDevice, WW3D2) and
+# provides the Direct3D 8 / D3DX 8 headers (<d3d8.h>, <d3dx8.h>).
+#
+# DXWEBGL2_GIT_TAG pins the version; to update, put the new commit (or tag) here.
+# To develop against a local checkout instead, configure with
+#   -DFETCHCONTENT_SOURCE_DIR_DXWEBGL2=/path/to/dxWebGL2
+set(DXWEBGL2_GIT_TAG 496cb7167efb4920e11497bcabc12835320ae5e1) # main: WebGPU (chosen when the browser offers it) and WebGL2
+FetchContent_Declare(
+    dxwebgl2
+    GIT_REPOSITORY https://github.com/scr2em/dxWebGL2.git
+    GIT_TAG        ${DXWEBGL2_GIT_TAG}
+    EXCLUDE_FROM_ALL
+)
+set(DXWEBGL2_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(DXWEBGL2_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(DXWEBGL2_INSTALL OFF CACHE BOOL "" FORCE)
+# The game links with -pthread (PROXY_TO_PTHREAD): every object needs the atomics feature.
+set(DXWEBGL2_BUILD_PTHREADS ON CACHE BOOL "" FORCE)
+# Compile the WebGPU backend in (links Emscripten's emdawnwebgpu port; the game already links with -sJSPI, which
+# it needs). WebGL2 stays the default; the page URL's ?arg=-dxwebgl2-backend=webgpu selects WebGPU, and the
+# device falls back to WebGL2 (and says why in the log) when the browser has no WebGPU adapter.
+set(DXWEBGL2_WEBGPU ON CACHE BOOL "" FORCE)
+# Use WebCompat's windows.h / objbase.h and the game's flags (-fshort-wchar ...) through deps_config,
+# so the library and the game agree on WCHAR and the Win32 base types.
+set(DXWEBGL2_USE_PROJECT_WINDOWS_H ON CACHE BOOL "" FORCE)
+set(DXWEBGL2_WINDOWS_H_TARGET deps_config CACHE STRING "" FORCE)
+FetchContent_MakeAvailable(dxwebgl2)
+
+# The rest of the DirectX 8 SDK (dinput.h, ddraw.h for the DDS file constants,
+# dsound.h, ...) comes from min-dx8-sdk, unpatched. Its directories are searched
+# only after the system, WebCompat and dxWebGL2 headers, so <d3d8.h> and <d3dx8.h>
+# are dxWebGL2's and WebCompat's copies (basetsd.h) win over the SDK's.
 FetchContent_Declare(
     dx8
     GIT_REPOSITORY https://github.com/TheSuperHackers/min-dx8-sdk.git
     GIT_TAG        7bddff8c01f5fb931c3cb73d4aa8e66d303d97bc
-    PATCH_COMMAND ${CMAKE_COMMAND}
-        -DGIT_EXECUTABLE=${GIT_EXECUTABLE}
-        -DPATCH_FILE=${CMAKE_CURRENT_LIST_DIR}/patches/dx8-emscripten.patch
-        -P ${CMAKE_CURRENT_LIST_DIR}/patches/apply_patch.cmake
 )
 FetchContent_GetProperties(dx8)
 if(NOT dx8_POPULATED)
     FetchContent_Populate(dx8)
 endif()
-add_subdirectory(Dependencies/WebD3D8)
 add_library(d3d8lib INTERFACE)
-target_include_directories(d3d8lib INTERFACE ${dx8_SOURCE_DIR})
 target_compile_definitions(d3d8lib INTERFACE BUILD_WITH_D3D8)
-# ddraw.h (the DDS file constants), dsound.h and the d3dx math headers sit in
-# the SDK's extra directory next to copies of headers that WebCompat provides
-# (basetsd.h), so it must be searched last.
-target_compile_options(d3d8lib INTERFACE "SHELL:-idirafter ${dx8_SOURCE_DIR}/extra")
-if(TARGET web_d3d8)
-    target_link_libraries(d3d8lib INTERFACE web_d3d8)
-endif()
+target_compile_options(d3d8lib INTERFACE "SHELL:-idirafter ${dx8_SOURCE_DIR}" "SHELL:-idirafter ${dx8_SOURCE_DIR}/extra")
+target_link_libraries(d3d8lib INTERFACE dxWebGL2::dxwebgl2_pthreads)
+# The game reaches Direct3DCreate8 only through LoadLibrary("D3D8.DLL") / GetProcAddress, which
+# WebCompat implements with a weak reference to dxwebgl2_LookupProc: make the linker take it.
+target_link_options(d3d8lib INTERFACE "SHELL:-Wl,--undefined=dxwebgl2_LookupProc")
 
 # The free starter content (original placeholder game data), generated next to
 # the web page so the launcher can offer it. See Content/StarterPack/README.md.
