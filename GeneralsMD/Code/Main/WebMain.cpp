@@ -525,8 +525,8 @@ static bool runFrames()
 				const double fps = s_reportAt > 0.0 && now > s_reportAt ? 30000.0 / ( now - s_reportAt ) : 0.0;
 				s_reportAt = now;
 				// (__zhGl: the WebGL work of the last frame: draw calls, WebGL calls, bytes uploaded, calls that wait for the GPU.)
-				WebD3D8_Stats gl;
-				WebD3D8_GetStats( &gl );
+				dxwebgl2_Stats gl;
+				dxwebgl2_GetStats( &gl );
 				MAIN_THREAD_ASYNC_EM_ASM( { window.__zhGl = {}; window.__zhGl.draws = $0; window.__zhGl.calls = $1; window.__zhGl.upload = $2; window.__zhGl.sync = $3;
 					window.__zhGl.drawsUP = $4; window.__zhGl.prims = $5; window.__zhGl.uploads = $6; window.__zhGl.programs = $7; window.__zhGl.state = $8; window.__zhGl.locks = $9; window.__zhGl.indexed = $10; },
 					gl.draws, gl.glCalls, gl.uploadBytes, gl.glSync, gl.drawsUserPointer, gl.primitives, gl.glUpload, gl.programSwitches, gl.glState, gl.locks, gl.drawsIndexed );
