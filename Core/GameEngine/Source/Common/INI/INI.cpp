@@ -60,6 +60,12 @@
 #include "GameLogic/Weapon.h"
 
 #if __cplusplus >= 201611L
+#include <version>
+#endif
+
+// libc++ outside Emscripten (the native headless build on macOS) parses with sscanf, like the original game:
+// std::from_chars for floating point types is missing before LLVM 20, and Apple's libc++ ties it to new macOS versions.
+#if __cplusplus >= 201611L && !(defined(_LIBCPP_VERSION) && !defined(__EMSCRIPTEN__))
 #define USE_STD_FROM_CHARS_PARSING 1
 #else
 #define USE_STD_FROM_CHARS_PARSING 0
@@ -82,6 +88,15 @@ static char s_lastLine[INI_MAX_CHARS_PER_LINE + 1] = "";
 void INI::setBlockGuard( INIBlockGuard *guard )
 {
 	s_blockGuard = guard;
+}
+
+static Bool s_strictFields = FALSE;
+static char s_strictError[512] = "";	// the unknown field that stopped a strict load, for the message of the block
+
+void INI::setStrictFields( Bool strict )
+{
+	s_strictFields = strict;
+	s_strictError[0] = '\0';
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -476,7 +491,12 @@ UnsignedInt INI::loadPrepared()
 						const char *failed = s_lastLine;
 						while (*failed == ' ')
 							++failed;
-						if (strcmp(failed, currentLine.str()) == 0 || *failed == 0)
+						if (s_strictError[0] != '\0')
+						{
+							snprintf(buff, ARRAY_SIZE(buff), "%s", s_strictError);
+							s_strictError[0] = '\0';
+						}
+						else if (strcmp(failed, currentLine.str()) == 0 || *failed == 0)
 							snprintf(buff, ARRAY_SIZE(buff), "Error parsing INI file '%s' (Line: '%s')\n",
 								m_filename.str(), currentLine.str());
 						else
@@ -1637,6 +1657,12 @@ void INI::initFromINIMulti( void *what, const MultiIniFieldParse& parseTableList
 
 				if (!found)
 				{
+					if (s_strictFields)
+					{
+						snprintf(s_strictError, ARRAY_SIZE(s_strictError), "Unknown field '%s' in INI file '%s' at line %d\n",
+							field, INI::getFilename().str(), INI::getLineNum());
+						throw INIException(s_strictError);
+					}
 					DEBUG_CRASH( ("[LINE: %d - FILE: '%s'] Unknown field '%s' in block '%s'",
 														 INI::getLineNum(), INI::getFilename().str(), field, m_curBlockStart) );
 				}

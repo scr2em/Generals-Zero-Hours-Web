@@ -1,8 +1,8 @@
 # Direct3D 8 for the native headless build (cmake/native-headless.cmake): no device can be created, headless mode
-# never creates one. The D3DX math is the web build's (the game logic uses some of it), the rest are stubs.
+# never creates one. The D3DX math (src/d3dx_math.cpp) is real (the game logic uses some of it), the rest are stubs.
 add_library(native_d3d8 STATIC
     src/native_d3d8.cpp
-    ${CMAKE_SOURCE_DIR}/Dependencies/WebD3D8/src/d3dx_math.cpp
+    src/d3dx_math.cpp
 )
 target_include_directories(native_d3d8 PRIVATE ${dx8_SOURCE_DIR})
 target_link_libraries(native_d3d8 PRIVATE deps_config)

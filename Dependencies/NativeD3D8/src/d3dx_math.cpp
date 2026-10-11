@@ -15,11 +15,16 @@
 **	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 /*
-** WebAssembly port: the non-inline D3DX8 math functions (vectors, matrices,
+** Native headless build: the non-inline D3DX8 math functions (vectors, matrices,
 ** quaternions, planes, colors). Left-handed, row-vector conventions exactly
-** as in d3dx8math.h.
+** as in d3dx8math.h. (Formerly part of the web build's Direct3D 8 library,
+** Dependencies/WebD3D8, which became dxWebGL2.)
 */
-#include "d3d8_headers.h"
+#include <windows.h>
+#include <objbase.h>
+
+#include <d3d8.h>
+#include <d3dx8.h>
 
 #include <cmath>
 

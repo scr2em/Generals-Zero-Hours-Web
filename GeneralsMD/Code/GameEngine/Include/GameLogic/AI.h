@@ -36,6 +36,7 @@
 #include "Common/STLTypedefs.h"
 
 class AIGroup;
+struct FieldParse;
 class AttackPriorityInfo;
 class BuildListInfo;
 class CommandButton;
@@ -466,6 +467,8 @@ public:
 	static void parseSkillSet( INI* ini, void *instance, void *store, const void *userData );					///< Parse the image part of the INI file
 	static void parseScience( INI* ini, void *instance, void *store, const void *userData );					///< Parse the image part of the INI file
 	static void parseSkillSettings( INI* ini, void *instance, void *store, const void *userData );		///< Parse the "ExpertSkill" block
+	static const FieldParse *getAiDataFieldParse();					///< the fields of the "AIData" block
+	static const FieldParse *getSkillSettingsFieldParse();		///< the fields of its "ExpertSkill" block (offsets into AISkillSettings)
 
 	UnsignedInt getNextGroupID() { return ++m_nextGroupID; }
 

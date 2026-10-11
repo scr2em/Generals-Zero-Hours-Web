@@ -329,10 +329,10 @@ void WINAPI FatalAppExitA(UINT, LPCSTR lpMessageText)
 ** Modules and resources
 ** ------------------------------------------------------------------------- */
 
-// The renderer's Direct3D 8 implementation (Dependencies/WebD3D8) is the only "library" there is:
+// The renderer's Direct3D 8 implementation (dxWebGL2) is the only "library" there is:
 // the game loads it with LoadLibrary("D3D8.DLL") and GetProcAddress("Direct3DCreate8"). It is
 // weak so that programs that do not contain it (the tests) still link.
-extern "C" void *WebD3D8_LookupProc(const char *name) __attribute__((weak));
+extern "C" void *dxwebgl2_LookupProc(const char *name) __attribute__((weak));
 
 namespace
 {
@@ -341,7 +341,7 @@ HMODULE const D3D8_MODULE = reinterpret_cast<HMODULE>(0x00D38000);
 
 HMODULE WINAPI LoadLibraryA(LPCSTR lpLibFileName)
 {
-	if (lpLibFileName && WebD3D8_LookupProc)
+	if (lpLibFileName && dxwebgl2_LookupProc)
 	{
 		// "D3D8.DLL", "d3d8", with or without a path, in any case.
 		const char *name = lpLibFileName;
@@ -420,9 +420,9 @@ DWORD WINAPI GetModuleFileNameA(HMODULE, LPSTR lpFilename, DWORD nSize)
 
 FARPROC WINAPI GetProcAddress(HMODULE hModule, LPCSTR lpProcName)
 {
-	if (hModule == D3D8_MODULE && WebD3D8_LookupProc && !IS_INTRESOURCE(lpProcName))
+	if (hModule == D3D8_MODULE && dxwebgl2_LookupProc && !IS_INTRESOURCE(lpProcName))
 	{
-		if (void *proc = WebD3D8_LookupProc(lpProcName))
+		if (void *proc = dxwebgl2_LookupProc(lpProcName))
 			return reinterpret_cast<FARPROC>(proc);
 	}
 	SetLastError(127); // ERROR_PROC_NOT_FOUND

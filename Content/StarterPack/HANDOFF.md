@@ -71,7 +71,7 @@ For an AI coding agent or developer who has never seen the session that produced
   Added audio events for every fixed name the engine looks up (`PlaceBuilding`, `RallyPointSet`, `Beacon*`, `GUI*` fades ...).
   Still asserting in a debug build (harmless in release): `VehicleCrashesInto*Weapon` missing, `Unexpected player template`
   (LoadScreen.cpp hard codes the three original faction names), "unable to attack at all" filter, `UnderConstruction` audio
-  name, WebD3D8 `VertexCount` once at start.
+  name, WebD3D8 (now dxWebGL2) `VertexCount` once at start.
 * **Browser scope: Chrome (Chromium) only** (user decision). Firefox and Safari are out of scope; the launcher may use
   `showDirectoryPicker`, OPFS `createSyncAccessHandle` and Keyboard Lock. Do not add fallbacks for other browsers; existing
   ones (the `<input webkitdirectory>` picker is what the tests drive) stay only because they cost nothing.
@@ -348,8 +348,8 @@ now) and eva / speech lines (not provided).*
 
 **A. Blocks reaching the main menu (engine side, not content)**
 
-1. Display bring-up (WebD3D8/WW3D2): `Could not do WW3D::Begin_Render()`, vertex buffer assertion, no valid colour mode.
-   Owner: the runtime agent / `Dependencies/WebD3D8`, `Core/GameEngineDevice`. Until this works nothing is visible.
+1. Display bring-up (WebD3D8, now dxWebGL2; WW3D2): `Could not do WW3D::Begin_Render()`, vertex buffer assertion, no valid colour mode.
+   Owner: the runtime agent / `Dependencies/WebD3D8` (now the dxWebGL2 library), `Core/GameEngineDevice`. Until this works nothing is visible.
 2. **Text rendering**: windows draw text through GDI (`CreateFont`, `TextOut`...), which `Dependencies/WebCompat/src/win32_window.cpp`
    stubs (`CreateFontA` returns a dummy handle, `AddFontResourceA` returns 1). Without a real implementation (for example
    FreeType-in-wasm rasterising the bundled `Data/Fonts/DejaVuSans*.ttf`, or canvas 2D text uploaded as textures) every label

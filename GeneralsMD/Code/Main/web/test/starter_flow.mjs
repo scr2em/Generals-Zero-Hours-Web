@@ -8,6 +8,9 @@
 //                         [--options Key=Value,Key=Value] [--port 8941] [--arg -noshellmap] [--wait 60] [--log boot.log] [--profile <dir>] [--size 1100x800]
 //                         [--dpr 2] [--resolution auto|fit|fitsharp|1280x720 ...] [--expect-trap]
 //
+// --chromium-flags "<flags>"  extra Chromium command line flags, space separated (default: $ZH_CHROMIUM_FLAGS); with
+//            --arg -dxwebgl2-backend=webgpu, the WebGPU ones: "--enable-unsafe-webgpu --enable-features=Vulkan
+//            --use-vulkan=swiftshader --use-webgpu-adapter=swiftshader --use-angle=swiftshader"
 // --profile  keep the browser profile (OPFS: saves, options, the downloaded starter content) in this directory, so that
 //            a later run starts with what an earlier one left
 // --expect-trap  the run is supposed to end in a wasm trap or abort (-webcrashtest=trap): fail if it does not
@@ -72,6 +75,7 @@ const opt = { port: 8941, wait: 60, out: '.', steps: 'm:300,300 w:1 s:menu', arg
 			case '--resolution': opt.resolution = a[++i]; break;
 			case '--options': opt.options = a[++i]; break;
 			case '--expect-trap': opt.expectTrap = true; break;
+			case '--chromium-flags': opt.chromiumFlags = a[++i]; break;
 			default: console.error('unknown option ' + a[i]); process.exit(2);
 		}
 	}
@@ -88,8 +92,14 @@ process.on('exit', () => server.kill());
 await new Promise((r) => setTimeout(r, 800));
 
 const chromium = [process.env.CHROMIUM_PATH, '/opt/pw-browsers/chromium-1194/chrome-linux/chrome'].find((p) => p && fs.existsSync(p));
-const launchArgs = ['--no-sandbox', '--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
-	'--enable-webgl', '--enable-features=SharedArrayBuffer'];
+// Extra flags are added; several --enable-features are merged into one (Chromium would keep only the last).
+const launchArgs = (() => {
+	const all = ['--no-sandbox', '--use-angle=swiftshader', '--use-gl=angle', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist',
+		'--enable-webgl', '--enable-features=SharedArrayBuffer',
+		...(opt.chromiumFlags ?? process.env.ZH_CHROMIUM_FLAGS ?? '').split(/\s+/).filter(Boolean)];
+	const features = all.filter((f) => f.startsWith('--enable-features=')).map((f) => f.slice(18));
+	return [...all.filter((f) => !f.startsWith('--enable-features=')), '--enable-features=' + features.join(',')];
+})();
 const viewport = { width: (opt.size || [1100, 800])[0], height: (opt.size || [1100, 800])[1] };
 const contextOptions = { viewport, deviceScaleFactor: opt.dpr || 1 };
 let browser, context;

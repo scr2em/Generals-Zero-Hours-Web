@@ -3,6 +3,13 @@
 //
 //   node e2e.mjs --site <dir with web_platform_test.html> --fake <dir with ZeroHour/ and Generals/> --out <screenshot dir>
 //                [--starter <dir with the built starter pack: manifest.json + files>]
+//                [--engine-args "<args>"] [--chromium-flags "<flags>"]
+//
+// --engine-args     space separated engine arguments added (as ?arg=) to every page the test opens, for example
+//                   "-dxwebgl2-backend=webgpu"
+// --chromium-flags  space separated extra Chromium command line flags (default: $ZH_CHROMIUM_FLAGS), for example the
+//                   WebGPU ones: "--enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader
+//                   --use-webgpu-adapter=swiftshader --use-angle=swiftshader"
 //
 // With --starter the "free starter content" path is tested too: the pack is served as
 // <site>/starterpack/ (copied there), downloaded through the launcher into OPFS, checked against
@@ -44,6 +51,9 @@ mkdirSync(out, { recursive: true });
 cpSync(path.resolve(args.fake), fake, { recursive: true });
 writeFileSync(path.join(fake, 'ZeroHour', 'generalszh.exe'), 'MZ placeholder executable');
 const page_name = args.page || 'web_platform_test.html';
+// Extra engine arguments for every page (?arg=...&) and extra Chromium flags for every browser.
+const extraQuery = (args['engine-args'] || '').split(/\s+/).filter(Boolean).map((a) => 'arg=' + encodeURIComponent(a) + '&').join('');
+const chromiumFlags = (args['chromium-flags'] ?? process.env.ZH_CHROMIUM_FLAGS ?? '').split(/\s+/).filter(Boolean);
 const port = Number(args.port || 8099);
 const starter = args.starter ? path.resolve(args.starter) : null;
 if (starter) {
@@ -71,7 +81,7 @@ await new Promise((r) => setTimeout(r, 800));
 
 const browser = await chromium.launch({
 	executablePath: CHROMIUM,
-	args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+	args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', ...chromiumFlags],
 });
 
 async function importFolder(page, button, stateId, dir) {
@@ -94,7 +104,7 @@ async function session(label, query) {
 {
 	const s = await session('first', '?picker=input&copy=1');
 	const { page, logs } = s;
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 	check('cross-origin isolated', await page.evaluate(() => crossOriginIsolated));
 	check('play disabled before import', await page.isDisabled('#play'));
@@ -216,7 +226,7 @@ async function session(label, query) {
 {
 	const s = await session('parent', '?picker=input&copy=1');
 	const { page } = s;
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 	const state = await importFolder(page, '#pick-game', 'state-game', fake);
 	check('parent folder: Zero Hour found inside', /Ready · 4 files/.test(state), state);
@@ -278,7 +288,7 @@ async function session(label, query) {
 	{
 		const s = await session('retail-zh');
 		const { page } = s;
-		await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 		await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 		const state = await importFolder(page, '#pick-game', 'state-game', zhOnly);
 		check('retail ZH only: recognised and imported (17 archives + engine exe + 2 data files)', /Ready · 20 files/.test(state), state);
@@ -307,7 +317,7 @@ async function session(label, query) {
 	{
 		const s = await session('retail-both');
 		const { page } = s;
-		await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 		await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 		const state = await importFolder(page, '#pick-game', 'state-game', path.join(out, 'retail'));
 		check('retail parent folder: Zero Hour recognised by its ZH archives, not by generals.exe', /Ready · 20 files/.test(state), state);
@@ -335,7 +345,7 @@ async function session(label, query) {
 		await walk(await navigator.storage.getDirectory(), '');
 		return result.sort();
 	});
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input`);
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 	check('direct: the copy option is offered and off by default', await page.isVisible('#copy-mode') && !(await page.isChecked('#copy-mode')));
 	check('direct: the page says nothing is copied', /nothing is copied/.test(await page.textContent('#install-desc')));
@@ -368,7 +378,7 @@ async function session(label, query) {
 	await page.screenshot({ path: path.join(out, '11-direct-running.png') });
 
 	// the next visit: the remembered install needs its folder again (a folder from <input> has no handle to remember)
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input`);
 	await page.waitForFunction(() => /again to play/.test(document.getElementById('state-game').textContent), null, { timeout: 15000 }).catch(() => {});
 	check('next visit: the page asks for the folder again', /again to play/.test(await page.textContent('#state-game')), await page.textContent('#state-game'));
 	check('next visit: play waits for the folder', await page.isDisabled('#play'));
@@ -399,7 +409,7 @@ async function session(label, query) {
 		FileSystemDirectoryHandle.prototype.queryPermission = async () => (sessionStorage.getItem('perm') ? 'granted' : 'prompt');
 		FileSystemDirectoryHandle.prototype.requestPermission = async () => { sessionStorage.setItem('perm', '1'); return 'granted'; };
 	});
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input`);
 	await page.waitForFunction(() => /remembered/.test(document.getElementById('state-game').textContent), null, { timeout: 15000 }).catch(() => {});
 	check('remembered folder: the page offers Allow access', /remembered/.test(await page.textContent('#state-game')) && /Allow access/.test(await page.textContent('#pick-game')), await page.textContent('#state-game'));
 	check('remembered folder: play waits for the permission', await page.isDisabled('#play'));
@@ -414,7 +424,7 @@ async function session(label, query) {
 	await page.waitForFunction(() => window.__zh.logLines.some((l) => l.includes('TEST: ready')), null, { timeout: 30000 }).catch(() => {});
 	check('remembered folder: the engine reads the files', /TEST: read 26 bytes: ; Hello from GameData.ini/.test(logs.filter((l) => l.startsWith('TEST:')).join('\n')));
 	// Chrome that keeps the permission: no click at all
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input`);
 	await page.waitForFunction(() => /^Ready/.test(document.getElementById('state-game').textContent), null, { timeout: 15000 }).catch(() => {});
 	check('remembered folder: still granted, the next visit needs no click', /^Ready · 4 files/.test(await page.textContent('#state-game')) && !(await page.isDisabled('#play')), await page.textContent('#state-game'));
 
@@ -434,7 +444,7 @@ async function session(label, query) {
 {
 	const s = await session('worker-writer');
 	const { page } = s;
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1&writer=worker`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1&writer=worker`);
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 	await importFolder(page, '#pick-game', 'state-game', fake);
 	await page.waitForFunction(() => /added/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
@@ -454,18 +464,18 @@ async function session(label, query) {
 	const userDataDir = path.join(out, 'profile');
 	const context = await chromium.launchPersistentContext(userDataDir, {
 		executablePath: CHROMIUM,
-		args: ['--no-sandbox'],
+		args: ['--no-sandbox', ...chromiumFlags],
 		viewport: { width: 1100, height: 800 },
 	});
 	const page = context.pages()[0] || await context.newPage();
 	const logs = [];
 	page.on('console', (m) => logs.push(m.text()));
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 	await importFolder(page, '#pick-game', 'state-game', fake);
 	await page.waitForFunction(() => /added/.test(document.getElementById('state-generals').textContent), null, { timeout: 30000 });
 	for (let run = 1; run <= 2; run++) {
-		await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 		await page.waitForFunction(() => /Ready/.test(document.getElementById('state-game').textContent));
 		check(`run ${run}: data still imported after reload`, !(await page.isDisabled('#play')));
 		await page.click('#play');
@@ -499,7 +509,7 @@ if (starter) {
 	const logs = [];
 	page.on('console', (m) => logs.push(m.text()));
 	page.on('dialog', (d) => d.accept());
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 	await page.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
 	const pageText = await page.textContent('#choice-starter');
 	check('starter option says it is an original placeholder game', /not\s+Command/i.test(pageText) && /original/i.test(pageText) && /GPL/.test(pageText), pageText.replace(/\s+/g, ' ').slice(0, 160));
@@ -554,7 +564,7 @@ if (starter) {
 			}
 			return route.continue();
 		});
-		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 		await p.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
 		await p.click('#download-starter');
 		await p.waitForFunction(settled('state-starter'), 'state-starter', { timeout: 120000 });
@@ -570,7 +580,7 @@ if (starter) {
 		const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
 		const p = await ctx.newPage();
 		await p.route('**/starterpack/manifest.json', (route) => route.fulfill({ status: 404, body: 'nope' }));
-		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 		await p.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
 		await p.click('#download-starter');
 		await p.waitForFunction(settled('state-starter'), 'state-starter', { timeout: 30000 });
@@ -584,7 +594,7 @@ if (starter) {
 		const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
 		const p = await ctx.newPage();
 		p.on('dialog', (d) => d.accept());
-		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 		await p.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 		await importFolder(p, '#pick-game', 'state-game', path.join(fake, 'ZeroHour'));
 		await importFolder(p, '#pick-generals', 'state-generals', path.join(fake, 'Generals'));
@@ -610,7 +620,7 @@ if (starter) {
 	const logs = [];
 	page.on('console', (m) => logs.push(m.text()));
 	page.on('dialog', (d) => d.accept());	// "leave this page?" while a game runs
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 	await page.waitForFunction(() => /Not downloaded/.test(document.getElementById('state-starter').textContent));
 	await page.click('#download-starter');
 	await page.waitForFunction(settled, 'state-starter', { timeout: 120000 });
@@ -666,7 +676,7 @@ if (starter) {
 	{
 		const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
 		const p = await ctx.newPage();
-		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 		await p.waitForFunction(() => /Not (imported|downloaded)/.test(document.getElementById('state-game').textContent));
 		const cases = [
 			['Lost access to your game folder: game/data/ini/x.ini: NotAllowedError denied', /lost access to your folder/i],
@@ -675,7 +685,7 @@ if (starter) {
 			['QuotaExceededError: The quota has been exceeded.', /storage is full/i],
 			['Required game file Data\\INI\\GameData.ini was not found. Select your Zero Hour folder again on the start page.', /files are missing/i],
 			['Aborted(Cannot enlarge memory arrays to size 4294967296 bytes (OOM).)', /ran out of memory/i],
-			['[WebD3D8] WebGL2 renderer: Google Inc. (Google) / ANGLE', null],	// the renderer's normal start-up line is no problem
+			['[dxWebGL2] WebGL2 renderer: Google Inc. (Google) / ANGLE', null],	// the renderer's normal start-up line is no problem
 		];
 		for (const [line, want] of cases) {
 			const title = await p.evaluate((l) => window.__zh.classify(l), line);
@@ -688,7 +698,7 @@ if (starter) {
 	{
 		const ctx = await browser.newContext({ viewport: { width: 1100, height: 800 } });
 		const p = await ctx.newPage();
-		await p.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+		await p.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 		await p.waitForFunction(() => /Not (imported|downloaded)/.test(document.getElementById('state-game').textContent));
 		await p.evaluate(async () => {
 			const root = await navigator.storage.getDirectory();
@@ -723,7 +733,7 @@ if (starter) {
 	const pkgs = writeTestPackages(armiesDir);
 	const hex = (buf) => buf.toString('hex');
 	const bigName = 'Big Pack (copy).zharmy';
-	const url = (q = '?picker=input') => `http://127.0.0.1:${port}/${page_name}${q}`;
+	const url = (q = '?picker=input') => `http://127.0.0.1:${port}/${page_name}${q.replace('?', '?' + extraQuery)}`;
 	const pickArmiesFolder = async (page, dir) => {
 		const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#pick-armies')]);
 		await chooser.setFiles(dir);
@@ -1031,7 +1041,7 @@ w.write(root + '/broken/!Broken.big')
 open(root + '/broken/!Corrupt.big', 'wb').write(b'this is not an archive')
 `, importRoot, repoTools], { encoding: 'utf8' });
 	check('import: the synthetic game and mod were written', made.status === 0 && existsSync(path.join(importRoot, 'game', '!ModMain.big')), (made.stderr || '').slice(-300));
-	const url = (q = '?picker=input') => `http://127.0.0.1:${port}/${page_name}${q}`;
+	const url = (q = '?picker=input') => `http://127.0.0.1:${port}/${page_name}${q.replace('?', '?' + extraQuery)}`;
 	const chooseMod = async (page, dir) => {
 		const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#imp-choose')]);
 		await chooser.setFiles(dir);
@@ -1331,7 +1341,7 @@ open(root + '/broken/!Corrupt.big', 'wb').write(b'this is not an archive')
 {
 	const context = await browser.newContext({ viewport: { width: 1100, height: 800 }, colorScheme: 'dark' });
 	const page = await context.newPage();
-	await page.goto(`http://127.0.0.1:${port}/${page_name}?picker=input&copy=1`);
+	await page.goto(`http://127.0.0.1:${port}/${page_name}?${extraQuery}picker=input&copy=1`);
 	await page.waitForFunction(() => /Not imported/.test(document.getElementById('state-game').textContent));
 	await page.evaluate(() => {
 		window.__zh.logLines.push('Aborted(RuntimeError: memory access out of bounds)');

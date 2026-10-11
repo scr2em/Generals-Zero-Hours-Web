@@ -374,6 +374,16 @@ void AI::parseSkillSettings(INI *ini, void *instance, void* /*store*/, const voi
 	ini->initFromINI(&((TAiData*)instance)->m_expertSkill, s_skillFieldParse);
 }
 
+const FieldParse *AI::getAiDataFieldParse()
+{
+	return TheAIFieldParseTable;
+}
+
+const FieldParse *AI::getSkillSettingsFieldParse()
+{
+	return s_skillFieldParse;
+}
+
 /// Sets one field of the Expert skill settings by its INI name (test bench: the match option skill=<name>:<value>).
 Bool AI::setExpertSkillValue( const char *name, const char *value )
 {

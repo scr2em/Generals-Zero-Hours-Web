@@ -44,6 +44,8 @@
 
 #include "Common/GameEngine.h"
 #include "Common/GlobalData.h"
+#include "Common/INI.h"
+#include "Common/INIException.h"
 #include "Common/KindOf.h"
 #include "Common/MessageStream.h"
 #include "Common/MultiplayerSettings.h"
@@ -255,6 +257,8 @@ struct Config
 	Int startingCash;				// -1: the game's default
 	std::string statsPath;
 	std::string label;
+	std::string aiIniPath;			// aiini=: an AIData override file loaded before the match (empty: none)
+	std::string aiIniHash;			// FNV-1a of its content, 8 hex digits
 	Bool record;
 	std::vector<std::pair<Int, UnsignedInt> > eliminations;	// (slot, frame): test hook, see the eliminate= option
 	Bool engineLoop;				// run the whole engine update (client included) instead of the game logic alone
@@ -379,6 +383,15 @@ Bool parseConfig(Config &cfg, std::string &error)
 			cfg.statsPath = value;
 		else if (key == "label")
 			cfg.label = value;
+		else if (key == "aiini")
+		{
+			if (value.empty())
+			{
+				error = "aiini=<file> needs a file";
+				return FALSE;
+			}
+			cfg.aiIniPath = value;
+		}
 		else if (key == "eliminate")
 		{
 			// Test hook: eliminate=<slot>@<frame> kills everything the player has at that frame, so that the end of a
@@ -471,6 +484,134 @@ Bool parseConfig(Config &cfg, std::string &error)
 	if (cfg.maxFrames == 0)
 		cfg.maxFrames = minutes * 60 * LOGICFRAMES_PER_SECOND;
 	(void)timeoutGiven;
+	return TRUE;
+}
+
+// ------------------------------------------------------------------------------------------------
+// aiini=<file>: settings of the AI (an "AIData" block, normally with an "ExpertSkill" block in it) loaded over
+// the game's own AI data before the match, with the game's INI reader in overwrite mode: only the fields named in
+// the file change. It is how the Expert's settings are searched (scripts/aibench/tune.mjs) without a rebuild.
+// The file is read with the C library, so it is a path of the host (absolute or relative to the current folder).
+// Strict: another block than AIData, an unknown field or a bad value stops the match with an error.
+// ------------------------------------------------------------------------------------------------
+class AiIniBlockGuard : public INIBlockGuard
+{
+public:
+	virtual Bool checkBlock(const char *blockType, const AsciiString & /*name*/, AsciiString &error) override
+	{
+		if (stricmp(blockType, "AIData") == 0)
+			return TRUE;
+		error.format("only AIData blocks belong in an aiini file, not '%s'", blockType);
+		return FALSE;
+	}
+};
+
+// The value of a plain field as text ("" for a field that is a block of its own or a list).
+std::string fieldText(const FieldParse &f, const void *base)
+{
+	const char *at = static_cast<const char *>(base) + f.offset;
+	if (f.parse == INI::parseReal || f.parse == INI::parsePercentToReal)
+		return format("%g", (double)*reinterpret_cast<const Real *>(at));
+	if (f.parse == INI::parseInt)
+		return format("%d", (int)*reinterpret_cast<const Int *>(at));
+	if (f.parse == INI::parseDurationUnsignedInt)
+		return format("%u", (unsigned)*reinterpret_cast<const UnsignedInt *>(at));
+	if (f.parse == INI::parseBool)
+		return *reinterpret_cast<const Bool *>(at) ? "Yes" : "No";
+	return std::string();
+}
+
+// The plain fields of the AI data and of its ExpertSkill block, as "Block.Field" -> value.
+std::vector<std::pair<std::string, std::string> > aiSettings()
+{
+	std::vector<std::pair<std::string, std::string> > out;
+	const TAiData *data = TheAI->getAiData();
+	for (const FieldParse *f = AI::getAiDataFieldParse(); f->token != nullptr; ++f)
+	{
+		std::string v = fieldText(*f, data);
+		if (!v.empty())
+			out.push_back(std::make_pair(std::string("AIData.") + f->token, v));
+	}
+	for (const FieldParse *f = AI::getSkillSettingsFieldParse(); f->token != nullptr; ++f)
+	{
+		std::string v = fieldText(*f, &data->m_expertSkill);
+		if (!v.empty())
+			out.push_back(std::make_pair(std::string("ExpertSkill.") + f->token, v));
+	}
+	return out;
+}
+
+Bool loadAiIni(Config &cfg, std::string &error)
+{
+	if (cfg.aiIniPath.empty())
+		return TRUE;
+	if (TheAI == nullptr || TheAI->getAiData() == nullptr)
+	{
+		error = "aiini: the AI data is not loaded";
+		return FALSE;
+	}
+	FILE *f = fopen(cfg.aiIniPath.c_str(), "rb");
+	if (f == nullptr)
+	{
+		error = "aiini: cannot open '" + cfg.aiIniPath + "'";
+		return FALSE;
+	}
+	std::string text;
+	char chunk[4096];
+	size_t got;
+	while ((got = fread(chunk, 1, sizeof(chunk), f)) > 0)
+		text.append(chunk, got);
+	fclose(f);
+
+	UnsignedInt hash = 2166136261u;	// FNV-1a
+	for (size_t i = 0; i < text.size(); ++i)
+		hash = (hash ^ (UnsignedByte)text[i]) * 16777619u;
+	cfg.aiIniHash = format("%08x", hash);
+
+	const std::vector<std::pair<std::string, std::string> > before = aiSettings();
+	if (!text.empty())
+	{
+		Char *buffer = new Char[text.size()];		// the INI reader owns it from here on
+		memcpy(buffer, text.data(), text.size());
+		AiIniBlockGuard guard;
+		INI::setBlockGuard(&guard);
+		INI::setStrictFields(TRUE);
+		std::string failure;
+		try
+		{
+			INI ini;
+			ini.loadFromBuffer(AsciiString(cfg.aiIniPath.c_str()), buffer, (Int)text.size(), INI_LOAD_OVERWRITE, nullptr);
+		}
+		catch (INIException &e)
+		{
+			failure = e.mFailureMessage != nullptr ? std::string(e.mFailureMessage) : std::string("unreadable");
+			while (!failure.empty() && (failure.back() == '\n' || failure.back() == '\r' || failure.back() == ' '))
+				failure.pop_back();
+		}
+		catch (...)
+		{
+			failure = "'" + cfg.aiIniPath + "': the INI reader rejected it (an unknown block, a bad value or a missing End)";
+		}
+		INI::setStrictFields(FALSE);
+		INI::setBlockGuard(nullptr);
+		if (!failure.empty())
+		{
+			error = "aiini: " + failure;
+			return FALSE;
+		}
+	}
+	const std::vector<std::pair<std::string, std::string> > after = aiSettings();
+	Int changed = 0;
+	for (size_t i = 0; i < after.size() && i < before.size(); ++i)
+	{
+		if (after[i].second == before[i].second)
+			continue;
+		printf("AIMATCH aiini %s: %s -> %s\n", after[i].first.c_str(), before[i].second.c_str(), after[i].second.c_str());
+		++changed;
+	}
+	printf("AIMATCH aiini %s: loaded (hash %s, %d setting%s changed)\n", cfg.aiIniPath.c_str(), cfg.aiIniHash.c_str(),
+		(int)changed, changed == 1 ? "" : "s");
+	fflush(stdout);
 	return TRUE;
 }
 
@@ -1312,6 +1453,8 @@ std::string Match::report(UnsignedInt setupMs)
 	w.beginObject();
 	w.field("schema", kSchema);
 	w.field("label", m_cfg.label);
+	w.field("aiini", m_cfg.aiIniPath);
+	w.field("aiiniHash", m_cfg.aiIniHash);
 
 	// What was asked.
 	w.key("config");
@@ -1479,6 +1622,8 @@ void reportError(const Config &cfg, const std::string &message)
 	w.beginObject();
 	w.field("schema", kSchema);
 	w.field("label", cfg.label);
+	w.field("aiini", cfg.aiIniPath);
+	w.field("aiiniHash", cfg.aiIniHash);
 	w.key("result");
 	w.beginObject();
 	w.field("outcome", "error");
@@ -1580,6 +1725,14 @@ Int AIMatch::run()
 		return 1;
 	}
 
+	// The AI settings of aiini=, over the game's own (loaded by now with the rest of the INI data), then the single
+	// fields of skill=, which win over the file.
+	if (!loadAiIni(cfg, error))
+	{
+		reportError(cfg, error);
+		s_active = FALSE;
+		return 1;
+	}
 	for (size_t i = 0; i < cfg.skill.size(); ++i)
 	{
 		if (TheAI == nullptr || !TheAI->setExpertSkillValue(cfg.skill[i].first.c_str(), cfg.skill[i].second.c_str()))

@@ -48,7 +48,7 @@ export function buildReport({ options, builds, records, determinism, targets }) 
 	const report = {
 		schema: 'zh-aibench-report-1',
 		generated: new Date().toISOString(),
-		options: { builds: options.builds.map((b) => ({ name: b.name, dir: b.dir })), data: options.data === 'starter' ? 'starter' : 'own', maps: options.maps, matchups: options.matchups, seeds: options.seeds, seedStart: options.seedStart, minutes: options.minutes, workers: options.workers, rotate: options.rotate },
+		options: { builds: options.builds.map((b) => ({ name: b.name, dir: b.dir })), data: options.data === 'starter' ? 'starter' : 'own', maps: options.maps, matchups: options.matchups, seeds: options.seeds, seedStart: options.seedStart, minutes: options.minutes, workers: options.workers, rotate: options.rotate, aiini: options.aiini ? { path: options.aiini, hash: options.aiiniHash } : null },
 		builds: perBuild,
 		determinism: { checked: determinism.length, identical: determinism.filter((d) => d.identical).length, runs: determinism },
 	};
@@ -101,6 +101,7 @@ const fmt = (x, d = 0) => (typeof x === 'number' ? x.toLocaleString('en-US', { m
 export function renderMarkdown(report) {
 	const L = [];
 	L.push('# AI test bench report', '', `Generated ${report.generated}. Data: ${report.options.data}. Maps: ${report.options.maps.join(', ')}. Seeds per matchup: ${report.options.seeds} (from ${report.options.seedStart}). Time limit ${report.options.minutes} game minutes. Start positions ${report.options.rotate ? 'rotate with the seed' : 'fixed'}.`, '');
+	if (report.options.aiini) L.push(`AI settings (aiini) loaded over the game's for every match: \`${report.options.aiini.path}\` (hash ${report.options.aiini.hash}).`, '');
 	L.push('## Summary', '', '```', summaryText(report), '```', '');
 
 	for (const [b, d] of Object.entries(report.builds)) {

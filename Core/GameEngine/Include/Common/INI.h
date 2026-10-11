@@ -208,6 +208,10 @@ public:
 	/// While a guard is set, every INI file that is loaded asks it about each top level block. nullptr removes it.
 	static void setBlockGuard( INIBlockGuard *guard );
 
+	/// While set, a field name that the block does not know stops the load with an error (normally it is only reported
+	/// in debug builds and skipped). For override files given on the command line, where a typo must not pass silently.
+	static void setStrictFields( Bool strict );
+
 	/// Parses INI text that is already in memory (an army package entry). The INI takes ownership of the buffer,
 	/// which must come from new Char[size] (delete[] frees it), also when this throws. displayName is only used in messages.
 	UnsignedInt loadFromBuffer( AsciiString displayName, Char *buffer, Int size, INILoadType loadType, Xfer *pXfer );

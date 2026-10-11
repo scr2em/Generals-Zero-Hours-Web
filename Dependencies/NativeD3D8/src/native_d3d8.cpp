@@ -18,9 +18,9 @@
 ** Native headless build: the D3DX functions the renderer links against, without a device.
 **
 ** Headless mode never creates a Direct3D device (Direct3DCreate8 is looked up in d3d8.dll at run
-** time, which never loads). The math functions are the web build's own (WebD3D8/src/d3dx_math.cpp,
-** compiled into this library), because the game logic uses some of them (D3DXVec4Transform in
-** BezierSegment, for one); the rest report that nothing can be created.
+** time, which never loads). The math functions are real (d3dx_math.cpp next to this file),
+** because the game logic uses some of them (D3DXVec4Transform in BezierSegment, for one); the rest
+** report that nothing can be created.
 */
 #include <windows.h>
 #include <objbase.h>

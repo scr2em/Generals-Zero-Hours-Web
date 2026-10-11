@@ -26,6 +26,10 @@
 //          [timeout=<minutes of game time> | maxframes=<logic frames>] [stats=<file.json>]
 //          [crcinterval=<frames>] [sample=<frames>] [idleinterval=<frames>] [progress=<frames>]
 //          [cash=<starting money>] [label=<text>] [record=1] [loop=logic|engine] [eliminate=<slot>@<frame>]
+//          [aiini=<file.ini>]
+//
+// aiini= loads an INI file with an AIData block (normally an ExpertSkill block in it) over the game's AI data before the
+// match: only the fields it names change. Another block, an unknown field or a bad value ends the match with an error.
 //
 // <difficulty> is easy, normal, hard, expert, or idle (a computer player whose AI is removed when the match starts: a stand-in
 // for a human player who gives no orders).

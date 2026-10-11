@@ -10,6 +10,7 @@ import { Browser } from './lib/browser.mjs';
 import { NativeRunner, findNativeExecutable } from './lib/native.mjs';
 import { loadOverlay, makeOverlaySite } from './lib/overlay.mjs';
 import { compareRuns } from './lib/stats.mjs';
+import { parsePlayer, playersArg, pool, runWithRetries, fnv1a } from './lib/plan.mjs';
 import { buildReport, renderMarkdown, summaryText } from './lib/report.mjs';
 
 const USAGE = `Usage: node aibench.mjs [options]
@@ -43,6 +44,8 @@ What to play:
   --crc-interval N        logic frames between CRC samples (default 300)
   --keep-logs             write the engine output of every match to matches/<id>.log (default: only failed matches)
   --engine-arg ARG        an extra engine argument for every match (repeatable), e.g. loop=engine, cash=20000, sample=60
+  --aiini FILE            AI settings loaded over the game's for every match: an INI file with an AIData block (normally an
+                          ExpertSkill block in it, only the fields named change); native builds only (--native)
 How to run:
   --workers N             matches at the same time (default 2)
   --retries N             repeats of a match that failed for technical reasons (default 1)
@@ -87,6 +90,7 @@ function parseArgs(argv) {
 			case '--crc-interval': o.crcInterval = Number(next()); break;
 			case '--keep-logs': o.keepLogs = true; break;
 			case '--engine-arg': o.engineArgs.push(next()); break;
+			case '--aiini': o.aiini = next(); break;
 			case '--workers': o.workers = Number(next()); break;
 			case '--retries': o.retries = Number(next()); break;
 			case '--match-timeout': o.matchTimeout = Number(next()); break;
@@ -134,22 +138,18 @@ function parseArgs(argv) {
 	if (!o.maps.length && o.data === 'starter') o.maps.push('Ironwood Crossing');
 	if (!o.matchups.length && o.data === 'starter') o.matchups.push('hard:Ironwood,hard:Ironwood');
 	if (!o.probe && !o.boot && (!o.maps.length || !o.matchups.length)) throw new Error('--map and --matchup are required with your own game data');
+	if (o.aiini) {
+		// The engine reads the file with the C library: a host path, which only the native build has (the web build would need it
+		// copied into the browser's file system).
+		const web = o.builds.filter((b) => !b.native).map((b) => b.name);
+		if (web.length) throw new Error(`--aiini works with the native build only (--native); not with ${web.join(', ')}`);
+		o.aiini = path.resolve(o.aiini);
+		if (!fs.existsSync(o.aiini)) throw new Error(`--aiini ${o.aiini} does not exist`);
+		o.aiiniHash = fnv1a(fs.readFileSync(o.aiini));
+		o.engineArgs.push(`aiini=${o.aiini}`);
+	}
 	o.out = path.resolve(o.out || path.join('aibench-out', new Date().toISOString().replace(/[:.]/g, '-')));
 	return o;
-}
-
-// "hard:Ironwood" -> { difficulty, side, variant, label }; the label is the configuration's name in the reports.
-// "expert:China:trace@1": the same on team 1 (players of a team are allies; without @ every player is on his own).
-function parsePlayer(text) {
-	const at = text.trim().split('@');
-	if (at.length > 2 || (at.length === 2 && !/^\d+$/.test(at[1]))) throw new Error(`player "${text}": the team after @ must be a number`);
-	const team = at.length === 2 ? Number(at[1]) : null;
-	const f = at[0].split(':');
-	if (f.length < 2) throw new Error(`player "${text}" is not difficulty:side[:variant][@team]`);
-	const difficulty = f[0].toLowerCase().replace(/^med(ium)?$/, 'normal').replace(/^brutal$/, 'hard');
-	const variant = f[2] || '';
-	const label = `${difficulty}:${f[1]}` + (variant && variant !== difficulty ? `:${variant}` : '');
-	return { difficulty, side: f[1], variant, team, label };
 }
 
 function buildJobs(o) {
@@ -166,7 +166,7 @@ function buildJobs(o) {
 					const shift = o.rotate ? s % n : 0;
 					const placed = players.map((p, i) => ({ ...p, start: starts[(i + shift) % starts.length] }));
 					const id = `${build.name}-${map.replace(/\W+/g, '_')}-m${mi + 1}-s${seed}`;
-					const spec = placed.map((p) => `${p.difficulty}:${p.side}:${p.team ?? ''}:${p.start}:${p.variant}`.replace(/:+$/, '')).join(',');
+					const spec = playersArg(placed);
 					jobs.push({
 						id, build: build.name, map, matchup: mi + 1, seed, players: placed, kind: 'main',
 						args: ['-aiMatch', `map=${map}`, `players=${spec}`, `seed=${seed}`, maxFramesArg, `crcinterval=${o.crcInterval}`, `label=${id}`, ...o.engineArgs],
@@ -177,15 +177,6 @@ function buildJobs(o) {
 	}
 	return jobs;
 }
-
-// Runs fn over items with at most `n` at a time.
-async function pool(items, n, fn) {
-	let next = 0;
-	const worker = async () => { for (;;) { const i = next++; if (i >= items.length) return; await fn(items[i], i); } };
-	await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, worker));
-}
-
-const technical = (e) => /^(no result|engine failure|browser|the engine exited|unreadable)/.test(e || '');
 
 async function main() {
 	const o = parseArgs(process.argv.slice(2));
@@ -243,13 +234,10 @@ async function main() {
 
 		const jobs = buildJobs(o);
 		log(`${jobs.length} matches (${o.builds.map((b) => b.name).join(', ')} x ${o.maps.length} map(s) x ${o.matchups.length} matchup(s) x ${o.seeds} seeds), ${o.workers} at a time`);
+		if (o.aiini) log(`AI settings: ${o.aiini} (hash ${o.aiiniHash})`);
 		const records = [];
 		let done = 0;
-		const runJob = async (job, attempt = 0) => {
-			const r = await runners[job.build].runMatch(job.build, job.args, o.matchTimeout * 1000);
-			if (!r.ok && technical(r.error) && attempt < o.retries) { log(`  retry ${job.id}: ${r.error}`); return runJob(job, attempt + 1); }
-			return { ...r, attempts: attempt + 1 };
-		};
+		const runJob = (job) => runWithRetries(runners[job.build], job.build, job.args, o.matchTimeout * 1000, o.retries, log, job.id);
 		const finish = (job, r, total) => {
 			const rec = { id: job.id, build: job.build, kind: job.kind, job, ok: r.ok, error: r.error || null, result: r.result, wallMs: r.wallMs, attempts: r.attempts };
 			fs.writeFileSync(path.join(o.out, 'matches', job.id + '.json'), JSON.stringify({ job, ok: r.ok, error: r.error, wallMs: r.wallMs, result: r.result }, null, 1));

@@ -95,6 +95,7 @@ Each build is deterministic on its own, and Linux and macOS may differ from each
 | `--keep-logs` | writes the engine output of every match to `matches/<id>.log` (default: only failed matches). Needed to read the `trace` output of a player |
 | `--overlay NAME[,NAME]` | plays on the starter content edited by `scripts/aibench/fixtures/NAME.json` (see "Overlays"); uses its own browser profile (`<profile>-overlay-NAME`, so give a fresh `--profile` after editing a fixture) |
 | `--engine-arg ARG` | an extra engine argument for every match, e.g. `cash=20000`, `sample=60`, `loop=engine`, `eliminate=1@4000` |
+| `--aiini FILE` | AI settings loaded over the game's for every match (`aiini=`, see "Engine command line"); native builds only. The report names the file and its hash |
 | `--probe` | prints the maps and sides found in the game data |
 | `--profile DIR`, `--port N` | browser profile and port (keep them fixed between runs) |
 
@@ -130,10 +131,33 @@ on a native build: after the executable):
 -aiMatch map=<map> players=<difficulty>:<side>[:<team>[:<start>[:<variant>]]],... seed=<n>
          [timeout=<game minutes> | maxframes=<logic frames>] [stats=<file.json>] [crcinterval=<frames>]
          [sample=<frames>] [idleinterval=<frames>] [progress=<frames>] [cash=<money>] [label=<text>] [record=1]
+         [aiini=<file.ini>]
 ```
 
 `start` is 1-based (0 or empty: random), `team` is a number (empty: no team). `seed` is required. Unknown options are
 an error. Matches are not recorded as replays unless `record=1` (parallel matches would write the same file).
+
+`aiini=<file.ini>` loads AI settings over the game's before the match: an `AIData` block, normally with an `ExpertSkill`
+block in it, read by the game's own INI reader in overwrite mode, so only the fields the file names change (the rest
+keeps the code default or the game data's `AIData.ini`):
+
+```
+AIData
+  ExpertSkill
+    WaveSizeScale = 1.2
+    FocusFire = No
+  End
+End
+```
+
+The engine prints every value it changed and a line for the file (`AIMATCH aiini ExpertSkill.WaveSizeScale: 1 -> 1.2`,
+`AIMATCH aiini /path/file.ini: loaded (hash 1a2b3c4d, 2 settings changed)`), and the statistics carry `aiini` (the path) and
+`aiiniHash` (FNV-1a of the file's bytes). It is strict: another block than `AIData`, an unknown field (`AIMATCH_ERROR aiini:
+Unknown field 'WaveSizeScal' in INI file '...' at line 3`), a bad value or a missing `End` ends the match with an error
+(exit code 1). The path is one of the host: absolute, or relative to the folder the native build was started from. Only the
+native build reads host files; the web build would need the file in its virtual file system, so `aibench --aiini` refuses web
+builds. `SideInfo` and `SkirmishBuildList` belong to the game data, not in such a file. The `ExpertSkill` settings are part of
+the game CRC, so a match with changed settings has other CRCs from the first sample on (it is still deterministic).
 
 ## What is measured
 
@@ -209,7 +233,8 @@ A fixture edit must find its text exactly once, otherwise the bench stops with a
 
 ## Tests of the bench itself
 
-* `node --test scripts/aibench/test/stats.test.mjs`: statistics (Wilson interval, Elo, matrix, determinism compare).
+* `node --test scripts/aibench/test/stats.test.mjs scripts/aibench/test/tune.test.mjs`: statistics (Wilson interval, Elo,
+  matrix, determinism compare) and the tuner's search, rule, report and resume against a fake engine.
 * `node scripts/aibench/test/mock.test.mjs`: the whole runner against a mock engine page (no game needed).
 
 ## Limits of the starter content
@@ -256,6 +281,66 @@ node scripts/aibench/aibench.mjs --baseline build/web-old/GeneralsMD --site buil
 Notes: use the same `--port` and `--profile` every time (browser storage belongs to the origin and profile); close
 other copies of the page; each worker needs memory for a full game (roughly 1 GB) and a core.
 
+## Tuning the Expert (`tune.mjs`)
+
+`tune.mjs` searches the Expert's settings (`ExpertSkill`) for the most wins against the original Hard AI in mirror matches
+(`expert:S` against `hard:S` for every side S) on a 2-player map, with the native build, and writes a report folder. It is
+meant to run overnight on the machine that has the game; the game data never leaves it.
+
+On the Mac, from the repository (once: the Xcode command line tools and `brew install cmake ninja node`):
+
+```
+cmake --preset native-headless && cmake --build build/native-headless --target zh_headless
+export ZH_PATH="/path/to/Zero Hour"                       # the folder with INIZH.big
+node scripts/aibench/tune.mjs --native build/native-headless --dry-run --workers 8     # the plan: matches and hours
+caffeinate -is node scripts/aibench/tune.mjs --native build/native-headless --workers 8
+```
+
+(`caffeinate` keeps the Mac awake.) `scripts/gameplay/realdata_tests.sh --workers 8 tune` does the same after building.
+Defaults: map `tournament desert`, sides `America,China,GLA`, 30 game minutes per match (a timeout is not a win), 6 screening
+seeds, 20 confirmation seeds and 30 fresh seeds for the final check per side, the settings of `tune_params.json`, a budget
+of 10 hours. `node scripts/aibench/tune.mjs --help` lists the options.
+
+**How long.** With the 18 settings of `tune_params.json` one pass over them is 576 screening matches, plus 60 matches for
+every value that is confirmed, plus 78 at the start and 180 for the final check: 834 to 1914 matches. At about 2.5 minutes
+per match (the plan's guess before it has measured anything; `--match-seconds` changes it) and 8 at a time that is 4 to 10
+hours. Every batch prints its own estimate from the measured match times. The search stops in time for the final check
+when `--budget` (hours) would be exceeded; a second pass runs only when the first one changed something and time is left.
+
+**The search** (coordinate search). The start is the game's own settings (the tuner reads their values from the engine
+with a 2-frame match, which also checks the setting names, the map and the side). For each setting in turn, every other value
+of it is played on the screening seeds (1-6) of every side, next to the current settings on the same matches. The value that
+wins more of these matches than the current settings is played on the confirmation seeds (1001-1020). It is kept when, on the
+same confirmation matches, its win rate over all sides is at least 3 points higher than that of the current settings
+(`--min-gain 0.03`, about 2 more wins of 60) and no side's win rate falls by more than 10 points (`--max-side-drop 0.10`, 2 wins
+of 20). Passes repeat (at most `--passes 3`) until one changes nothing. Then the best settings and the game's settings play
+the same fresh seeds (100001-100030), which the search never used, and the report gives both with Wilson 95% intervals per side
+and overall, and whether the target (80%, `--target`) is met by the point estimate and by the lower bound of the interval. The
+search's own numbers are optimistic (it picks the best of many tries); the fresh seeds are the honest measure.
+
+**Resume.** Every finished match is appended to `<out>/matches.jsonl`. Run the same command again (after a crash, a
+reboot, or a stop for the budget) and it continues: what was played is not played again, and the search takes the same
+decisions up to where it stopped. Without `--out` the folder is `test-reports/<UTC date>-tune`, and a later run continues the
+newest folder made with the same engine (its file hash), game data, map, time limit and engine arguments. A rebuilt engine
+starts a new folder. A match that failed is not kept and is played again by the next run.
+
+**The report folder** (commit it: `git add test-reports && git commit -m "Expert tuning report" && git push`):
+
+* `summary.md`: the result on the fresh seeds (game's settings against best settings, per side and overall), the best
+  settings, every step of the search with its numbers and decision, and links to the logs
+* `best.ini`: the best settings as an `aiini` file. Check it with `aibench.mjs --native ... --aiini best.ini`, then make its
+  values the defaults (`ex.m_...` in `AI::TAiData`, `GeneralsMD/Code/GameEngine/Source/GameLogic/AI/AI.cpp`) and run
+  `scripts/gameplay/realdata_tests.sh mirror`
+* `results.json`: all numbers; `matches.jsonl`: every match (the cache); `state.json`: the progress; `configs/`: the aiini
+  file of every candidate
+* `holdout/*.trace.txt`: for each loss or timeout of the best settings on the fresh seeds, the Expert's decisions (the
+  `trace` variant, which only prints) and the match lines, to study why it lost (some hundred KB each)
+
+`tune_params.json` is a JSON list of `{ "name": "WaveSizeScale", "type": "real" | "int" | "bool", "values": [...], "default": ... }`.
+A bare name is an `ExpertSkill` field; `AIData.<field>` names a field of the `AIData` block. `default` documents the code
+default; the search starts from the value the engine reports. `--data starter` runs the tuner on the starter pack: a check of
+the mechanism (loop, resume, report) only, never a gameplay result.
+
 ## Player assists: the sibling bench
 
 `-assistMatch` is the same kind of mode for the player assists: a skirmish with one human player, driven by a script of
@@ -268,6 +353,9 @@ run in `scripts/gameplay/realdata_tests.sh assists`. See `scripts/assistbench/RE
 
 ```
 scripts/aibench/aibench.mjs       the command line runner
+scripts/aibench/tune.mjs          the automatic search of the Expert's settings (see "Tuning the Expert")
+scripts/aibench/tune_params.json  the settings it searches, and their values
+scripts/aibench/lib/plan.mjs      player syntax, worker pool, retries, aiini hash (shared by aibench.mjs and tune.mjs)
 scripts/aibench/lib/server.mjs    static server for the builds (one origin, isolation headers)
 scripts/aibench/lib/browser.mjs   Playwright: data import, one match per page, result capture
 scripts/aibench/lib/native.mjs    --native: one zh_headless process per match, result capture
@@ -276,7 +364,8 @@ scripts/aibench/lib/overlay.mjs   --overlay: an edited copy of the starter pack
 scripts/aibench/fixtures/*.json   the overlays
 scripts/aibench/fixtures/maps/     generators of overlay maps (gates.py)
 scripts/aibench/lib/report.mjs    report.json / report.md
-scripts/aibench/test/stats.test.mjs   tests of the statistics:  node --test scripts/aibench/test
+scripts/aibench/test/stats.test.mjs   tests of the statistics:  node --test scripts/aibench/test/*.test.mjs
+scripts/aibench/test/tune.test.mjs    tests of the tuner against a fake engine
 GeneralsMD/Code/GameEngine/Source/Common/AIMatch.cpp, Include/Common/AIMatch.h   the engine mode
 GeneralsMD/Code/GameEngine/Include/Common/AIMatchShared.h   its parts that -assistMatch reuses (map/side lookup, JSON, bench flag)
 ```
