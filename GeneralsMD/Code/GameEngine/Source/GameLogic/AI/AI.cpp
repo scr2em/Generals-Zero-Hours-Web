@@ -260,6 +260,38 @@ static const FieldParse s_skillFieldParse[] =
 		{ "WaveHoldSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveHoldSeconds ) },
 		{ "MinWaveValue",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_minWaveValue ) },
 		{ "UseWaves",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useWaves ) },
+		{ "FormationMove",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_formationMove ) },
+		{ "BuildUnblock",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_buildUnblock ) },
+		{ "Opportunist",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_opportunist ) },
+		{ "FinishHunt",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_finishHunt ) },
+		{ "FinishHuntMinutes",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_finishHuntMinutes ) },
+		{ "FinishHuntAdvantage",	INI::parseReal,		nullptr, offsetof( AISkillSettings, m_finishHuntAdvantage ) },
+		{ "LegFromFront",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_legFromFront ) },
+		{ "IdleJoin",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_idleJoin ) },
+		{ "NextWaveReady",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_nextWaveReady ) },
+		{ "WaveMaxSeconds",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveMaxSeconds ) },
+		{ "EarnersDetached",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_earnersDetached ) },
+		{ "SkipContained",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_skipContained ) },
+		{ "ContinueLegs",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_continueLegs ) },
+		{ "ContinueLegSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_continueLegSeconds ) },
+		{ "GuardedPathAvoid",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_guardedPathAvoid ) },
+		{ "GuardedPathCost",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_guardedPathCost ) },
+		{ "OpportunistRadius",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_opportunistRadius ) },
+		{ "BaseDefGroundOnly",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_baseDefGroundOnly ) },
+		{ "PowerPlantStrikes",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_powerPlantStrikes ) },
+		{ "IncomePrize",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_incomePrize ) },
+		{ "SurplusCoverage",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_surplusCoverage ) },
+		{ "SurplusMix",				INI::parseBool,		nullptr, offsetof( AISkillSettings, m_surplusMix ) },
+		{ "ReachChecks",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_reachChecks ) },
+		{ "FinishLaunch",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_finishLaunch ) },
+		{ "StallReorder",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_stallReorder ) },
+		{ "IgnoreStatusWeapons",	INI::parseBool,		nullptr, offsetof( AISkillSettings, m_ignoreStatusWeapons ) },
+		{ "AllyForecast",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_allyForecast ) },
+		{ "RecallRadius",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_recallRadius ) },
+		{ "WaveSpentOwnOnly",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_waveSpentOwnOnly ) },
+		{ "BunkerMaxCost",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_bunkerMaxCost ) },
+		{ "SoloAttacks",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_soloAttacks ) },
+		{ "SoloAttackSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_soloAttackSeconds ) },
 		{ "WaveSizeScale",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_waveSizeScale ) },
 		{ "LocalWaveTarget",			INI::parseBool,		nullptr, offsetof( AISkillSettings, m_localWaveTarget ) },
 		{ "LocalWaveRestShare",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_localWaveRestShare ) },
@@ -330,6 +362,8 @@ static const FieldParse s_skillFieldParse[] =
 		{ "AbilityRange",					INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityRange ) },
 		{ "AbilityMinValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_abilityMinValue ) },
 		{ "AirborneInsertion",		INI::parseBool,		nullptr, offsetof( AISkillSettings, m_useAirborne ) },
+		{ "AirSupportPlanes",		INI::parseInt,		nullptr, offsetof( AISkillSettings, m_airSupportPlanes ) },
+		{ "AirSupportSeconds",		INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airSupportSeconds ) },
 		{ "AirMargin",						INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMargin ) },
 		{ "AirGuardShare",				INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airGuardShare ) },
 		{ "AirMinSquadValue",			INI::parseReal,		nullptr, offsetof( AISkillSettings, m_airMinSquadValue ) },
@@ -1299,6 +1333,38 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_retreatAdvantage = 0.65f;
 	ex.m_waveHoldSeconds = 180.0f;	// an army that has stopped growing goes after 3 minutes (40 s sent it out too small, never let it stall for good: measured with the real data)
 	ex.m_minWaveValue = 12000.0f;	// real units cost 300-2000: 2000 was a handful of units (tuned on the starter content)
+	ex.m_formationMove = true;
+	ex.m_buildUnblock = true;
+	ex.m_opportunist = true;
+	ex.m_finishHunt = true;
+	ex.m_finishHuntMinutes = 15.0f;
+	ex.m_finishHuntAdvantage = 3.0f;
+	ex.m_legFromFront = true;
+	ex.m_idleJoin = true;
+	ex.m_nextWaveReady = true;
+	ex.m_waveMaxSeconds = 300.0f;
+	ex.m_earnersDetached = true;
+	ex.m_skipContained = true;
+	ex.m_continueLegs = true;
+	ex.m_continueLegSeconds = 240.0f;
+	ex.m_guardedPathAvoid = false;	// measured: costs wins on open maps (China mirror, Tournament Plains: 0/8 against 3/8)
+	ex.m_guardedPathCost = 6.0f;
+	ex.m_opportunistRadius = 500.0f;
+	ex.m_baseDefGroundOnly = true;
+	ex.m_powerPlantStrikes = true;
+	ex.m_incomePrize = 2.5f;
+	ex.m_surplusCoverage = true;
+	ex.m_surplusMix = true;
+	ex.m_reachChecks = true;
+	ex.m_finishLaunch = true;
+	ex.m_stallReorder = true;
+	ex.m_ignoreStatusWeapons = true;
+	ex.m_allyForecast = true;
+	ex.m_recallRadius = 1500.0f;
+	ex.m_waveSpentOwnOnly = true;
+	ex.m_bunkerMaxCost = 450.0f;
+	ex.m_soloAttacks = true;
+	ex.m_soloAttackSeconds = 10.0f;
 	ex.m_useWaves = false;	// off at the player's request: the teams attack as they are ready (no gathering at the rally point)
 	ex.m_waveSizeScale = 1.0f;
 	ex.m_localWaveTarget = true;
@@ -1370,6 +1436,8 @@ m_retaliateFriendsRadius(120.0f)
 	ex.m_abilityRange = 400.0f;
 	ex.m_abilityMinValue = 150.0f;
 	ex.m_useAirborne = false;
+	ex.m_airSupportPlanes = 3;
+	ex.m_airSupportSeconds = 90.0f;
 	ex.m_airMargin = 50.0f;
 	ex.m_airGuardShare = 0.8f;
 	ex.m_airMinSquadValue = 350.0f;
@@ -1468,6 +1536,38 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_waveHoldSeconds );
 		xfer->xferReal( &sk.m_minWaveValue );
 		xfer->xferBool( &sk.m_useWaves );
+		xfer->xferBool( &sk.m_formationMove );
+		xfer->xferBool( &sk.m_buildUnblock );
+		xfer->xferBool( &sk.m_opportunist );
+		xfer->xferBool( &sk.m_finishHunt );
+		xfer->xferReal( &sk.m_finishHuntMinutes );
+		xfer->xferReal( &sk.m_finishHuntAdvantage );
+		xfer->xferBool( &sk.m_legFromFront );
+		xfer->xferBool( &sk.m_idleJoin );
+		xfer->xferBool( &sk.m_nextWaveReady );
+		xfer->xferReal( &sk.m_waveMaxSeconds );
+		xfer->xferBool( &sk.m_earnersDetached );
+		xfer->xferBool( &sk.m_skipContained );
+		xfer->xferBool( &sk.m_continueLegs );
+		xfer->xferReal( &sk.m_continueLegSeconds );
+		xfer->xferBool( &sk.m_guardedPathAvoid );
+		xfer->xferReal( &sk.m_guardedPathCost );
+		xfer->xferReal( &sk.m_opportunistRadius );
+		xfer->xferBool( &sk.m_baseDefGroundOnly );
+		xfer->xferBool( &sk.m_powerPlantStrikes );
+		xfer->xferReal( &sk.m_incomePrize );
+		xfer->xferBool( &sk.m_surplusCoverage );
+		xfer->xferBool( &sk.m_surplusMix );
+		xfer->xferBool( &sk.m_reachChecks );
+		xfer->xferBool( &sk.m_finishLaunch );
+		xfer->xferBool( &sk.m_stallReorder );
+		xfer->xferBool( &sk.m_ignoreStatusWeapons );
+		xfer->xferBool( &sk.m_allyForecast );
+		xfer->xferReal( &sk.m_recallRadius );
+		xfer->xferBool( &sk.m_waveSpentOwnOnly );
+		xfer->xferReal( &sk.m_bunkerMaxCost );
+		xfer->xferBool( &sk.m_soloAttacks );
+		xfer->xferReal( &sk.m_soloAttackSeconds );
 		xfer->xferReal( &sk.m_waveSizeScale );
 		xfer->xferBool( &sk.m_localWaveTarget );
 		xfer->xferReal( &sk.m_localWaveRestShare );
@@ -1538,6 +1638,8 @@ void TAiData::crc( Xfer *xfer )
 		xfer->xferReal( &sk.m_abilityRange );
 		xfer->xferReal( &sk.m_abilityMinValue );
 		xfer->xferBool( &sk.m_useAirborne );
+		xfer->xferInt( &sk.m_airSupportPlanes );
+		xfer->xferReal( &sk.m_airSupportSeconds );
 		xfer->xferReal( &sk.m_airMargin );
 		xfer->xferReal( &sk.m_airGuardShare );
 		xfer->xferReal( &sk.m_airMinSquadValue );

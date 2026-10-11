@@ -110,7 +110,20 @@ void PlayerAssist::logicUpdate()
 		printf( "ASSIST frame %u\n", TheGameLogic->getFrame() );
 
 	if (!m_allowed)
+	{
+		// Without the player assists, the formations of the Expert computer player still keep their slots.
+		if (!m_units.empty())
+		{
+			const UnsignedInt now = TheGameLogic->getFrame();
+			updateSlots( now );
+			if (now >= m_pruneFrame)
+			{
+				m_pruneFrame = now + 2 * LOGICFRAMES_PER_SECOND;
+				pruneDead();
+			}
+		}
 		return;
+	}
 
 	const UnsignedInt now = TheGameLogic->getFrame();
 	m_protect.update( now );

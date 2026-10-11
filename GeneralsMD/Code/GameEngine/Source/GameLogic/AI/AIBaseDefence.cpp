@@ -102,6 +102,8 @@ Bool AIStrategy::isGroundThreat( const Object *source ) const
 {
 	if (source == nullptr || source->isEffectivelyDead())
 		return FALSE;
+	if (!skill().m_baseDefGroundOnly)
+		return TRUE;
 	return !source->isKindOf(KINDOF_AIRCRAFT) && !source->isKindOf(KINDOF_STRUCTURE) && !source->isKindOf(KINDOF_PROJECTILE);
 }
 

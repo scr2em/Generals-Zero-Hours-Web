@@ -269,12 +269,14 @@ void AIStrategy::updateSurplus()
 						score *= cost / 1000.0f;
 					else if (strength >= 0.25f)
 						score *= sqrtf(cost / 1000.0f);
-					score /= 1.0f + 3.0f * surplusShare(tmpl);
+					if (skill().m_surplusMix)
+						score /= 1.0f + 3.0f * surplusShare(tmpl);
 					Real cover = 0.0f;
 					for (Int c = 0; c < NUM_THREATS; ++c)
 						if (gap[c] > 0.0f && threat[c] && AICombatModel::damagePerSecond(f, threat[c]) > 0.0f)
 							cover += gap[c];
-					score *= 1.0f + 3.0f * cover;
+					if (skill().m_surplusCoverage)
+						score *= 1.0f + 3.0f * cover;
 					if (wantSiege && f->m_groundRange >= siegeRange && AICombatModel::damagePerSecond(f, defence) > 0.0f)
 						score *= 3.0f;	// the siege units the army lacks
 					if (best == nullptr || score > bestScore + 0.01f || (score > bestScore - 0.01f && cost > bestCost))
@@ -359,8 +361,9 @@ void AIStrategy::onUnitProduced( Object *factory, Object *unit )
 		--m_numSurplusOrders;
 		if (m_numSurplusUnits < MAX_SURPLUS_UNITS)
 			m_surplusUnits[m_numSurplusUnits++] = unit->getID();
+		// It waits at the rally point for its team (without waves the team it joins takes it along at once).
 		Coord3D rally;
-		if (unit->getAI() && rallyPoint(&rally))
+		if (wavesOn() && unit->getAI() && rallyPoint(&rally))
 			unit->getAI()->aiMoveToPosition(&rally, CMD_FROM_AI);
 		return;
 	}

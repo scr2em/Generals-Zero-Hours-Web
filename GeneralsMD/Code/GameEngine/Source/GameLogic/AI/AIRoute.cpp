@@ -760,7 +760,7 @@ namespace
 	{
 		Int m_w = 0, m_h = 0;
 		std::vector<UnsignedByte> m_blocked;
-		struct Field { Int m_dest = -1; UnsignedInt m_age = 0; std::vector<UnsignedInt> m_dist; };
+		struct Field { Int m_dest = -1; UnsignedInt m_key = 0; UnsignedInt m_age = 0; std::vector<UnsignedInt> m_dist; };
 		Field m_fields[TERRAIN_FIELDS];
 		UnsignedInt m_clock = 0;
 
@@ -817,14 +817,15 @@ namespace
 			return -1;
 		}
 
-		/// The distance field to this block (cost 10 a block straight, 14 diagonal; no corner cutting).
-		const std::vector<UnsignedInt> &field( Int dest )
+		/// The distance field to this block (cost 10 a block straight, 14 diagonal; no corner cutting).  `circles`: places that cost
+		/// `penalty` times as much (the reach of the enemy defences that one player has seen; `key` tells those sets apart).
+		const std::vector<UnsignedInt> &field( Int dest, const AIRouteCircle *circles = nullptr, Int numCircles = 0, UnsignedInt key = 0, UnsignedInt penalty = 1 )
 		{
 			++m_clock;
 			Int oldest = 0;
 			for (Int i = 0; i < TERRAIN_FIELDS; ++i)
 			{
-				if (m_fields[i].m_dest == dest)
+				if (m_fields[i].m_dest == dest && m_fields[i].m_key == key)
 				{
 					m_fields[i].m_age = m_clock;
 					return m_fields[i].m_dist;
@@ -834,7 +835,23 @@ namespace
 			}
 			Field &f = m_fields[oldest];
 			f.m_dest = dest;
+			f.m_key = key;
 			f.m_age = m_clock;
+			// The extra cost of every block (1: none).
+			std::vector<UnsignedByte> mul((size_t)m_w * m_h, 1);
+			for (Int c = 0; c < numCircles && penalty > 1; ++c)
+			{
+				const Real r = circles[c].m_radius;
+				const Int x0 = (Int)((circles[c].m_center.x - r) / TERRAIN_BLOCK_SIZE), x1 = (Int)((circles[c].m_center.x + r) / TERRAIN_BLOCK_SIZE);
+				const Int y0 = (Int)((circles[c].m_center.y - r) / TERRAIN_BLOCK_SIZE), y1 = (Int)((circles[c].m_center.y + r) / TERRAIN_BLOCK_SIZE);
+				for (Int y = y0 < 0 ? 0 : y0; y <= y1 && y < m_h; ++y)
+					for (Int x = x0 < 0 ? 0 : x0; x <= x1 && x < m_w; ++x)
+					{
+						const Real cx = (x + 0.5f) * TERRAIN_BLOCK_SIZE - circles[c].m_center.x, cy = (y + 0.5f) * TERRAIN_BLOCK_SIZE - circles[c].m_center.y;
+						if (cx * cx + cy * cy <= r * r)
+							mul[(size_t)y * m_w + x] = (UnsignedByte)penalty;
+					}
+			}
 			f.m_dist.assign((size_t)m_w * m_h, TERRAIN_FAR);
 			typedef std::pair<UnsignedInt, Int> Item;
 			std::priority_queue<Item, std::vector<Item>, std::greater<Item> > queue;
@@ -856,7 +873,7 @@ namespace
 						continue;
 					if (k >= 4 && (m_blocked[y * m_w + nx] || m_blocked[ny * m_w + x]))
 						continue;
-					const UnsignedInt d = top.first + (k < 4 ? 10u : 14u);
+					const UnsignedInt d = top.first + (k < 4 ? 10u : 14u) * mul[(size_t)ny * m_w + nx];
 					if (d < f.m_dist[ny * m_w + nx])
 					{
 						f.m_dist[ny * m_w + nx] = d;
@@ -886,7 +903,26 @@ Bool AIStrategy::terrainLeg( const Coord3D &from, const Coord3D &to, Coord3D *le
 	const Int dest = s_terrain.open(s_terrain.blockOf(to));
 	if (start < 0 || dest < 0 || start == dest)
 		return FALSE;
-	const std::vector<UnsignedInt> &dist = s_terrain.field(dest);
+	// The seen enemy defences: their reach costs more (GuardedPathAvoid), so a way in that no defence covers wins when there is one.
+	AIRouteCircle circles[AIROUTE_MAX_CIRCLES];
+	Int numCircles = 0;
+	UnsignedInt key = 0;
+	const UnsignedInt penalty = skill().m_guardedPathAvoid ? (UnsignedInt)skill().m_guardedPathCost : 1u;
+	if (penalty > 1)
+	{
+		numCircles = collectDefenceCircles(circles, AIROUTE_MAX_CIRCLES, nullptr);
+		key = 2166136261u;
+		for (Int c = 0; c < numCircles; ++c)
+		{
+			key = (key ^ (UnsignedInt)(Int)(circles[c].m_center.x / 20.0f)) * 16777619u;
+			key = (key ^ (UnsignedInt)(Int)(circles[c].m_center.y / 20.0f)) * 16777619u;
+			key = (key ^ (UnsignedInt)(Int)circles[c].m_radius) * 16777619u;
+		}
+		key = (key ^ penalty) * 16777619u;
+		if (numCircles == 0)
+			key = 0;
+	}
+	const std::vector<UnsignedInt> &dist = s_terrain.field(dest, circles, numCircles, key, penalty);
 	if (dist[start] == TERRAIN_FAR)
 		return FALSE;	// not connected by this terrain (a bridge, say): the pathfinder knows better
 	const Real way = dist[start] * (TERRAIN_BLOCK_SIZE / 10.0f);
@@ -927,11 +963,25 @@ const Coord3D *AIStrategy::orderTarget( Team *team, const Coord3D *pos, Coord3D 
 	const Coord3D *at = team->getEstimateTeamPosition();
 	if (at == nullptr)
 		return pos;
-	// Aircraft fly straight.
+	// Aircraft fly straight.  The way is measured from the front of the team (the ground unit nearest to the place): a team spread over
+	// the map (new members on their way from home) has its middle behind the front, and a leg from there would lead the front back.
 	Bool ground = FALSE;
-	for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done() && !ground; it.advance())
-		ground = it.cur() && !it.cur()->isEffectivelyDead() && !it.cur()->isKindOf(KINDOF_AIRCRAFT) && !it.cur()->isKindOf(KINDOF_STRUCTURE);
+	Coord3D front = *at;
+	Real frontDist = 1.0e9f;
+	for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+	{
+		const Object *obj = it.cur();
+		if (obj == nullptr || obj->isEffectivelyDead() || obj->isKindOf(KINDOF_AIRCRAFT) || obj->isKindOf(KINDOF_STRUCTURE) || obj->isContained() || isDetached(obj->getID()))
+			continue;
+		ground = TRUE;
+		const Real d = dist2D(*obj->getPosition(), *pos);
+		if (skill().m_legFromFront && d < frontDist)
+		{
+			frontDist = d;
+			front = *obj->getPosition();
+		}
+	}
 	if (!ground)
 		return pos;
-	return terrainLeg(*at, *pos, leg) ? leg : pos;
+	return terrainLeg(front, *pos, leg) ? leg : pos;
 }

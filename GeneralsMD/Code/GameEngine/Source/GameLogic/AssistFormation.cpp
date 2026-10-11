@@ -334,7 +334,7 @@ namespace
 //-------------------------------------------------------------------------------------------------
 Bool PlayerAssist::prepareFormationMove( AIGroup *group, const Coord3D *dest )
 {
-	if (!m_allowed || group == nullptr || m_units.empty())
+	if ((!m_allowed && !m_aiOrder) || group == nullptr || m_units.empty())
 		return FALSE;
 
 	const VecObjectID &ids = group->getAllIDs();

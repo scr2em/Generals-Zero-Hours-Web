@@ -1606,7 +1606,7 @@ void AIGroup::groupMoveToPosition( const Coord3D *p_posIn, Bool addWaypoint, Com
 
 	// Player assist: a formation the player picked (line, wedge ...) sets up the units' formation offsets for this move
 	Bool assistFormation = FALSE;
-	if (!addWaypoint && cmdSource == CMD_FROM_PLAYER && ThePlayerAssist)
+	if (!addWaypoint && ThePlayerAssist && (cmdSource == CMD_FROM_PLAYER || ThePlayerAssist->aiOrder()))
 		assistFormation = ThePlayerAssist->prepareFormationMove( this, pos );
 
 	Bool isFormation = getMinMaxAndCenter( &min, &max, &center );
@@ -2335,7 +2335,7 @@ void AIGroup::groupAttackPosition( const Coord3D *pos, Int maxShotsToFire, Comma
 void AIGroup::groupAttackMoveToPosition( const Coord3D *pos, Int maxShotsToFire, CommandSourceType cmdSource )
 {
 	// Player assist: with a formation every unit goes to its own slot of the formation at the destination
-	const Bool assistFormation = cmdSource == CMD_FROM_PLAYER && ThePlayerAssist && ThePlayerAssist->prepareFormationMove( this, pos );
+	const Bool assistFormation = ThePlayerAssist && (cmdSource == CMD_FROM_PLAYER || ThePlayerAssist->aiOrder()) && ThePlayerAssist->prepareFormationMove( this, pos );
 
 	std::list<Object *>::iterator i;
 	for( i = m_memberList.begin(); i != m_memberList.end(); ++i )

@@ -223,7 +223,7 @@ void AISkirmishPlayer::processBaseBuilding()
 			// Expert: a priority build that cannot be built now (no rebuilds left, no money or technology for it, or its place is
 			// taken) does not hold up the ones after it: the first one that can be built is taken.
 			Bool priorityReady = true;
-			if (m_strategy && info->isPriorityBuild() && !isPriority) {
+			if (m_strategy && TheAI->getAiData()->m_expertSkill.m_buildUnblock && info->isPriorityBuild() && !isPriority) {
 				Object *priorityDozer = findDozer(info->getLocation());
 				priorityReady = info->isBuildable() && priorityDozer && TheBuildAssistant->canMakeUnit(priorityDozer, curPlan) == CANMAKE_OK;
 				if (priorityReady) {

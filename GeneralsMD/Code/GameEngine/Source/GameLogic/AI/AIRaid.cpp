@@ -37,6 +37,7 @@
 #include "GameLogic/AIStrategy.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Module/AIUpdate.h"
+#include "GameLogic/Module/HackInternetAIUpdate.h"
 #include "GameLogic/Module/BodyModule.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/PartitionManager.h"
@@ -94,7 +95,14 @@ Bool AIStrategy::isDetached( ObjectID id ) const
 		if (m_raiders[i] == id)
 			return TRUE;
 	}
-	return m_protect.isAway(id) || isPatient(id) || isBreacher(id) || isGarrisoned(id) || isAirborne(id) || isTunnelSquad(id) || isCapturer(id) || (id == m_captureReserve && id != INVALID_ID);
+	// Units that earn money (hackers) work for the income (updateIncome), not for the army.
+	if (skill().m_earnersDetached)
+	{
+		const Object *obj = TheGameLogic->findObjectByID(id);
+		if (obj && obj->getAI() && const_cast<Object *>(obj)->getAI()->getHackInternetAIInterface())
+			return TRUE;
+	}
+	return m_protect.isAway(id) || isPatient(id) || isBreacher(id) || isGarrisoned(id) || isAirborne(id) || isTunnelSquad(id) || isAirSortie(id) || isCapturer(id) || (id == m_captureReserve && id != INVALID_ID);
 }
 
 void AIStrategy::dropDeadRaiders()

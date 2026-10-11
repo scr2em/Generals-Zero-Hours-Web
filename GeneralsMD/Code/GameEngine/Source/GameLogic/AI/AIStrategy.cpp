@@ -54,6 +54,7 @@
 #include "GameLogic/AIPlayer.h"
 #include "GameLogic/AIStrategy.h"
 #include "GameLogic/AIPathfind.h"
+#include "GameLogic/PlayerAssist.h"
 #include "GameLogic/Pathfinder/PathfindCell.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/LogicRandomValue.h"
@@ -200,6 +201,21 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_incomeTrained(0),
 	m_incomeBuilt(0),
 	m_terrainLegs(0),
+	m_soloAttacks(0),
+	m_formationOrders(0),
+	m_nextOpportunist(0),
+	m_opportunistOrders(0),
+	m_legsContinued(0),
+	m_wavesCut(0),
+	m_idleJoins(0),
+	m_nextFinishHunt(0),
+	m_finishHunts(0),
+	m_numSorties(0),
+	m_nextAirSupport(0),
+	m_nextAirCall(0),
+	m_airSupportSorties(0),
+	m_airSupportRetargets(0),
+	m_airSupportUnsafe(0),
 	m_numSurplusKinds(0),
 	m_strikePlanned(FALSE),
 	m_strikeWeapon(INVALID_ID),
@@ -333,6 +349,7 @@ AIStrategy::AIStrategy( AIPlayer *ai, Player *p ) :
 	m_nextStatus(0)
 {
 	memset(m_teams, 0, sizeof(m_teams));
+	memset(m_sorties, 0, sizeof(m_sorties));
 	resetTerrainRoutes();
 	m_ledger.clear();
 	memset(m_steps, 0, sizeof(m_steps));
@@ -619,7 +636,8 @@ void AIStrategy::update()
 					m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE), m_enemy.allyValue(), m_armyState == ARMY_GATHER ? "gather" : "wave out", m_bdAlarms);
 				AI_TRACE("routes: %d waves routed around defences, %d breaches started (%d with the defences down)", m_routesPlanned, m_breachesStarted, m_breachKills);
 				AI_TRACE("fight check: launches held %d (forced anyway %d), waves pulled back %d", m_launchesHeld, m_launchesForced, m_pullbacks);
-				AI_TRACE("terrain: %d order(s) sent in legs along the true way", m_terrainLegs);
+				AI_TRACE("terrain: %d order(s) sent in legs along the true way; %d team attack(s) on their own (no waves); %d formation order(s); %d switch(es) to workers or new buildings; %d leg(s) continued", m_terrainLegs, m_soloAttacks, m_formationOrders, m_opportunistOrders, m_legsContinued);
+				AI_TRACE("air support: %d sortie(s), %d next target(s) in sight, %d held back (no way out of the anti-air), %d out now", m_airSupportSorties, m_airSupportRetargets, m_airSupportUnsafe, m_numSorties);
 				AI_TRACE("status: contacts %d  inf %.0f veh %.0f air %.0f def %.0f prod %.0f eco %.0f other %.0f  teams %d  money %u",
 					m_enemy.numContacts(), m_enemy.roleValue(AIROLE_INFANTRY), m_enemy.roleValue(AIROLE_VEHICLE), m_enemy.roleValue(AIROLE_AIRCRAFT),
 					m_enemy.roleValue(AIROLE_DEFENCE), m_enemy.roleValue(AIROLE_PRODUCTION), m_enemy.roleValue(AIROLE_ECONOMY),
@@ -634,6 +652,8 @@ void AIStrategy::update()
 	updateGarrison();
 	updateAbilities();
 	updateAirborne();
+	updateAirSupport();
+	updateOpportunist();
 	updateBunkers();
 	updateSurplus();
 	updateContest();
@@ -841,7 +861,7 @@ Bool AIStrategy::chooseObjective( const Coord3D *from, Real ourPower, Coord3D *o
 				prizeMul = 0.8f;
 				// A building that pays its owner money (an oil derrick): taking it away hurts like a supply center does.
 				if (templateOf(c.m_templateID) && isIncomeBuilding(templateOf(c.m_templateID)))
-					prizeMul = 2.5f;
+					prizeMul = skill().m_incomePrize;
 				break;
 			case AIROLE_DEFENCE: prizeMul = 0.4f; break;
 			case AIROLE_AIRDEFENCE: prizeMul = 0.3f; break;
@@ -1143,7 +1163,7 @@ Real AIStrategy::forecastAdvantage( const Coord3D *where, Real radius, Real *our
 	}
 	// Team games: the units of our allies that are at that place or on their way close to it fight there too (allied waves that go for
 	// the same objective: each one alone would think itself too weak and turn back).
-	for (Int p = 0; p < ThePlayerList->getPlayerCount(); ++p)
+	for (Int p = 0; p < ThePlayerList->getPlayerCount() && skill().m_allyForecast; ++p)
 	{
 		Player *ally = ThePlayerList->getNthPlayer(p);
 		if (ally == nullptr || ally == m_player || !ally->isPlayableSide() || m_player->getRelationship(ally->getDefaultTeam()) != ALLIES)
@@ -1434,6 +1454,34 @@ void AIStrategy::removeDetachedFrom( AIGroupPtr group, Team *team ) const
 	}
 }
 
+/// Formation moves (FormationMove): a team of at least 3 ground units (no aircraft) goes as a block of rows, the tough short range units
+/// in front, the long range ones behind (the player assists' formation; its rows are made again from the members at every order, so the
+/// gaps of the losses are filled).  When it returns TRUE the next order of the group is a formation order (the caller ends it).
+Bool AIStrategy::useFormation( AIGroup *group )
+{
+	if (!skill().m_formationMove || ThePlayerAssist == nullptr || group == nullptr)
+		return FALSE;
+	const VecObjectID &ids = group->getAllIDs();
+	Int ground = 0;
+	for (size_t i = 0; i < ids.size(); ++i)
+	{
+		const Object *obj = TheGameLogic->findObjectByID(ids[i]);
+		if (obj == nullptr || obj->isEffectivelyDead())
+			continue;
+		if (obj->isKindOf(KINDOF_AIRCRAFT))
+			return FALSE;
+		if (!obj->isKindOf(KINDOF_IMMOBILE))
+			++ground;
+	}
+	if (ground < 3)
+		return FALSE;
+	if (ThePlayerAssist->sharedFormation(ids) != AFORM_BOX)
+		ThePlayerAssist->setAIFormation(group, AFORM_BOX);
+	ThePlayerAssist->setAIOrder(TRUE);
+	++m_formationOrders;
+	return TRUE;
+}
+
 void AIStrategy::orderTeamMove( Team *team, const Coord3D *pos )
 {
 	if (!team->hasAnyUnits() || !hasFreeMember(team))
@@ -1450,7 +1498,10 @@ void AIStrategy::orderTeamMove( Team *team, const Coord3D *pos )
 #endif
 	removeDetachedFrom(group, team);
 	Coord3D leg;
+	const Bool formation = useFormation(group);
 	group->groupMoveToPosition(orderTarget(team, pos, &leg), FALSE, CMD_FROM_AI);
+	if (formation)
+		ThePlayerAssist->setAIOrder(FALSE);
 }
 
 void AIStrategy::orderTeamAttackMove( Team *team, const Coord3D *pos )
@@ -1469,7 +1520,22 @@ void AIStrategy::orderTeamAttackMove( Team *team, const Coord3D *pos )
 #endif
 	removeDetachedFrom(group, team);
 	Coord3D leg;
+	const Bool formation = useFormation(group);
 	group->groupAttackMoveToPosition(orderTarget(team, pos, &leg), NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
+	if (formation)
+	{
+		ThePlayerAssist->setAIOrder(FALSE);
+		// TEMP diagnostics: did the units get a formation of the game?
+		Int inForm = 0, all = 0;
+		for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+			if (it.cur() && !it.cur()->isEffectivelyDead())
+			{
+				++all;
+				if (it.cur()->getFormationID() != NO_FORMATION_ID)
+					++inForm;
+			}
+		AI_TRACE("FORMATION check team %u: %d of %d unit(s) in a formation", team->getID(), inForm, all);
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1804,6 +1870,48 @@ void AIStrategy::updateArmy()
 	}
 	m_armyValue = value;
 
+	// The end of the match: from FinishHuntMinutes on, when nothing worth a wave is known any more, or the army is FinishHuntAdvantage
+	// times all that is known of the enemy, every team hunts (seek and destroy, as the scripts do late): the last buildings of the enemy
+	// are often where nobody has looked.
+	if (sk.m_finishHunt && weight > 0.0f && now >= (UnsignedInt)(sk.m_finishHuntMinutes * 60.0f) * LOGICFRAMES_PER_SECOND && now >= m_nextFinishHunt)
+	{
+		const Real known = m_enemy.armyValue() + m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE);
+		Coord3D probe;
+		const Bool nothing = !chooseObjective(&center, value, &probe);
+		if (value >= 3000.0f && (nothing || value >= sk.m_finishHuntAdvantage * (known + 1000.0f)))
+		{
+			m_nextFinishHunt = now + 45 * LOGICFRAMES_PER_SECOND;
+			Int hunters = 0;
+			for (Int i = 0; i < m_numTeams; ++i)
+			{
+				AITeamRecord &rec = m_teams[i];
+				Team *team = TheTeamFactory->findTeamByID(rec.m_team);
+				if (team == nullptr || !isManageableTeam(team) || rec.m_mode == AITEAM_RETREATING || isAllyHelper(rec.m_team))
+					continue;
+				AIGroupPtr group = TheAI->createGroup();
+				if (!group)
+					continue;
+#if RETAIL_COMPATIBLE_AIGROUP
+				team->getTeamAsAIGroup(group);
+#else
+				team->getTeamAsAIGroup(group.Peek());
+#endif
+				removeDetachedFrom(group, team);
+				group->groupHunt(CMD_FROM_AI);
+				const Coord3D *p = team->getEstimateTeamPosition();
+				rec.m_mode = AITEAM_ATTACKING;
+				rec.m_modeFrame = now;
+				rec.m_orderFrame = now;
+				rec.m_target = p ? *p : center;
+				rec.m_idMark = TheGameLogic->getObjectIDCounter();
+				++hunters;
+			}
+			++m_finishHunts;
+			AI_TRACE("FINISH HUNT: %d team(s) hunt (army %.0f, enemy known %.0f%s)", hunters, value, known, nothing ? ", no objective known" : "");
+			return;
+		}
+	}
+
 	if (m_armyState == ARMY_GATHER)
 	{
 		if (value > m_armyPeak + 1.0f)
@@ -1830,7 +1938,7 @@ void AIStrategy::updateArmy()
 		// Late, against an enemy that has little left that we know of: the army goes with what it has (a few units do not wait for
 		// a full wave while the enemy base is open).
 		const Real enemyKnown = m_enemy.armyValue() + m_enemy.roleValue(AIROLE_DEFENCE) + m_enemy.roleValue(AIROLE_AIRDEFENCE);
-		const Bool finish = now >= 20 * 60 * LOGICFRAMES_PER_SECOND && value >= 1500.0f && value >= 2.0f * enemyKnown && m_enemy.numContacts() > 0;
+		const Bool finish = sk.m_finishLaunch && now >= 20 * 60 * LOGICFRAMES_PER_SECOND && value >= 1500.0f && value >= 2.0f * enemyKnown && m_enemy.numContacts() > 0;
 		if ((value >= target && equipped) || (stalled && value >= stallNeed && equipped) || finish)
 		{
 			// Known defences on the ground: the wave takes its siege units along (they bring the defences down from outside
@@ -1896,7 +2004,7 @@ void AIStrategy::updateArmy()
 	else
 	{
 		// The wave is spent (most of it dead or run away): gather again.
-		if (outValue >= 0.25f * m_launchValue && m_numTeams > 0 && weight > 0.0f)
+		if ((skill().m_waveSpentOwnOnly ? outValue : value) >= 0.25f * m_launchValue && m_numTeams > 0 && weight > 0.0f)
 		{
 			advanceWaveRoute(center);
 			checkWaveOnTheWay(&center);
@@ -1907,9 +2015,27 @@ void AIStrategy::updateArmy()
 		if (m_armyState != ARMY_ATTACK)
 			return;
 		// (What is left of the wave itself: the teams that wait at home for the next wave do not keep it going.)
-		if (outValue < (m_assault ? 0.1f : 0.25f) * m_launchValue || (m_numTeams == 0))
+		const Real spentValue = skill().m_waveSpentOwnOnly ? outValue : value;
+		if (spentValue < (m_assault ? 0.1f : 0.25f) * m_launchValue || (m_numTeams == 0))
 		{
 			AI_TRACE("wave spent: value %.0f of %.0f (%.0f waits at home)", outValue, m_launchValue, value - outValue);
+			m_armyState = ARMY_GATHER;
+			m_armyStateFrame = now;
+			m_armyPeak = value;
+			m_armyGrowthFrame = now;
+			return;
+		}
+		// The next wave does not wait for the end of this one: the teams at home are a wave by themselves (NextWaveReady), or this one has
+		// been out long enough (WaveMaxSeconds; what is left of it fights on).
+		const Real reserve = value - outValue;
+		Real stallShown = 0.0f;
+		const Real needed = waveTarget(&stallShown);
+		const Bool ready = sk.m_nextWaveReady && now - m_armyStateFrame >= 60 * LOGICFRAMES_PER_SECOND && reserve >= needed;
+		const Bool tooLong = sk.m_waveMaxSeconds > 0.0f && now - m_armyStateFrame >= secondsToFrames(sk.m_waveMaxSeconds);
+		if (ready || tooLong)
+		{
+			AI_TRACE("wave over (%s): %.0f still out, %.0f at home (a wave needs %.0f)", ready ? "the next one is ready" : "out too long", outValue, reserve, needed);
+			++m_wavesCut;
 			m_armyState = ARMY_GATHER;
 			m_armyStateFrame = now;
 			m_armyPeak = value;
@@ -1941,11 +2067,12 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 	Real maxRange = 0.0f;
 	// Units that joined the team after its last order (reinforcements) are not a part of the force that is out
 	// there: while the team is away they are kept out of its position, and sent to the rally point (see below).
-	const Bool mergeUnits = haveRally && mergeOn() && rec->m_idMark != 0;
+	// (Without waves there is no next wave to wait for: reinforcements stay with their team.)
+	const Bool mergeUnits = haveRally && mergeOn() && wavesOn() && rec->m_idMark != 0;
 	for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
 	{
 		Object *obj = it.cur();
-		if (obj == nullptr || obj->isEffectivelyDead() || isDetached(obj->getID()))
+		if (obj == nullptr || obj->isEffectivelyDead() || isDetached(obj->getID()) || (skill().m_skipContained && obj->isContained()))
 			continue;
 		const Bool idle = obj->getAI() && obj->getAI()->isIdle();
 		allCenter.x += obj->getPosition()->x;
@@ -2036,6 +2163,54 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 	rec->m_lastAdvantage = advantage;
 	rec->m_lastCheck = now;
 	const Bool contact = theirPower > 0.0f;
+
+	// Members of an attacking team that stand idle at home, far from its objective (new units the factories gave the team), follow it
+	// there together (IdleJoin): they are neither out with the team nor reserves for the next wave.
+	if (sk.m_idleJoin && rec->m_mode == AITEAM_ATTACKING && now - rec->m_orderFrame >= 5 * LOGICFRAMES_PER_SECOND)
+	{
+		Coord3D homeCenter;
+		if (m_ai->getBaseCenter(&homeCenter))
+		{
+			AIGroupPtr joiners = TheAI->createGroup();
+			Int n = 0;
+			Real v = 0.0f;
+			for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done(); it.advance())
+			{
+				Object *obj = it.cur();
+				// (Idle, or still on its way out of the factory: a crowded exit keeps new units in that state for good.)
+				if (obj == nullptr || obj->isEffectivelyDead() || obj->getAI() == nullptr || isDetached(obj->getID()) || obj->isContained() ||
+						!(obj->getAI()->isIdle() || obj->getAI()->getAIStateType() == AI_FOLLOW_EXITPRODUCTION_PATH) || obj->isKindOf(KINDOF_AIRCRAFT))
+					continue;
+				if (dist2D(*obj->getPosition(), homeCenter) > m_ai->m_baseRadius + 700.0f || dist2D(*obj->getPosition(), rec->m_target) < 1500.0f)
+					continue;
+				const AICombatFigures *f = AICombatModel::figures(obj->getTemplate());
+				if (f == nullptr || !f->m_armed)
+					continue;
+#if RETAIL_COMPATIBLE_AIGROUP
+				joiners->add(obj);
+#else
+				joiners.Peek()->add(obj);
+#endif
+				++n;
+				v += f->m_cost;
+			}
+			if (n >= 4 || v >= 3000.0f)
+			{
+				Coord3D leg;
+				Coord3D start = homeCenter;
+				const Coord3D *to = &rec->m_target;
+				if (terrainLeg(start, rec->m_target, &leg))
+					to = &leg;
+#if RETAIL_COMPATIBLE_AIGROUP
+				joiners->groupAttackMoveToPosition(to, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
+#else
+				joiners.Peek()->groupAttackMoveToPosition(to, NO_MAX_SHOTS_LIMIT, CMD_FROM_AI);
+#endif
+				++m_idleJoins;
+				AI_TRACE("team %u: %d idle member(s) at home (value %.0f) follow it to (%.0f,%.0f)", team->getID(), n, v, rec->m_target.x, rec->m_target.y);
+			}
+		}
+	}
 	// TEMP diagnostics: where the attacking teams are (trace only, no state).
 	if (m_trace && rec->m_mode == AITEAM_ATTACKING)
 	{
@@ -2044,6 +2219,38 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 		if (now >= shown + 30 * LOGICFRAMES_PER_SECOND)
 		{
 			shown = now;
+			char kinds[160] = "";
+			{
+				Int n = 0;
+				for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done() && n < 4; it.advance(), ++n)
+					if (it.cur())
+					{
+						AIUpdateInterface *uai = it.cur()->getAI();
+						char one[64];
+						snprintf(one, sizeof(one), "%s%s/%s%d", n ? "," : "", it.cur()->getTemplate()->getName().str(), isDetached(it.cur()->getID()) ? "det" : "",
+							uai ? (Int)uai->getLastCommandSource() : -1);
+						strncat(kinds, one, sizeof(kinds) - strlen(kinds) - 1);
+					}
+			}
+			AI_TRACE("TEAMKINDS team %u: %s", team->getID(), kinds);
+			if (count >= 10)
+			{
+				Int n = 0;
+				for (DLINK_ITERATOR<Object> it = team->iterate_TeamMemberList(); !it.done() && n < 6; it.advance())
+				{
+					Object *u = it.cur();
+					if (u == nullptr || u->isEffectivelyDead() || u->getAI() == nullptr)
+						continue;
+					++n;
+					AIUpdateInterface *uai = u->getAI();
+					Object *v = uai->getCurrentVictim();
+					const Coord3D *g = uai->getGoalPosition();
+					AI_TRACE("UNITSTATE team %u %s at (%.0f,%.0f): state %d moving %d waitpath %d path %d victim %s %.0f away goal (%.0f,%.0f) contained %d", team->getID(),
+						u->getTemplate()->getName().str(), u->getPosition()->x, u->getPosition()->y, (Int)uai->getAIStateType(), (Int)uai->isMoving(), (Int)uai->isWaitingForPath(),
+						uai->getPath() != nullptr, v ? v->getTemplate()->getName().str() : "-", v ? dist2D(*v->getPosition(), *u->getPosition()) : 0.0f,
+						g ? g->x : -1.0f, g ? g->y : -1.0f, (Int)u->isContained());
+				}
+			}
 			AI_TRACE("TEAMPOS team %u at (%.0f,%.0f) z %.0f -> (%.0f,%.0f) z %.0f, %.0f away, reach %d, contact %d (adv %.2f, ours %.0f theirs %.0f), idle %d/%d, order %us ago",
 				team->getID(), center.x, center.y, center.z, rec->m_target.x, rec->m_target.y, TheTerrainLogic->getGroundHeight(rec->m_target.x, rec->m_target.y),
 				dist2D(center, rec->m_target), (Int)groundReachable(center, rec->m_target, 0.0f), (Int)contact, advantage, ourPower, theirPower, idleCount, count,
@@ -2121,7 +2328,7 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 
 			// An attacking team that stands about far from its objective (its units were stopped, or it was given members since its
 			// order) gets the order again.
-			if (rec->m_mode == AITEAM_ATTACKING && !allIdle && 2 * idleCount >= count && dist2D(center, rec->m_target) > 300.0f &&
+			if (sk.m_stallReorder && rec->m_mode == AITEAM_ATTACKING && !allIdle && 2 * idleCount >= count && dist2D(center, rec->m_target) > 300.0f &&
 					now - rec->m_orderFrame >= 20 * LOGICFRAMES_PER_SECOND)
 			{
 				rec->m_orderFrame = now;
@@ -2129,6 +2336,15 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 				break;
 			}
 
+			// Idle on the way (at the end of a leg of a long way, see terrainLeg): on to the objective, not "arrived" (for a while).
+			if (sk.m_continueLegs && rec->m_mode == AITEAM_ATTACKING && allIdle && dist2D(center, rec->m_target) > 300.0f &&
+					now - rec->m_modeFrame < secondsToFrames(sk.m_continueLegSeconds) && now - rec->m_orderFrame >= 2 * LOGICFRAMES_PER_SECOND)
+			{
+				rec->m_orderFrame = now;
+				++m_legsContinued;
+				orderTeamAttackMove(team, &rec->m_target);
+				break;
+			}
 			// Arrived and nothing to do.
 			if (rec->m_mode != AITEAM_FREE && (allIdle || dist2D(center, rec->m_target) < 120.0f))
 			{
@@ -2141,8 +2357,38 @@ void AIStrategy::evaluateTeam( Team *team, AITeamRecord *rec )
 				rec->m_mode = AITEAM_FREE;
 				rec->m_modeFrame = now;
 			}
-			if (rec->m_mode != AITEAM_FREE || !wavesOn())
+			if (rec->m_mode != AITEAM_FREE)
 				break;
+			if (!wavesOn())
+			{
+				// No waves: a team that stands idle (at home, back from a fight or a defence) goes for an objective by itself after a moment,
+				// as the teams of the scripts do; the scripts give their orders once, when a team is formed.
+				// (Idle, or at home: the scripts keep the teams at home busy guarding, so they are never idle there.)
+				Coord3D homeCenter;
+				const Bool atHome = m_ai->getBaseCenter(&homeCenter) && dist2D(center, homeCenter) < m_ai->m_baseRadius + 700.0f;
+				if (skill().m_soloAttacks && (allIdle || atHome) && now - rec->m_modeFrame >= secondsToFrames(skill().m_soloAttackSeconds) && now - rec->m_orderFrame >= secondsToFrames(skill().m_soloAttackSeconds))
+				{
+					Real armyValue = 0.0f;
+					for (Int i = 0; i < m_numTeams; ++i)
+					{
+						Team *other = TheTeamFactory->findTeamByID(m_teams[i].m_team);
+						if (other)
+							armyValue += teamValue(other);
+					}
+					Coord3D objective;
+					if (chooseObjective(&center, armyValue, &objective))
+					{
+						rec->m_mode = AITEAM_ATTACKING;
+						rec->m_modeFrame = now;
+						rec->m_orderFrame = now;
+						rec->m_target = objective;
+						++m_soloAttacks;
+						AI_TRACE("team %u ATTACKS on its own (no waves): value %.0f -> (%.0f,%.0f)", team->getID(), teamValue(team), objective.x, objective.y);
+						orderTeamAttackMove(team, &objective);
+					}
+				}
+				break;
+			}
 
 			// A team that appeared while a wave is out is not part of it: it gathers at the rally point and joins the next one.
 			const Bool waiting = m_armyState == ARMY_ATTACK && !rec->m_inWave && mergeOn();
@@ -2505,6 +2751,8 @@ Bool AIStrategy::isIncomeBuilding( const ThingTemplate *tt ) const
 Bool AIStrategy::groundReachable( const Coord3D &from, const Coord3D &to, Real within ) const
 {
 	(void)within;
+	if (!skill().m_reachChecks)
+		return TRUE;
 	const Object *probe = nullptr;
 	for (Int t = 0; t < m_numTeams && probe == nullptr; ++t)
 	{
@@ -2999,7 +3247,7 @@ void AIStrategy::sendReinforcementsToThreat()
 		home = where;
 	// Teams far out (on their way to the enemy, or at its base) carry on with their mission: by the time they were back the fight at home
 	// would be over, and the attack would be lost.  The ones near home come.
-	const Real homeZone = m_ai->m_baseRadius + 1500.0f;
+	const Real homeZone = skill().m_recallRadius > 0.0f ? m_ai->m_baseRadius + skill().m_recallRadius : 1.0e9f;
 	Int recalled = 0, fighting = 0, away = 0;
 	for (Int i = 0; i < m_numTeams; ++i)
 	{
@@ -3224,7 +3472,7 @@ Bool AIStrategy::computeSuperweaponTarget( const SpecialPowerTemplate *power, Co
 	Int numFriends = 0;
 
 	const Int me = m_player->getPlayerIndex();
-	const Real poweredShare = poweredDefenceShare();
+	const Real poweredShare = skill().m_powerPlantStrikes ? poweredDefenceShare() : 0.0f;
 	for (Object *obj = TheGameLogic->getFirstObject(); obj; obj = obj->getNextObject())
 	{
 		if (obj->isEffectivelyDead() || obj->isOffMap() || obj->isContained())
@@ -3355,7 +3603,7 @@ void AIStrategy::crc( Xfer *xfer )
 
 void AIStrategy::xfer( Xfer *xfer )
 {
-	XferVersion currentVersion = 16;
+	XferVersion currentVersion = 17;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -3582,6 +3830,13 @@ void AIStrategy::xfer( Xfer *xfer )
 		xfer->xferBool(&m_planOut);
 		xfer->xferUnsignedInt(&m_siegeWaitSince);
 		xfer->xferUnsignedInt(&m_breachInRange);
+	}
+	if (version >= 17)
+	{
+		xfer->xferUser(m_sorties, sizeof(m_sorties));
+		xfer->xferInt(&m_numSorties);
+		xfer->xferUnsignedInt(&m_nextAirSupport);
+		xfer->xferUnsignedInt(&m_nextAirCall);
 	}
 	if (version >= 16)
 	{

@@ -114,7 +114,7 @@ const AICombatFigures *AICombatModel::figures(const ThingTemplate *tt)
 
 			// A weapon that only puts a status on the target (the Avenger's target designator: its "damage" is a time in msec) does no
 			// damage: it would make an anti-aircraft unit look like the strongest tank.
-			if (w->getDamageType() == DAMAGE_STATUS)
+			if (w->getDamageType() == DAMAGE_STATUS && TheAI && TheAI->getAiData()->m_expertSkill.m_ignoreStatusWeapons)
 				continue;
 
 			Real damage = w->getPrimaryDamage(noBonus);

@@ -139,6 +139,38 @@ struct AISkillSettings
 	Real m_retreatAdvantage;	///< Estimated strength ratio below which a team pulls out of a fight.
 	Real m_waveHoldSeconds;		///< An army that has stopped growing waits this long, then goes with at least 60% of the wanted size.
 	Real m_minWaveValue;			///< Least army value (cost of the living units) that makes an attack wave, whatever has been seen of the enemy.
+	Bool m_baseDefGroundOnly;	///< Only ground attackers raise the base alarm (not aircraft, structures, shells).
+	Bool m_powerPlantStrikes;	///< Powers aim at the power plants when the enemy defences need power.
+	Real m_incomePrize;	///< How much more an enemy building that pays money is worth as an objective (1: as any building).
+	Bool m_surplusCoverage;	///< Surplus units cover the kinds of enemy the army cannot fight yet.
+	Bool m_surplusMix;	///< Surplus units of a kind that is already a large part count less (a mix).
+	Bool m_reachChecks;	///< Rally points, waypoints and staging points must be reachable on the ground.
+	Bool m_finishLaunch;	///< Late, against an enemy with little left, the army goes with what it has.
+	Bool m_stallReorder;	///< An attacking team that stands about far from its objective gets its order again.
+	Bool m_guardedPathAvoid;	///< Ground routes stay out of the reach of the seen enemy defences where another way in exists ...
+	Real m_guardedPathCost;	///< ... a step within their reach costs this many times as much.
+	Bool m_continueLegs;	///< An attacking team that stands idle short of its objective (the end of a leg) goes on, for ContinueLegSeconds ...
+	Real m_continueLegSeconds;
+	Bool m_earnersDetached;
+	Bool m_skipContained;	///< Units inside a building or a transport do not count for the place and the idleness of their team.	///< Units that earn money (hackers) are not taken by the army's orders.
+	Bool m_nextWaveReady;	///< While a wave is out, the teams at home go as the next wave when they are a wave by themselves.
+	Real m_waveMaxSeconds;	///< A wave is over after this long at most (0: until it is spent).
+	Bool m_idleJoin;	///< Idle members of an attacking team that stand at home follow it to its objective.
+	Bool m_legFromFront;	///< Legs of a long way are measured from the team member nearest to the objective (not the middle of the team).
+	Bool m_finishHunt;	///< Late, when nothing worth a wave is known or the army is far stronger, every team hunts.
+	Real m_finishHuntMinutes;
+	Real m_finishHuntAdvantage;
+	Bool m_opportunist;	///< Units that knock down buildings undisturbed kill a worker, or a building just begun, that shows up around first.
+	Real m_opportunistRadius;
+	Bool m_buildUnblock;	///< The base builder takes the first priority structure that can be built now (a blocked one does not hold up the rest; a taken place moves).
+	Bool m_ignoreStatusWeapons;	///< The combat model leaves out weapons that only put a status on the target (the Avenger's designator).
+	Bool m_allyForecast;	///< The allies' units at the objective count in the forecast of a wave (pull back, launch check).
+	Real m_recallRadius;	///< A threat to the base calls back the teams within this distance of the base edge (0: all).
+	Bool m_waveSpentOwnOnly;	///< A wave is spent by its own losses (the teams waiting at home do not keep it going).
+	Real m_bunkerMaxCost;	///< Infantry dearer than this does not go into the bunkers (snipers, heroes); 0: any.
+	Bool m_soloAttacks;	///< Without waves, a team that stands idle or at home attacks by itself ...
+	Real m_soloAttackSeconds;	///< ... after this long.
+	Bool m_formationMove;	///< Teams of 3 or more ground units move as a block of rows: tough units in front, long range ones behind.
 	Bool m_useWaves;	///< The army gathers at the rally point and goes in waves; off: the teams go as the scripts send them (variant "on-wave" forces it).
 	Real m_waveSizeScale;
 	Bool m_localWaveTarget;	///< The wave is sized for its objective (the enemy army near it, LocalWaveRestShare of the rest, the defences that reach it), not for all the enemies seen.
@@ -229,6 +261,8 @@ struct AISkillSettings
 	Real m_abilityMinValue;		///< Least value of a target (cost of the enemy, or of the hurt friend scaled by its damage) that a power is used on.
 
 	// ---- batch 2: airborne insertion ----
+	Int m_airSupportPlanes;	///< Idle combat aircraft that support a team in a fight where no anti-air was seen (this many per team at most; 0 = off).
+	Real m_airSupportSeconds;	///< ... and fly home after this long at most.
 	Bool m_useAirborne;				///< A transport aircraft drops a strike squad next to a soft target behind the enemy lines.
 	Real m_airMargin;					///< Distance added to the range of a seen anti-air weapon for the area the flight stays out of.
 	Real m_airGuardShare;			///< A drop zone is safe when the armed units seen near it are worth less than this share of the squad.

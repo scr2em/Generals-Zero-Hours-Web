@@ -101,6 +101,10 @@ public:
 	/// Called when a match starts (not when a saved game is loaded: the setting is in the save).
 	void startMatch( Bool allowed );
 	Bool allowed() const { return m_allowed; }
+	/// The Expert computer player gives a team order in a formation (the next group order is prepared as a player's would be).
+	void setAIOrder( Bool on ) { m_aiOrder = on; }
+	void setAIFormation( AIGroup *group, Int type ) { setFormation( group, type ); }
+	Bool aiOrder() const { return m_aiOrder; }
 
 	/// Once per logic frame, after the objects have been updated.
 	void logicUpdate();
@@ -285,6 +289,8 @@ private:
 	Int roleOf( Object *obj, Real maxRange, Real maxHealth, Real *key ) const;
 
 	Bool				m_allowed;
+
+	Bool m_aiOrder = FALSE;	///< (not saved: it is only on during one call)
 	UnitMap			m_units;
 	ProtectManager	m_protect;
 	DefendState			m_defend[MAX_DEFEND];

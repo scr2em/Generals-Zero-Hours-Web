@@ -244,6 +244,21 @@ struct AITeamRecord
 	ObjectID			m_idMark;						///< object ids from here on belong to units that joined after the last order of the strategic layer (0 = none given)
 };
 
+/// An aircraft of ours that supports a team on the ground (AIAirSupport.cpp).
+enum { SORTIE_GOING = 0, SORTIE_ATTACKING = 1, SORTIE_RETURNING = 2 };
+struct AIAirSortie
+{
+	ObjectID			m_unit;
+	TeamID				m_team;						///< the team it supports
+	ObjectID			m_target;
+	Int						m_phase;					///< SORTIE_*
+	UnsignedInt		m_start;
+	UnsignedInt		m_since;
+	Coord3D				m_path[AIROUTE_MAX_POINTS];	///< waypoints around the seen anti-air (going: before the target; returning: the last is home)
+	Int						m_pathLen;
+	Int						m_pathIdx;
+};
+
 /// A unit that is stepping out of the fight for a moment (kiting): where it was attacking, and how to resume.
 struct AIStepRecord
 {
@@ -572,6 +587,14 @@ private:
 	void updateIncomeBuildings();
 	Bool incomeSite( const ThingTemplate *plan, Coord3D *where );
 	Bool wavesOn() const;
+	Bool useFormation( AIGroup *group );
+	Bool airSupportOn() const;
+	Bool isAirSortie( ObjectID id ) const;
+	Bool airWay( const Coord3D &from, const Coord3D &to, Coord3D *path, Int *len ) const;
+	Object *airTarget( const Object *plane, const Coord3D &where, Real radius ) const;
+	void sendSortieHome( AIAirSortie &s, Object *plane, const char *why );
+	void updateAirSupport();
+	void updateOpportunist();
 	static void resetTerrainRoutes();
 	Bool terrainLeg( const Coord3D &from, const Coord3D &to, Coord3D *leg );
 	const Coord3D *orderTarget( Team *team, const Coord3D *pos, Coord3D *leg );
@@ -776,6 +799,23 @@ private:
 	Int						m_incomeTrained;
 	Int						m_incomeBuilt;
 	Int						m_terrainLegs;					///< statistics for the trace
+	Int						m_soloAttacks;
+	Int						m_formationOrders;
+	UnsignedInt		m_nextOpportunist;
+	Int						m_opportunistOrders;
+	Int						m_legsContinued;
+	Int						m_wavesCut;
+	Int						m_idleJoins;
+	UnsignedInt		m_nextFinishHunt;
+	Int						m_finishHunts;
+	enum { MAX_SORTIES = 8 };
+	AIAirSortie		m_sorties[MAX_SORTIES];
+	Int						m_numSorties;
+	UnsignedInt		m_nextAirSupport;
+	UnsignedInt		m_nextAirCall;
+	Int						m_airSupportSorties;			///< statistics for the trace
+	Int						m_airSupportRetargets;
+	Int						m_airSupportUnsafe;
 	Int						m_surplusKind[MAX_SURPLUS_KINDS];				///< the kinds of surplus units ordered (template ids) and how many of each
 	Int						m_surplusKindCount[MAX_SURPLUS_KINDS];
 	Int						m_numSurplusKinds;

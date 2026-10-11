@@ -857,6 +857,8 @@ set(GAMEENGINE_SRC
     Source/GameLogic/AI/AISurplus.cpp
     Source/GameLogic/AI/AITunnel.cpp
     Source/GameLogic/AI/AIAirborne.cpp
+    Source/GameLogic/AI/AIAirSupport.cpp
+    Source/GameLogic/AI/AIOpportunist.cpp
     Source/GameLogic/AI/AIGarrison.cpp
     Source/GameLogic/AI/AIProtect.cpp
     Source/GameLogic/AI/AIRaid.cpp
